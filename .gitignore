@@ -1,0 +1,28 @@
+# IDE
+.vscode/
+.idea/
+.gemini/
+.agent/
+
+# Build and dependencies
+node_modules/
+dist/
+dist-ssr/
+*.local
+.pnpm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+front/node_modules/
+front/dist/
+server/venv/
+server/__pycache__/
+server/data/*.db
+*.pyc
+
+
+# log
+*.log

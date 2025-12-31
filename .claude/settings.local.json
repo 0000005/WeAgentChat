@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(Get-Location)",
+      "Bash(tree:*)",
+      "Bash(if:*)",
+      "Bash(then echo \"目录存在\")",
+      "Bash(else echo:*)",
+      "Bash(fi)",
+      "Bash(pnpm install:*)",
+      "Bash(mkdir:*)",
+      "Bash(git add:*)",
+      "Bash(git rm:*)",
+      "Bash(pnpm add:*)",
+      "Bash(npx shadcn-vue@latest init:*)",
+      "Bash(npx ai-elements-vue@latest)",
+      "Bash(git commit:*)",
+      "Bash(pnpm dev:*)",
+      "Bash(test:*)",
+      "Bash(cat:*)",
+      "Bash(gemini mcp remove --help:*)",
+      "Bash(dir:*)",
+      "Bash(gemini extension uninstall:*)"
+    ]
+  }
+}

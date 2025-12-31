@@ -1,0 +1,32 @@
+<script setup lang="ts">
+import { Button } from '@/components/ui/button'
+import { HoverCardTrigger } from '@/components/ui/hover-card'
+import { computed } from 'vue'
+import { useContextValue } from './context'
+import ContextIcon from './ContextIcon.vue'
+
+const { usedTokens, maxTokens } = useContextValue()
+
+const renderedPercent = computed(() => {
+  if (maxTokens.value === 0)
+    return '0%'
+  const usedPercent = usedTokens.value / maxTokens.value
+  return new Intl.NumberFormat('en-US', {
+    style: 'percent',
+    maximumFractionDigits: 1,
+  }).format(usedPercent)
+})
+</script>
+
+<template>
+  <HoverCardTrigger as-child>
+    <slot v-if="$slots.default" />
+
+    <Button v-else type="button" variant="ghost" v-bind="$attrs">
+      <span class="font-medium text-muted-foreground">
+        {{ renderedPercent }}
+      </span>
+      <ContextIcon />
+    </Button>
+  </HoverCardTrigger>
+</template>

@@ -1,0 +1,4 @@
+sources:
+  doudouDb:
+    kind: sqlite
+    database: 'server/data/doudou.db'
