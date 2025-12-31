@@ -144,10 +144,10 @@ def test_send_message_thinking(client: TestClient, db: Session):
         assert thinking_content == "Thinking..."
         assert message_content == "Result"
         
-        # Verify DB content (should be raw)
+        # Verify DB content (should NOT contain thinking tags)
         hist_resp = client.get(f"/api/chat/sessions/{session_id}/messages")
         msgs = hist_resp.json()
-        assert msgs[-1]["content"] == "<think>Thinking...</think>Result"
+        assert msgs[-1]["content"] == "Result"
 
 
 def test_send_message_llm_error(client: TestClient, db: Session):

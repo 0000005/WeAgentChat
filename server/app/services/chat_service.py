@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 from typing import List, Optional
+import re
 from app.models.chat import ChatSession, Message
 from app.models.persona import Persona
 from app.models.llm import LLMConfig
@@ -152,6 +153,11 @@ async def send_message(db: Session, session_id: int, message_in: chat_schemas.Me
         # Pass the full list of messages as input
         result = await Runner.run(agent, agent_messages)
         ai_content = result.final_output
+        
+        # Strip <think> tags from content before saving
+        if ai_content:
+            ai_content = re.sub(r'<think>.*?</think>', '', ai_content, flags=re.DOTALL)
+
     except Exception as e:
         ai_content = f"Error calling LLM: {str(e)}"
 
@@ -258,6 +264,7 @@ async def send_message_stream(db: Session, session_id: int, message_in: chat_sch
 
     full_ai_content = ""
     full_thinking_content = ""
+    saved_content = ""
     usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
     finish_reason = "stop"
 
@@ -317,9 +324,11 @@ async def send_message_stream(db: Session, session_id: int, message_in: chat_sch
                             if start_idx != -1:
                                 # Yield content before tag as message
                                 if start_idx > 0:
+                                    msg_delta = buffer[:start_idx]
+                                    saved_content += msg_delta
                                     yield {
                                         "event": "message",
-                                        "data": {"delta": buffer[:start_idx]}
+                                        "data": {"delta": msg_delta}
                                     }
                                 buffer = buffer[start_idx + len(THINK_START):]
                                 is_thinking = True
@@ -336,10 +345,12 @@ async def send_message_stream(db: Session, session_id: int, message_in: chat_sch
                                     to_yield = buffer[:-partial_len]
                                     buffer = buffer[-partial_len:]
                                     if to_yield:
+                                        saved_content += to_yield
                                         yield {"event": "message", "data": {"delta": to_yield}}
                                     break  # Wait for more data
                                 else:
                                     # Yield all
+                                    saved_content += buffer
                                     yield {"event": "message", "data": {"delta": buffer}}
                                     buffer = ""
                         else:
@@ -377,6 +388,7 @@ async def send_message_stream(db: Session, session_id: int, message_in: chat_sch
             if is_thinking and enable_thinking:
                 yield {"event": "thinking", "data": {"delta": buffer}}
             elif not is_thinking:
+                saved_content += buffer
                 yield {"event": "message", "data": {"delta": buffer}}
 
     except Exception as e:
@@ -394,12 +406,8 @@ async def send_message_stream(db: Session, session_id: int, message_in: chat_sch
         full_ai_content = f"[Error: {error_message}]"
 
     # 5. Save AI Response once finished
-    final_content = full_ai_content
-    # If standard reasoning was captured but not already in content via tags
-    if full_thinking_content and "<think>" not in final_content:
-        final_content = f"<think>{full_thinking_content}</think>{final_content}"
-        
-    ai_msg.content = final_content if final_content else "[No response]"
+    # Only save the cleaned message content (excluding reasoning)
+    ai_msg.content = saved_content if saved_content else "[No response]"
     db_session.update_time = datetime.now()
     db.commit()
     db.refresh(ai_msg)
