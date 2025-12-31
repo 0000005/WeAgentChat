@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useSessionStore } from '@/stores/session'
-import { Menu, Bot, Brain } from 'lucide-vue-next'
+import { Menu, Bot, Brain, Plus, Mic, Globe } from 'lucide-vue-next'
 import {
   Conversation,
   ConversationContent,
@@ -105,26 +105,46 @@ const shouldShowLoader = computed(() => {
     <!-- Input Area -->
     <div class="px-4 md:px-24 pb-8 pt-4">
       <PromptInput
-        class="w-full max-w-4xl mx-auto shadow-sm border border-gray-200 rounded-3xl overflow-hidden focus-within:border-gray-300 focus-within:shadow-md transition-all duration-300 bg-gray-50/50"
+        class="w-full max-w-5xl mx-auto shadow-lg border border-gray-100/50 rounded-2xl bg-white"
         @submit="handleSubmit">
-        <PromptInputTextarea v-model="input" placeholder="Send a message to DouDou..."
-          class="min-h-[60px] max-h-[200px] text-[15px] px-4 py-3 bg-transparent border-none focus:ring-0 resize-none" />
+        <PromptInputTextarea v-model="input" placeholder="What would you like to know?"
+          class="min-h-[100px] max-h-[300px] text-base px-5 py-5 bg-transparent border-none focus:ring-0 resize-none placeholder:text-gray-400 text-gray-800 w-full shadow-none focus-visible:ring-0" />
 
-        <div class="px-3 pb-3 pt-0 flex justify-between items-center bg-transparent">
+        <div class="px-4 pb-4 pt-2 flex justify-between items-center bg-transparent mt-auto">
           <!-- Left side actions -->
-          <div class="flex gap-3 items-center">
-            <span class="text-xs text-gray-400 font-medium flex items-center gap-1 select-none">
-              <Bot :size="14" />
-              {{ llmStore.modelName }}
-            </span>
-            <span v-if="isThinkingMode" class="text-xs text-purple-500 font-medium flex items-center gap-1 select-none">
-              <Brain :size="12" />
-              思考模式
-            </span>
+          <div class="flex gap-4 items-center">
+            <div class="flex gap-1">
+              <button type="button"
+                class="text-gray-400 hover:text-gray-600 p-2 rounded-full hover:bg-gray-100 transition-all duration-200"
+                title="Add Attachment"
+              >
+                <Plus :size="20" stroke-width="1.5" />
+              </button>
+              
+              <button type="button"
+                class="text-gray-400 hover:text-gray-600 p-2 rounded-full hover:bg-gray-100 transition-all duration-200"
+                title="Voice Input"
+              >
+                <Mic :size="20" stroke-width="1.5" />
+              </button>
+            </div>
+
+            <button type="button"
+              class="flex items-center gap-2 text-gray-500 hover:text-gray-800 px-2 py-1.5 rounded-full hover:bg-gray-100 transition-all duration-200 group"
+            >
+              <Globe :size="18" stroke-width="1.5" class="group-hover:text-blue-500 transition-colors" />
+              <span class="text-sm font-medium">Search</span>
+            </button>
+
+            <div class="flex items-center gap-2 text-gray-500 select-none px-2">
+              <Bot :size="18" stroke-width="1.5" class="text-gray-400" />
+              <span class="text-sm font-medium tracking-tight text-gray-600">{{ llmStore.modelName }}</span>
+            </div>
           </div>
 
-          <PromptInputSubmit :disabled="status !== 'idle' && status !== 'streaming'" :loading="status === 'submitted'"
-            class="ml-auto" />
+          <PromptInputSubmit :status="status" :loading="status === 'submitted'"
+            class="ml-auto bg-gray-900 text-white hover:bg-black rounded-xl w-10 h-10 p-0 flex items-center justify-center transition-all duration-200 shadow-sm hover:shadow active:scale-95" 
+          />
         </div>
       </PromptInput>
 
@@ -139,5 +159,14 @@ const shouldShowLoader = computed(() => {
 /* Ensure the Conversation component takes full height of its container */
 :deep(.conversation) {
   height: 100%;
+}
+
+/* Force the InputGroup to act as a column for this specific design */
+:deep([data-slot="input-group"]) {
+  flex-direction: column !important;
+  align-items: stretch !important;
+  height: auto !important;
+  border: none !important; /* Remove inner border to use the outer one */
+  box-shadow: none !important;
 }
 </style>
