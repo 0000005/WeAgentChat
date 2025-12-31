@@ -7,7 +7,7 @@ export interface Session {
     id: string
     title: string
     createdAt: number
-    personaId: string
+    personaId: number | null
     systemPrompt?: string
 }
 
@@ -45,7 +45,10 @@ export const useSessionStore = defineStore('session', () => {
 
         // If no sessions, create one
         if (sessions.value.length === 0) {
-            createSession()
+            // We can't create a session properly without personas loaded, 
+            // but we can create a placeholder or wait.
+            // For now, let's just allow creating one with null persona or wait for user action.
+            // createSession() // Defer creation until needed or allow null
         } else if (!currentSessionId.value || !sessions.value.find(s => s.id === currentSessionId.value)) {
             // If currentSessionId is invalid or empty, select the first one
             currentSessionId.value = sessions.value[0].id
@@ -73,24 +76,24 @@ export const useSessionStore = defineStore('session', () => {
         { deep: true }
     )
 
-    const createSession = (personaId?: string) => {
+    const createSession = (personaId?: number) => {
         const personaStore = usePersonaStore()
         
-        // Use provided personaId or default to 'assistant' (or the first available)
+        // Use provided personaId or default to the first available if possible
+        // Note: personaStore.personas might be empty if not fetched yet.
         let targetPersona = personaId ? personaStore.getPersona(personaId) : null
         
-        if (!targetPersona) {
-            // Fallback to default assistant if not found or not provided
-            targetPersona = personaStore.getPersona('assistant') || personaStore.personas[0]
+        if (!targetPersona && personaStore.personas.length > 0) {
+            targetPersona = personaStore.personas[0]
         }
 
         const id = nanoid()
         const newSession: Session = {
             id,
-            title: (targetPersona && targetPersona.id !== 'assistant') ? targetPersona.name : '新对话',
+            title: targetPersona ? targetPersona.name : '新对话',
             createdAt: Date.now(),
-            personaId: targetPersona?.id || 'unknown',
-            systemPrompt: targetPersona?.systemPrompt || ''
+            personaId: targetPersona ? targetPersona.id : null,
+            systemPrompt: targetPersona?.system_prompt || ''
         }
         
         // Add to the beginning of the list

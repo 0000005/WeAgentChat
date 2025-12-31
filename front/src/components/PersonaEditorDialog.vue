@@ -12,11 +12,11 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { usePersonaStore } from '@/stores/persona'
 import { useSessionStore } from '@/stores/session'
-import { MessageSquare } from 'lucide-vue-next'
+import { MessageSquare, Loader2 } from 'lucide-vue-next'
 
 const props = defineProps<{
   open: boolean
-  personaId: string | null
+  personaId: number | null
 }>()
 
 const emit = defineEmits(['update:open', 'saved', 'start-chat'])
@@ -24,49 +24,57 @@ const emit = defineEmits(['update:open', 'saved', 'start-chat'])
 const personaStore = usePersonaStore()
 const sessionStore = useSessionStore()
 
+const isLoading = ref(false)
 const formData = ref({
     name: '',
     description: '',
-    systemPrompt: ''
+    system_prompt: ''
 })
 
-const isEdit = computed(() => !!props.personaId)
+const isEdit = computed(() => props.personaId !== null)
 
 watch(() => props.open, (newVal) => {
     if (newVal) {
-        if (props.personaId) {
+        if (props.personaId !== null) {
             const p = personaStore.getPersona(props.personaId)
             if (p) {
                 formData.value = {
                     name: p.name,
-                    description: p.description,
-                    systemPrompt: p.systemPrompt
+                    description: p.description || '',
+                    system_prompt: p.system_prompt || ''
                 }
             }
         } else {
             formData.value = {
                 name: '',
                 description: '',
-                systemPrompt: ''
+                system_prompt: ''
             }
         }
     }
 })
 
-const onSave = () => {
+const onSave = async () => {
     if (!formData.value.name) return // Simple validation
 
-    if (props.personaId) {
-        personaStore.updatePersona(props.personaId, formData.value)
-    } else {
-        personaStore.addPersona(formData.value)
+    isLoading.value = true
+    try {
+        if (props.personaId !== null) {
+            await personaStore.updatePersona(props.personaId, formData.value)
+        } else {
+            await personaStore.addPersona(formData.value)
+        }
+        emit('saved')
+        emit('update:open', false)
+    } catch (e) {
+        console.error('Failed to save persona', e)
+    } finally {
+        isLoading.value = false
     }
-    emit('saved')
-    emit('update:open', false)
 }
 
 const onStartChat = () => {
-    if (props.personaId) {
+    if (props.personaId !== null) {
         sessionStore.createSession(props.personaId)
         emit('start-chat')
         emit('update:open', false)
@@ -102,7 +110,7 @@ const onStartChat = () => {
           </label>
           <Textarea 
             id="prompt" 
-            v-model="formData.systemPrompt" 
+            v-model="formData.system_prompt" 
             placeholder="你是一个..." 
             class="min-h-[150px]"
           />
@@ -123,8 +131,9 @@ const onStartChat = () => {
             <Button type="button" variant="outline" @click="$emit('update:open', false)">
             取消
             </Button>
-            <Button type="button" @click="onSave">
-            保存
+            <Button type="button" @click="onSave" :disabled="isLoading">
+                <Loader2 v-if="isLoading" class="w-4 h-4 mr-2 animate-spin" />
+                保存
             </Button>
         </div>
       </DialogFooter>

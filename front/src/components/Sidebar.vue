@@ -91,30 +91,30 @@ const confirmDeleteSession = () => {
 
 // Persona Logic
 const isPersonaDialogOpen = ref(false)
-const editingPersonaId = ref<string | null>(null)
+const editingPersonaId = ref<number | null>(null)
 
 // Delete Persona Dialog Logic
 const isDeletePersonaOpen = ref(false)
-const personaToDelete = ref<string | null>(null)
+const personaToDelete = ref<number | null>(null)
 
 const onNewPersona = () => {
     editingPersonaId.value = null
     isPersonaDialogOpen.value = true
 }
 
-const onEditPersona = (id: string) => {
+const onEditPersona = (id: number) => {
     editingPersonaId.value = id
     isPersonaDialogOpen.value = true
 }
 
-const onDeletePersona = (id: string) => {
+const onDeletePersona = (id: number) => {
     personaToDelete.value = id
     isDeletePersonaOpen.value = true
 }
 
-const confirmDeletePersona = () => {
-    if (personaToDelete.value) {
-        personaStore.deletePersona(personaToDelete.value)
+const confirmDeletePersona = async () => {
+    if (personaToDelete.value !== null) {
+        await personaStore.deletePersona(personaToDelete.value)
     }
     isDeletePersonaOpen.value = false
     personaToDelete.value = null
@@ -126,7 +126,7 @@ const onStartChatFromPersona = () => {
     activeTab.value = 'sessions'
 }
 
-const onStartChatDirectly = (personaId: string) => {
+const onStartChatDirectly = (personaId: number) => {
     sessionStore.createSession(personaId)
     activeTab.value = 'sessions'
 }
@@ -272,9 +272,9 @@ const onStartChatDirectly = (personaId: string) => {
                                 <Edit class="mr-2 h-4 w-4" />
                                 编辑角色
                             </DropdownMenuItem>
-                            <DropdownMenuSeparator v-if="!persona.isPreset" />
+                            <DropdownMenuSeparator v-if="!persona.is_preset" />
                             <DropdownMenuItem 
-                                v-if="!persona.isPreset"
+                                v-if="!persona.is_preset"
                                 @click.stop="onDeletePersona(persona.id)" 
                                 class="text-red-600 focus:text-red-600 cursor-pointer"
                             >

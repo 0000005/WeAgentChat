@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import {
   Dialog,
   DialogContent,
@@ -7,7 +7,8 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Eye, EyeOff } from 'lucide-vue-next'
+import { Button } from '@/components/ui/button'
+import { Eye, EyeOff, Loader2 } from 'lucide-vue-next'
 import { useLlmStore } from '@/stores/llm'
 import { storeToRefs } from 'pinia'
 
@@ -15,16 +16,30 @@ defineProps<{
   open: boolean
 }>()
 
-defineEmits(['update:open'])
+const emit = defineEmits(['update:open'])
 
 const llmStore = useLlmStore()
-const { apiBaseUrl, apiKey, modelName } = storeToRefs(llmStore)
+const { apiBaseUrl, apiKey, modelName, isLoading } = storeToRefs(llmStore)
 
 const activeTab = ref('llm')
 const showApiKey = ref(false)
 
 const toggleApiKeyVisibility = () => {
   showApiKey.value = !showApiKey.value
+}
+
+onMounted(() => {
+    llmStore.fetchConfig()
+})
+
+const handleSave = async () => {
+    try {
+        await llmStore.saveConfig()
+        emit('update:open', false)
+    } catch (error) {
+        // Error handling could be improved with a toast notification
+        console.error('Failed to save settings', error)
+    }
 }
 </script>
 
@@ -46,57 +61,69 @@ const toggleApiKeyVisibility = () => {
         </button>
       </div>
 
-      <!-- Content -->
-      <div class="flex-1 p-6 overflow-y-auto">
-        <template v-if="activeTab === 'llm'">
-            <div class="space-y-6">
-                <div>
-                    <h3 class="text-lg font-medium">LLM 配置</h3>
-                    <p class="text-sm text-gray-500">配置连接到大语言模型 API 的参数。</p>
-                </div>
-
-                <div class="space-y-4">
-                    <div class="grid gap-2">
-                        <label class="text-sm font-medium leading-none">
-                            API Base URL
-                        </label>
-                        <Input v-model="apiBaseUrl" placeholder="例如: https://api.openai.com/v1" />
-                        <p class="text-xs text-gray-500">
-                            OpenAI 兼容接口的地址。为空则默认使用官方地址。
-                        </p>
+      <!-- Right Side Container -->
+      <div class="flex-1 flex flex-col h-full overflow-hidden">
+          <!-- Content -->
+          <div class="flex-1 p-6 overflow-y-auto">
+            <template v-if="activeTab === 'llm'">
+                <div class="space-y-6">
+                    <div>
+                        <h3 class="text-lg font-medium">LLM 配置</h3>
+                        <p class="text-sm text-gray-500">配置连接到大语言模型 API 的参数。</p>
                     </div>
 
-                    <div class="grid gap-2">
-                        <label class="text-sm font-medium leading-none">
-                            API Key
-                        </label>
-                        <div class="relative">
-                            <Input 
-                                v-model="apiKey" 
-                                :type="showApiKey ? 'text' : 'password'" 
-                                placeholder="sk-..." 
-                                class="pr-10"
-                            />
-                            <button 
-                                type="button"
-                                @click="toggleApiKeyVisibility"
-                                class="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent text-gray-500 hover:text-gray-900 flex items-center justify-center"
-                            >
-                                <Eye v-if="!showApiKey" :size="16" />
-                                <EyeOff v-else :size="16" />
-                            </button>
+                    <div class="space-y-4">
+                        <div class="grid gap-2">
+                            <label class="text-sm font-medium leading-none">
+                                API Base URL
+                            </label>
+                            <Input v-model="apiBaseUrl" placeholder="例如: https://api.openai.com/v1" />
+                            <p class="text-xs text-gray-500">
+                                OpenAI 兼容接口的地址。为空则默认使用官方地址。
+                            </p>
+                        </div>
+
+                        <div class="grid gap-2">
+                            <label class="text-sm font-medium leading-none">
+                                API Key
+                            </label>
+                            <div class="relative">
+                                <Input 
+                                    v-model="apiKey" 
+                                    :type="showApiKey ? 'text' : 'password'" 
+                                    placeholder="sk-..." 
+                                    class="pr-10"
+                                />
+                                <button 
+                                    type="button"
+                                    @click="toggleApiKeyVisibility"
+                                    class="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent text-gray-500 hover:text-gray-900 flex items-center justify-center"
+                                >
+                                    <Eye v-if="!showApiKey" :size="16" />
+                                    <EyeOff v-else :size="16" />
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="grid gap-2">
+                            <label class="text-sm font-medium leading-none">
+                                Model Name
+                            </label>
+                            <Input v-model="modelName" placeholder="例如: gpt-3.5-turbo" />
                         </div>
                     </div>
-
-                    <div class="grid gap-2">
-                        <label class="text-sm font-medium leading-none">
-                            Model Name
-                        </label>
-                        <Input v-model="modelName" placeholder="例如: gpt-3.5-turbo" />
-                    </div>
                 </div>
-            </div>
-        </template>
+            </template>
+          </div>
+
+          <!-- Footer -->
+          <div class="p-4 border-t border-gray-100 flex justify-end gap-2 bg-white">
+              <Button variant="outline" @click="$emit('update:open', false)">取消</Button>
+              <Button @click="handleSave" :disabled="isLoading">
+                  <Loader2 v-if="isLoading" class="w-4 h-4 mr-2 animate-spin" />
+                  保存
+              </Button>
+          </div>
       </div>
 
     </DialogContent>
