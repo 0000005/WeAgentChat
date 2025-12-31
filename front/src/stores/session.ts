@@ -14,6 +14,7 @@ export interface Message {
     id: number
     role: 'user' | 'assistant' | 'system'
     content: string
+    thinkingContent?: string
     createdAt: number
 }
 
@@ -22,6 +23,7 @@ export const useSessionStore = defineStore('session', () => {
     const messagesMap = ref<Record<number, Message[]>>({})
     const currentSessionId = ref<number | null>(null)
     const isLoading = ref(false)
+    const isStreaming = ref(false)
 
     const currentMessages = computed(() => {
         if (!currentSessionId.value) return []
@@ -69,7 +71,7 @@ export const useSessionStore = defineStore('session', () => {
 
     const createSession = async (personaId?: number) => {
         const personaStore = usePersonaStore()
-        
+
         // Ensure personas are loaded if needed
         if (personaStore.personas.length === 0) {
             try {
@@ -81,12 +83,12 @@ export const useSessionStore = defineStore('session', () => {
 
         let targetPersonaId = personaId
         if (!targetPersonaId) {
-             if (personaStore.personas.length > 0) {
-                 targetPersonaId = personaStore.personas[0].id
-             } else {
-                 console.warn("No personas available to create session")
-                 return
-             }
+            if (personaStore.personas.length > 0) {
+                targetPersonaId = personaStore.personas[0].id
+            } else {
+                console.warn("No personas available to create session")
+                return
+            }
         }
 
         try {
@@ -122,7 +124,7 @@ export const useSessionStore = defineStore('session', () => {
     const deleteSession = async (id: number) => {
         try {
             await ChatAPI.deleteSession(id)
-            
+
             const index = sessions.value.findIndex(s => s.id === id)
             if (index !== -1) {
                 sessions.value.splice(index, 1)
@@ -131,11 +133,11 @@ export const useSessionStore = defineStore('session', () => {
                 if (currentSessionId.value === id) {
                     currentSessionId.value = null
                     if (sessions.value.length > 0) {
-                         // Select next available
-                         selectSession(sessions.value[0].id)
+                        // Select next available
+                        selectSession(sessions.value[0].id)
                     } else {
                         // Create a new one? Or just leave empty
-                         createSession()
+                        createSession()
                     }
                 }
             }
@@ -148,7 +150,7 @@ export const useSessionStore = defineStore('session', () => {
         if (!currentSessionId.value) return
 
         const sessionId = currentSessionId.value
-        
+
         // 1. Add user message locally
         const userMsg: Message = {
             id: Date.now(),
@@ -156,7 +158,7 @@ export const useSessionStore = defineStore('session', () => {
             content: content,
             createdAt: Date.now()
         }
-        
+
         if (!messagesMap.value[sessionId]) {
             messagesMap.value[sessionId] = []
         }
@@ -168,36 +170,50 @@ export const useSessionStore = defineStore('session', () => {
             id: assistantMsgId,
             role: 'assistant',
             content: '',
+            thinkingContent: '',
             createdAt: Date.now()
         })
         messagesMap.value[sessionId].push(assistantMsg.value)
 
         try {
             const stream = ChatAPI.sendMessageStream(sessionId, { content })
-            
-            let fullContent = ''
-            for await (const delta of stream) {
-                fullContent += delta
-                // Find the message in the array and update it to trigger reactivity
+
+            for await (const { event, data } of stream) {
                 const msgIndex = messagesMap.value[sessionId].findIndex(m => m.id === assistantMsgId)
-                if (msgIndex !== -1) {
-                    messagesMap.value[sessionId][msgIndex] = {
-                        ...messagesMap.value[sessionId][msgIndex],
-                        content: fullContent
+                if (msgIndex === -1) continue
+
+                if (event === 'start') {
+                    // Stream started - update metadata if needed
+                    // data: { session_id, message_id, user_message_id, ... }
+                } else if (event === 'thinking') {
+                    isStreaming.value = true
+                    const delta = data.delta || ''
+                    messagesMap.value[sessionId][msgIndex].thinkingContent += delta
+                } else if (event === 'message') {
+                    isStreaming.value = true
+                    const delta = data.delta || ''
+                    messagesMap.value[sessionId][msgIndex].content += delta
+                } else if (event === 'error') {
+                    messagesMap.value[sessionId][msgIndex].content += `\n[Error: ${data.detail}]`
+                } else if (event === 'done') {
+                    // Finalize, update real ID if provided
+                    if (data.message_id) {
+                        messagesMap.value[sessionId][msgIndex].id = data.message_id
                     }
+                    isStreaming.value = false
                 }
             }
-            
+
             // Update session title if it's the first message
-             const session = sessions.value.find(s => s.id === sessionId)
-             if (session && (session.title === '新对话' || session.title === 'New Chat')) {
-                 const newTitle = content.slice(0, 15)
-                 session.title = newTitle
-                 ChatAPI.updateSession(sessionId, { title: newTitle }).catch(e => {
-                     console.error("Failed to update session title", e)
-                 })
-             }
-             
+            const session = sessions.value.find(s => s.id === sessionId)
+            if (session && (session.title === '新对话' || session.title === 'New Chat')) {
+                const newTitle = content.slice(0, 15)
+                session.title = newTitle
+                ChatAPI.updateSession(sessionId, { title: newTitle }).catch(e => {
+                    console.error("Failed to update session title", e)
+                })
+            }
+
         } catch (error) {
             console.error('Failed to send message:', error)
             // Show error in the assistant message
@@ -205,6 +221,8 @@ export const useSessionStore = defineStore('session', () => {
             if (msgIndex !== -1) {
                 messagesMap.value[sessionId][msgIndex].content = 'Error: Failed to get response from AI.'
             }
+        } finally {
+            isStreaming.value = false
         }
     }
 
@@ -217,6 +235,7 @@ export const useSessionStore = defineStore('session', () => {
         currentSessionId,
         currentMessages,
         isLoading,
+        isStreaming,
         fetchSessions,
         createSession,
         selectSession,

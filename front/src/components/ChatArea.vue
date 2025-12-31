@@ -14,6 +14,11 @@ import {
   PromptInputSubmit
 } from '@/components/ai-elements/prompt-input'
 import { Loader } from '@/components/ai-elements/loader'
+import { 
+  Reasoning,
+  ReasoningContent,
+  ReasoningTrigger 
+} from '@/components/ai-elements/reasoning'
 import { useChat } from '@/composables/useChat'
 
 const props = defineProps({
@@ -35,6 +40,13 @@ const currentSessionTitle = computed(() => {
   const session = store.sessions.find(s => s.id === store.currentSessionId)
   return session ? session.title : 'DouDou'
 })
+
+const shouldShowLoader = computed(() => {
+  if (status.value !== 'submitted') return false
+  if (messages.value.length === 0) return true
+  const lastMsg = messages.value[messages.value.length - 1]
+  return lastMsg.role !== 'assistant' || (!lastMsg.content && !lastMsg.thinkingContent)
+})
 </script>
 
 <template>
@@ -55,16 +67,25 @@ const currentSessionTitle = computed(() => {
     <div class="flex-1 overflow-hidden relative"> <!-- Added overflow-hidden to contain the scrollable Conversation -->
       <Conversation class="h-full w-full">
         <ConversationContent class="p-4 md:p-8 space-y-6">
-          <template v-for="msg in messages" :key="msg.id">
+          <template v-for="(msg, index) in messages" :key="msg.id">
             <Message :from="msg.role">
-              <MessageContent class="leading-relaxed">
+              
+              <Reasoning 
+                v-if="msg.role === 'assistant' && msg.thinkingContent"
+                :is-streaming="status === 'submitted' && index === messages.length - 1"
+              >
+                <ReasoningTrigger />
+                <ReasoningContent :content="msg.thinkingContent" />
+              </Reasoning>
+
+              <MessageContent class="leading-relaxed" v-if="msg.content">
                 {{ msg.content }}
               </MessageContent>
             </Message>
           </template>
           
           <!-- Loading State (AI Thinking) -->
-          <div v-if="status === 'submitted'" class="flex justify-start">
+          <div v-if="shouldShowLoader" class="flex justify-start">
              <div class="bg-muted/50 rounded-2xl px-4 py-3">
                <Loader class="h-5 w-5 text-muted-foreground" />
              </div>

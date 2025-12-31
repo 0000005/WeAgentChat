@@ -1,3 +1,4 @@
+import json
 from fastapi import APIRouter, Depends, HTTPException, Body
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -92,17 +93,14 @@ async def send_message(
     Send a message to a session and get the AI response via SSE.
     """
     async def event_generator():
-        async for delta in chat_service.send_message_stream(db, session_id=session_id, message_in=message_in):
-            if delta.startswith("error:"):
-                yield f"event: error\ndata: {delta[6:]}\n\n"
-            else:
-                # SSE supports multiple data lines:
-                # data: first line
-                # data: second line
-                # 
-                lines = delta.split("\n")
-                sse_data = "".join([f"data: {line}\n" for line in lines])
-                yield sse_data + "\n"
-        yield "data: [DONE]\n\n"
+        async for event_data in chat_service.send_message_stream(db, session_id=session_id, message_in=message_in):
+            # event_data is a dict with 'event' and 'data' keys
+            event_type = event_data.get("event", "message")
+            data_payload = event_data.get("data", {})
+            
+            # Serialize data to JSON
+            json_data = json.dumps(data_payload, ensure_ascii=False)
+            
+            yield f"event: {event_type}\ndata: {json_data}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")

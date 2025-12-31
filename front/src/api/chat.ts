@@ -92,7 +92,7 @@ export async function getMessages(sessionId: number, skip: number = 0, limit: nu
   return response.json()
 }
 
-export async function* sendMessageStream(sessionId: number, message: MessageCreate): AsyncGenerator<string> {
+export async function* sendMessageStream(sessionId: number, message: MessageCreate): AsyncGenerator<{ event: string, data: any }> {
   const response = await fetch(`/api/chat/sessions/${sessionId}/messages`, {
     method: 'POST',
     headers: {
@@ -121,16 +121,26 @@ export async function* sendMessageStream(sessionId: number, message: MessageCrea
 
     for (const part of parts) {
       const lines = part.split('\n')
-      let eventData = ''
+      let eventType = 'message'
+      let dataString = ''
+      
       for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const data = line.slice(6)
-          if (data === '[DONE]') return
-          eventData += (eventData ? '\n' : '') + data
+        if (line.startsWith('event: ')) {
+          eventType = line.slice(7).trim()
+        } else if (line.startsWith('data: ')) {
+          dataString += (dataString ? '\n' : '') + line.slice(6)
         }
       }
-      if (eventData) {
-        yield eventData
+
+      if (dataString) {
+        try {
+          const data = JSON.parse(dataString)
+          yield { event: eventType, data }
+        } catch (e) {
+            console.error('Failed to parse SSE data JSON:', e)
+            // Fallback for non-JSON data if any (though backend sends JSON)
+            yield { event: eventType, data: dataString }
+        }
       }
     }
   }

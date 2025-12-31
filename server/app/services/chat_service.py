@@ -172,20 +172,22 @@ async def send_message(db: Session, session_id: int, message_in: chat_schemas.Me
 
 async def send_message_stream(db: Session, session_id: int, message_in: chat_schemas.MessageCreate):
     """
-    Send a message (User) and stream the LLM response.
+    Send a message (User) and stream the LLM response using SSE event structure.
+    Yields dictionaries representing SSE events.
     """
     # 1. Verify session and fetch persona/config
     db_session = get_session(db, session_id)
     if not db_session:
-        yield "error: Session not found"
+        yield {"event": "error", "data": {"code": "session_not_found", "detail": "Session not found"}}
         return
 
     persona = db.query(Persona).filter(Persona.id == db_session.persona_id).first()
     system_prompt = persona.system_prompt if persona else "你是一名通用问答型 AI 助手。"
+    persona_name = persona.name if persona else "AI"
 
     llm_config = db.query(LLMConfig).filter(LLMConfig.deleted == False).order_by(LLMConfig.id.desc()).first()
     if not llm_config:
-        yield "error: LLM configuration not found"
+        yield {"event": "error", "data": {"code": "config_not_found", "detail": "LLM configuration not found"}}
         return
 
     # 2. Save User Message
@@ -213,6 +215,31 @@ async def send_message_stream(db: Session, session_id: int, message_in: chat_sch
         agent_messages.append({"role": m.role, "content": m.content})
     agent_messages.append({"role": "user", "content": message_in.content})
 
+    # Yield Start Event
+    # Create AI Message placeholder to get ID
+    ai_msg = Message(
+        session_id=session_id,
+        role="assistant",
+        content="", # Placeholder, will be updated
+        persona_id=db_session.persona_id
+    )
+    db.add(ai_msg)
+    db.commit()
+    db.refresh(ai_msg)
+
+    yield {
+        "event": "start",
+        "data": {
+            "session_id": session_id,
+            "message_id": ai_msg.id,
+            "user_message_id": user_msg.id,
+            "model": llm_config.model_name,
+            "persona_id": db_session.persona_id,
+            "persona_name": persona_name,
+            "created_at": datetime.now().isoformat()
+        }
+    }
+
     # 4. Call LLM via openai-agents
     client = AsyncOpenAI(
         base_url=llm_config.base_url,
@@ -222,33 +249,126 @@ async def send_message_stream(db: Session, session_id: int, message_in: chat_sch
     set_default_openai_api("chat_completions")
 
     agent = Agent(
-        name=persona.name if persona else "AI",
+        name=persona_name,
         instructions=system_prompt,
         model=llm_config.model_name
     )
 
-    result = Runner.run_streamed(agent, agent_messages)
-    
-    # We yield the ID of the user message first or just start with content deltas
-    # For SSE, we will yield text chunks
-    
     full_ai_content = ""
-    async for event in result.stream_events():
-        if event.type == "raw_response_event" and isinstance(event.data, ResponseTextDeltaEvent):
-            delta = event.data.delta
-            if delta:
-                full_ai_content += delta
-                yield delta
+    usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+    finish_reason = "stop"
+
+    # Buffer for tag parsing
+    buffer = ""
+    is_thinking = False
+    THINK_START = "<think>"
+    THINK_END = "</think>"
+
+    try:
+        result = Runner.run_streamed(agent, agent_messages)
+        
+        async for event in result.stream_events():
+            if event.type == "raw_response_event" and isinstance(event.data, ResponseTextDeltaEvent):
+                delta = event.data.delta
+                if delta:
+                    full_ai_content += delta
+                    buffer += delta
+
+                    while buffer:
+                        if not is_thinking:
+                            # Look for <think>
+                            start_idx = buffer.find(THINK_START)
+                            if start_idx != -1:
+                                # Yield content before tag as message
+                                if start_idx > 0:
+                                    yield {
+                                        "event": "message",
+                                        "data": {"delta": buffer[:start_idx]}
+                                    }
+                                buffer = buffer[start_idx + len(THINK_START):]
+                                is_thinking = True
+                            else:
+                                # Check partial tag
+                                partial_len = 0
+                                for i in range(1, len(THINK_START)):
+                                    if buffer.endswith(THINK_START[:i]):
+                                        partial_len = i
+                                
+                                if partial_len > 0:
+                                    # Yield everything up to partial
+                                    to_yield = buffer[:-partial_len]
+                                    buffer = buffer[-partial_len:]
+                                    if to_yield:
+                                        yield {"event": "message", "data": {"delta": to_yield}}
+                                    break  # Wait for more data
+                                else:
+                                    # Yield all
+                                    yield {"event": "message", "data": {"delta": buffer}}
+                                    buffer = ""
+                        else:
+                            # Look for </think>
+                            end_idx = buffer.find(THINK_END)
+                            if end_idx != -1:
+                                # Yield content before tag as thinking
+                                if end_idx > 0:
+                                    yield {
+                                        "event": "thinking",
+                                        "data": {"delta": buffer[:end_idx]}
+                                    }
+                                buffer = buffer[end_idx + len(THINK_END):]
+                                is_thinking = False
+                            else:
+                                # Check partial end tag
+                                partial_len = 0
+                                for i in range(1, len(THINK_END)):
+                                    if buffer.endswith(THINK_END[:i]):
+                                        partial_len = i
+                                
+                                if partial_len > 0:
+                                    to_yield = buffer[:-partial_len]
+                                    buffer = buffer[-partial_len:]
+                                    if to_yield:
+                                        yield {"event": "thinking", "data": {"delta": to_yield}}
+                                    break
+                                else:
+                                    yield {"event": "thinking", "data": {"delta": buffer}}
+                                    buffer = ""
+        
+        # Flush remaining buffer
+        if buffer:
+            if is_thinking:
+                yield {"event": "thinking", "data": {"delta": buffer}}
+            else:
+                yield {"event": "message", "data": {"delta": buffer}}
+
+    except Exception as e:
+        # LLM call failed - yield error event
+        error_message = str(e)
+        yield {
+            "event": "error",
+            "data": {
+                "code": "llm_error",
+                "detail": f"LLM 调用失败: {error_message}"
+            }
+        }
+        finish_reason = "error"
+        # Store error message as AI response
+        full_ai_content = f"[Error: {error_message}]"
 
     # 5. Save AI Response once finished
-    if full_ai_content:
-        ai_msg = Message(
-            session_id=session_id,
-            role="assistant",
-            content=full_ai_content,
-            persona_id=db_session.persona_id
-        )
-        db.add(ai_msg)
-        db_session.update_time = datetime.now()
-        db.commit()
-        db.refresh(ai_msg)
+    ai_msg.content = full_ai_content if full_ai_content else "[No response]"
+    db_session.update_time = datetime.now()
+    db.commit()
+    db.refresh(ai_msg)
+
+    # Always yield Done Event
+    usage["completion_tokens"] = len(full_ai_content)
+    
+    yield {
+        "event": "done",
+        "data": {
+            "finish_reason": finish_reason,
+            "usage": usage,
+            "message_id": ai_msg.id
+        }
+    }

@@ -6,10 +6,18 @@ export { type Message }
 export function useChat() {
     const store = useSessionStore()
     const input = ref('')
-    const status = ref<'idle' | 'streaming' | 'submitted'>('idle')
+    const isSubmitting = ref(false)
 
     // messages is computed from store
     const messages = computed(() => store.currentMessages)
+
+    // Status: 'idle' | 'submitted' | 'streaming'
+    // submitted = waiting for first content, streaming = actively receiving content
+    const status = computed(() => {
+        if (store.isStreaming) return 'streaming'
+        if (isSubmitting.value) return 'submitted'
+        return 'idle'
+    })
 
     const handleSubmit = async (e?: Event | any) => {
         if (e && typeof e.preventDefault === 'function') {
@@ -19,14 +27,14 @@ export function useChat() {
 
         const content = input.value
         input.value = ''
-        
-        status.value = 'submitted'
+
+        isSubmitting.value = true
         try {
             await store.sendMessage(content)
         } catch (error) {
             console.error(error)
         } finally {
-            status.value = 'idle'
+            isSubmitting.value = false
         }
     }
 
