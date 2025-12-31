@@ -1,169 +1,226 @@
 import { defineStore } from 'pinia'
-import { ref, computed, watch } from 'vue'
-import { nanoid } from 'nanoid'
+import { ref, computed } from 'vue'
+import * as ChatAPI from '@/api/chat'
 import { usePersonaStore } from './persona'
 
 export interface Session {
-    id: string
+    id: number
     title: string
     createdAt: number
-    personaId: number | null
-    systemPrompt?: string
+    personaId: number
 }
 
 export interface Message {
-    id: string
-    role: 'user' | 'assistant'
+    id: number
+    role: 'user' | 'assistant' | 'system'
     content: string
     createdAt: number
 }
 
-const STORAGE_KEY = 'doudou_chat_storage'
-
 export const useSessionStore = defineStore('session', () => {
     const sessions = ref<Session[]>([])
-    const messagesMap = ref<Record<string, Message[]>>({})
-    const currentSessionId = ref<string>('')
-
-    // Load from local storage on init
-    const init = () => {
-        const stored = localStorage.getItem(STORAGE_KEY)
-        if (stored) {
-            try {
-                const data = JSON.parse(stored)
-                // Basic validation
-                if (Array.isArray(data.sessions) && typeof data.messagesMap === 'object') {
-                    sessions.value = data.sessions
-                    messagesMap.value = data.messagesMap
-                    currentSessionId.value = data.currentSessionId || ''
-                }
-            } catch (e) {
-                console.error('Failed to parse local storage data', e)
-                localStorage.removeItem(STORAGE_KEY)
-            }
-        }
-
-        // If no sessions, create one
-        if (sessions.value.length === 0) {
-            // We can't create a session properly without personas loaded, 
-            // but we can create a placeholder or wait.
-            // For now, let's just allow creating one with null persona or wait for user action.
-            // createSession() // Defer creation until needed or allow null
-        } else if (!currentSessionId.value || !sessions.value.find(s => s.id === currentSessionId.value)) {
-            // If currentSessionId is invalid or empty, select the first one
-            currentSessionId.value = sessions.value[0].id
-        }
-    }
+    const messagesMap = ref<Record<number, Message[]>>({})
+    const currentSessionId = ref<number | null>(null)
+    const isLoading = ref(false)
 
     const currentMessages = computed(() => {
+        if (!currentSessionId.value) return []
         return messagesMap.value[currentSessionId.value] || []
     })
 
-    // Persistence
-    watch(
-        [sessions, messagesMap, currentSessionId],
-        () => {
-            try {
-                localStorage.setItem(STORAGE_KEY, JSON.stringify({
-                    sessions: sessions.value,
-                    messagesMap: messagesMap.value,
-                    currentSessionId: currentSessionId.value
-                }))
-            } catch (e) {
-                console.error('Failed to save to local storage', e)
-            }
-        },
-        { deep: true }
-    )
+    // Fetch all sessions
+    const fetchSessions = async () => {
+        isLoading.value = true
+        try {
+            const apiSessions = await ChatAPI.getSessions()
+            sessions.value = apiSessions.map(s => ({
+                id: s.id,
+                title: s.title || '新对话',
+                createdAt: new Date(s.create_time).getTime(),
+                personaId: s.persona_id
+            }))
 
-    const createSession = (personaId?: number) => {
+            // If we have sessions but no current one, select the first
+            if (sessions.value.length > 0 && currentSessionId.value === null) {
+                selectSession(sessions.value[0].id)
+            }
+        } catch (error) {
+            console.error('Failed to fetch sessions:', error)
+        } finally {
+            isLoading.value = false
+        }
+    }
+
+    const fetchMessages = async (sessionId: number) => {
+        try {
+            const apiMessages = await ChatAPI.getMessages(sessionId)
+            // Sort by creation time if needed, API usually returns sorted but let's ensure
+            const mappedMessages = apiMessages.map(m => ({
+                id: m.id,
+                role: m.role,
+                content: m.content,
+                createdAt: new Date(m.create_time).getTime()
+            }))
+            messagesMap.value[sessionId] = mappedMessages
+        } catch (error) {
+            console.error(`Failed to fetch messages for session ${sessionId}:`, error)
+        }
+    }
+
+    const createSession = async (personaId?: number) => {
         const personaStore = usePersonaStore()
         
-        // Use provided personaId or default to the first available if possible
-        // Note: personaStore.personas might be empty if not fetched yet.
-        let targetPersona = personaId ? personaStore.getPersona(personaId) : null
-        
-        if (!targetPersona && personaStore.personas.length > 0) {
-            targetPersona = personaStore.personas[0]
+        // Ensure personas are loaded if needed
+        if (personaStore.personas.length === 0) {
+            try {
+                await personaStore.fetchPersonas()
+            } catch (e) {
+                console.error("Failed to load personas for creating session", e)
+            }
         }
 
-        const id = nanoid()
-        const newSession: Session = {
-            id,
-            title: targetPersona ? targetPersona.name : '新对话',
-            createdAt: Date.now(),
-            personaId: targetPersona ? targetPersona.id : null,
-            systemPrompt: targetPersona?.system_prompt || ''
+        let targetPersonaId = personaId
+        if (!targetPersonaId) {
+             if (personaStore.personas.length > 0) {
+                 targetPersonaId = personaStore.personas[0].id
+             } else {
+                 console.warn("No personas available to create session")
+                 return
+             }
         }
-        
-        // Add to the beginning of the list
-        sessions.value.unshift(newSession)
-        messagesMap.value[id] = []
-        currentSessionId.value = id
+
+        try {
+            const newSessionApi = await ChatAPI.createSession({
+                persona_id: targetPersonaId!
+            })
+
+            const newSession: Session = {
+                id: newSessionApi.id,
+                title: newSessionApi.title || '新对话',
+                createdAt: new Date(newSessionApi.create_time).getTime(),
+                personaId: newSessionApi.persona_id
+            }
+
+            sessions.value.unshift(newSession)
+            messagesMap.value[newSession.id] = []
+            currentSessionId.value = newSession.id
+        } catch (error) {
+            console.error('Failed to create session:', error)
+        }
     }
 
-    const selectSession = (id: string) => {
+    const selectSession = async (id: number) => {
         if (sessions.value.find(s => s.id === id)) {
             currentSessionId.value = id
+            // Fetch messages if not already loaded or force refresh?
+            // For now, fetch if empty or always fetch to sync?
+            // Let's always fetch to ensure we have latest history
+            await fetchMessages(id)
         }
     }
 
-    const deleteSession = (id: string) => {
-        const index = sessions.value.findIndex(s => s.id === id)
-        if (index === -1) return
+    const deleteSession = async (id: number) => {
+        try {
+            await ChatAPI.deleteSession(id)
+            
+            const index = sessions.value.findIndex(s => s.id === id)
+            if (index !== -1) {
+                sessions.value.splice(index, 1)
+                delete messagesMap.value[id]
 
-        // If deleting current session, switch to another one
-        if (currentSessionId.value === id) {
-            // Remove session first
-            sessions.value.splice(index, 1)
-            delete messagesMap.value[id]
-
-            if (sessions.value.length === 0) {
-                createSession()
-            } else {
-                // Select the one at the same index if possible (it's the next one in the shifted array)
-                // or the previous one if we deleted the last one
-                if (index < sessions.value.length) {
-                    currentSessionId.value = sessions.value[index].id
-                } else {
-                    currentSessionId.value = sessions.value[sessions.value.length - 1].id
+                if (currentSessionId.value === id) {
+                    currentSessionId.value = null
+                    if (sessions.value.length > 0) {
+                         // Select next available
+                         selectSession(sessions.value[0].id)
+                    } else {
+                        // Create a new one? Or just leave empty
+                         createSession()
+                    }
                 }
             }
-        } else {
-            sessions.value.splice(index, 1)
-            delete messagesMap.value[id]
+        } catch (error) {
+            console.error('Failed to delete session:', error)
         }
     }
 
-    const addMessageToCurrent = (message: Message) => {
+    const sendMessage = async (content: string) => {
         if (!currentSessionId.value) return
 
-        // Ensure mapping exists
-        if (!messagesMap.value[currentSessionId.value]) {
-            messagesMap.value[currentSessionId.value] = []
+        const sessionId = currentSessionId.value
+        
+        // 1. Add user message locally
+        const userMsg: Message = {
+            id: Date.now(),
+            role: 'user',
+            content: content,
+            createdAt: Date.now()
         }
+        
+        if (!messagesMap.value[sessionId]) {
+            messagesMap.value[sessionId] = []
+        }
+        messagesMap.value[sessionId].push(userMsg)
 
-        const msgs = messagesMap.value[currentSessionId.value]
-        msgs.push(message)
+        // 2. Add placeholder assistant message
+        const assistantMsgId = Date.now() + 1
+        const assistantMsg = ref<Message>({
+            id: assistantMsgId,
+            role: 'assistant',
+            content: '',
+            createdAt: Date.now()
+        })
+        messagesMap.value[sessionId].push(assistantMsg.value)
 
-        // Update title if needed
-        const currentSession = sessions.value.find(s => s.id === currentSessionId.value)
-        if (currentSession && currentSession.title === '新对话' && message.role === 'user') {
-            currentSession.title = message.content.slice(0, 15)
+        try {
+            const stream = ChatAPI.sendMessageStream(sessionId, { content })
+            
+            let fullContent = ''
+            for await (const delta of stream) {
+                fullContent += delta
+                // Find the message in the array and update it to trigger reactivity
+                const msgIndex = messagesMap.value[sessionId].findIndex(m => m.id === assistantMsgId)
+                if (msgIndex !== -1) {
+                    messagesMap.value[sessionId][msgIndex] = {
+                        ...messagesMap.value[sessionId][msgIndex],
+                        content: fullContent
+                    }
+                }
+            }
+            
+            // Update session title if it's the first message
+             const session = sessions.value.find(s => s.id === sessionId)
+             if (session && (session.title === '新对话' || session.title === 'New Chat')) {
+                 const newTitle = content.slice(0, 15)
+                 session.title = newTitle
+                 ChatAPI.updateSession(sessionId, { title: newTitle }).catch(e => {
+                     console.error("Failed to update session title", e)
+                 })
+             }
+             
+        } catch (error) {
+            console.error('Failed to send message:', error)
+            // Show error in the assistant message
+            const msgIndex = messagesMap.value[sessionId].findIndex(m => m.id === assistantMsgId)
+            if (msgIndex !== -1) {
+                messagesMap.value[sessionId][msgIndex].content = 'Error: Failed to get response from AI.'
+            }
         }
     }
 
-    // Initialize immediately
-    init()
+    // Initialize
+    fetchSessions()
 
     return {
         sessions,
         messagesMap,
         currentSessionId,
         currentMessages,
+        isLoading,
+        fetchSessions,
         createSession,
         selectSession,
         deleteSession,
-        addMessageToCurrent
+        sendMessage
     }
 })

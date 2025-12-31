@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Body
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List
 
@@ -80,7 +81,7 @@ def read_messages(
     messages = chat_service.get_messages(db, session_id=session_id, skip=skip, limit=limit)
     return messages
 
-@router.post("/sessions/{session_id}/messages", response_model=chat_schemas.MessageRead)
+@router.post("/sessions/{session_id}/messages")
 async def send_message(
     *,
     db: Session = Depends(deps.get_db),
@@ -88,9 +89,20 @@ async def send_message(
     message_in: chat_schemas.MessageCreate,
 ):
     """
-    Send a message to a session and get the AI response.
+    Send a message to a session and get the AI response via SSE.
     """
-    message = await chat_service.send_message(db, session_id=session_id, message_in=message_in)
-    if not message:
-        raise HTTPException(status_code=404, detail="Session not found")
-    return message
+    async def event_generator():
+        async for delta in chat_service.send_message_stream(db, session_id=session_id, message_in=message_in):
+            if delta.startswith("error:"):
+                yield f"event: error\ndata: {delta[6:]}\n\n"
+            else:
+                # SSE supports multiple data lines:
+                # data: first line
+                # data: second line
+                # 
+                lines = delta.split("\n")
+                sse_data = "".join([f"data: {line}\n" for line in lines])
+                yield sse_data + "\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")

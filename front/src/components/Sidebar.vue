@@ -64,7 +64,7 @@ const groupedSessions = computed(() => {
     return groups
 })
 
-const onSelectSession = (id: string) => {
+const onSelectSession = (id: number) => {
     sessionStore.selectSession(id)
 }
 
@@ -74,9 +74,9 @@ const onNewChat = () => {
 
 // Delete Session Dialog Logic
 const isDeleteSessionOpen = ref(false)
-const sessionToDelete = ref<string | null>(null)
+const sessionToDelete = ref<number | null>(null)
 
-const openDeleteSessionDialog = (id: string) => {
+const openDeleteSessionDialog = (id: number) => {
     sessionToDelete.value = id
     isDeleteSessionOpen.value = true
 }

@@ -7,6 +7,7 @@ from app.schemas import chat as chat_schemas
 from datetime import datetime
 
 from openai import AsyncOpenAI
+from openai.types.responses import ResponseTextDeltaEvent
 from agents import Agent, Runner, set_default_openai_client, set_default_openai_api
 
 # --- Session Services ---
@@ -168,3 +169,86 @@ async def send_message(db: Session, session_id: int, message_in: chat_schemas.Me
     db.refresh(ai_msg)
 
     return ai_msg
+
+async def send_message_stream(db: Session, session_id: int, message_in: chat_schemas.MessageCreate):
+    """
+    Send a message (User) and stream the LLM response.
+    """
+    # 1. Verify session and fetch persona/config
+    db_session = get_session(db, session_id)
+    if not db_session:
+        yield "error: Session not found"
+        return
+
+    persona = db.query(Persona).filter(Persona.id == db_session.persona_id).first()
+    system_prompt = persona.system_prompt if persona else "你是一名通用问答型 AI 助手。"
+
+    llm_config = db.query(LLMConfig).filter(LLMConfig.deleted == False).order_by(LLMConfig.id.desc()).first()
+    if not llm_config:
+        yield "error: LLM configuration not found"
+        return
+
+    # 2. Save User Message
+    user_msg = Message(
+        session_id=session_id,
+        role="user",
+        content=message_in.content
+    )
+    db.add(user_msg)
+    db.commit()
+    db.refresh(user_msg)
+
+    # 3. Prepare LLM Context
+    history = (
+        db.query(Message)
+        .filter(Message.session_id == session_id, Message.deleted == False, Message.id != user_msg.id)
+        .order_by(Message.create_time.desc())
+        .limit(10)
+        .all()
+    )
+    history.reverse()
+
+    agent_messages = []
+    for m in history:
+        agent_messages.append({"role": m.role, "content": m.content})
+    agent_messages.append({"role": "user", "content": message_in.content})
+
+    # 4. Call LLM via openai-agents
+    client = AsyncOpenAI(
+        base_url=llm_config.base_url,
+        api_key=llm_config.api_key,
+    )
+    set_default_openai_client(client, use_for_tracing=False)
+    set_default_openai_api("chat_completions")
+
+    agent = Agent(
+        name=persona.name if persona else "AI",
+        instructions=system_prompt,
+        model=llm_config.model_name
+    )
+
+    result = Runner.run_streamed(agent, agent_messages)
+    
+    # We yield the ID of the user message first or just start with content deltas
+    # For SSE, we will yield text chunks
+    
+    full_ai_content = ""
+    async for event in result.stream_events():
+        if event.type == "raw_response_event" and isinstance(event.data, ResponseTextDeltaEvent):
+            delta = event.data.delta
+            if delta:
+                full_ai_content += delta
+                yield delta
+
+    # 5. Save AI Response once finished
+    if full_ai_content:
+        ai_msg = Message(
+            session_id=session_id,
+            role="assistant",
+            content=full_ai_content,
+            persona_id=db_session.persona_id
+        )
+        db.add(ai_msg)
+        db_session.update_time = datetime.now()
+        db.commit()
+        db.refresh(ai_msg)

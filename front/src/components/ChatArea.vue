@@ -14,7 +14,7 @@ import {
   PromptInputSubmit
 } from '@/components/ai-elements/prompt-input'
 import { Loader } from '@/components/ai-elements/loader'
-import { useMockChat } from '@/composables/useMockChat'
+import { useChat } from '@/composables/useChat'
 
 const props = defineProps({
   isSidebarCollapsed: {
@@ -25,7 +25,7 @@ const props = defineProps({
 
 const emit = defineEmits(['toggle-sidebar'])
 
-const { messages, input, status, handleSubmit } = useMockChat()
+const { messages, input, status, handleSubmit } = useChat()
 
 const store = useSessionStore()
 import { useLlmStore } from '@/stores/llm'
