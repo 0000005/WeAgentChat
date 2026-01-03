@@ -1,7 +1,28 @@
-# DouDouChat Project Context
+# WeAgentChat (唯信) Project Context
 
 ## Project Overview
-**DouDouChat (豆豆)** is an open-source AI role-playing chat application designed to be a lightweight alternative to "DouBao". It focuses on providing a deep companionship experience through **long-term memory** and **multi-modal interaction** (TTS/STT).
+**WeAgentChat (唯信)** is an AI-native social sandbox application — **The first social platform where YOU are the only human center.** 
+
+Unlike traditional AI chat tools, WeAgentChat simulates a WeChat-like multi-dimensional social environment where all your "friends" are AI agents. They not only interact with you but also socialize with each other — posting moments, commenting, and liking.
+
+### Core Innovations
+
+1. **Dual-Track Long-Term Memory System**
+   - **Global Profile (Space-Isolated):** Each Space maintains an independent user profile. AI agents automatically update your personality, preferences, and life situation based on conversations.
+   - **Event-Level RAG Memory:** Conversations are automatically distilled into "event cards." Even a mention of insomnia from six months ago can trigger contextual care.
+
+2. **Passive Session Management**
+   - Say goodbye to the "New Chat" button. The system uses time-aware logic: if you stop chatting with an AI friend for over 30 minutes, the session is automatically archived and memories are extracted. When you speak again, it's a natural, context-aware new beginning.
+
+3. **Dynamic Social Sandbox**
+   - **AI Moments Ecosystem:** AI agents post updates, comment on each other, and interact autonomously.
+   - **Multi-Agent Group Chats:** Create group chats (e.g., "IPO Preparation Team") and watch AI agents with different personas collaborate and debate. You only need to make the final decision.
+
+4. **Multi-Space**
+   - In WeAgentChat, each Space gives you a different identity and circle of friends:
+     - 🏢 "Tech Company" Space: You are the CEO, surrounded by your CTO, Product Manager, Investors...
+     - 👑 "Ming Dynasty 1518" Space: You are the Emperor, with ministers, eunuchs, consorts...
+     - Each Space is a parallel world.
 
 ## Quick Start
 
@@ -36,7 +57,7 @@
 ### Backend (`server/`)
 *   **Language:** Python 3.11+
 *   **Framework:** FastAPI
-*   **Agent Framework:** [OpenAI Swarm](https://github.com/openai/openai-agents-python)
+*   **Agent Framework:** [OpenAI Agents](https://github.com/openai/openai-agents-python)
 *   **Server:** Uvicorn
 *   **Documentation:** Swagger UI (built-in), ReDoc
 *   **Database:** SQLite (file: `server/data/doudou.db`) + SQLAlchemy + sqlite-vec (for vector search)
@@ -54,54 +75,41 @@
 - **Tool Visualization**: `tool`, `confirmation`,`more...`
 - **Workflow**: `canvas`, `node`, `edge`,`more...`
 - **Utilities**: `code-block`, `loader`, `suggestion`,`more...`
-- **More**: check `front/src/components` folder, find more components and uasage.
+- **More**: check `front/src/components` folder, find more components and usage.
 **GitHub**: [vuepont/ai-elements-vue](https://github.com/vuepont/ai-elements-vue)
 
 **使用文档**: 当需要使用 ai-elements-vue 组件时，必须先调用 `context7` 查询组件的使用方法，然后按照返回的使用方法进行实现。
 
 
 ## Current Status & Structure
-The project is currently in the **initialization phase**.
-*   **Root Directory:** `E:\workspace\code\DouDouChat`
-*   **`front/`**: Empty directory. Intended for the Vue 3 frontend.
+The project is currently in the **active development phase**.
+*   **Root Directory:** `d:\workspace\DouDouChat`
+*   **`front/`**: Vue 3 frontend with WeChat-style UI.
 *   **`server/`**: FastAPI backend scaffold initialized and running.
     *   `app/main.py`: Entry point.
-    *   `app/api/endpoints/`: Route handlers (e.g., `health.py`).
+    *   `app/api/endpoints/`: Route handlers (e.g., `health.py`, `chat.py`).
     *   `app/services/`: Business logic layer.
     *   `app/models/`: Database entities (SQLAlchemy).
     *   `app/schemas/`: Data validation models (Pydantic).
     *   `app/core/`: Configuration (Pydantic Settings).
     *   `data/doudou.db`: SQLite database file (initialized).
 *   **`dev-docs/`**: Contains development stories and planning documents.
-    *   `story01/init-story.md`: Outlines the initial goal: **Frontend only** first, basic chat UI, responsive PC design.
 
-## Development Goals (Story 01)
-1.  **Platform:** PC Web (Responsive).
-2.  **Scope:** Frontend only (mock data initially, no backend connection yet).
-3.  **Features:**
-    *   Chat Interface
-    *   Session/Conversation Management
-    *   Persona Settings (Basic)
-    *   LLM Configuration
+## Development Roadmap
+1.  Core chat functionality with WeChat-style UI
+2.  Dual-track memory system implementation
+3.  AI Moments & Dynamic feed system
+4.  Multi-agent group chats
+5.  Multi-Space switching
+6.  Passive session management
+7.  Mobile adaptation (PWA)
 
 ## Conventions & Notes
-*   **Directory Naming:** The physical directories are `front` and `server`, though the `README.md` currently references `frontend` and `backend`. We will likely use `front` and `server` to match the file system or rename them to match the documentation.
-*   **Language:** The documentation and primary communication for this project seem to be in Chinese (zh-CN).
+*   **Directory Naming:** The physical directories are `front` and `server`.
+*   **Language:** The documentation and primary communication for this project are in Chinese (zh-CN).
 *   **pnpm:** The `pnpm` package manager is used for dependency management. It is recommended to use `pnpm` instead of `npm` or `yarn`.
 *   **Backend Environment:**
     *   **Virtual Environment:** A virtual environment is located at `server/venv/`.
     *   **Run Server:** Execute `server\venv\Scripts\python -m uvicorn app.main:app --reload` within the `server` directory to start the backend with auto-reload.
     *   **Database Operations:** Use the available `db-util` tools (`list_tables`, `execute_sql`) to inspect and modify the SQLite database.
     *   **Unit Testing:** Run tests using `server\venv\Scripts\python -m pytest server/tests`.
-
-## Getting Started (Current Tasks)
-The project scaffold for both frontend and backend is ready.
-1.  **Backend Development**:
-    *   Define database entities in `server/app/models/`.
-    *   Implement chat services and LLM integration.
-2.  **Frontend-Backend Integration**:
-    *   Connect Vue frontend to FastAPI backend.
-    *   Replace mock data with real API calls.
-3.  **Advanced Features**:
-    *   Implement WebSocket for streaming chat.
-    *   Add vector storage for long-term memory.

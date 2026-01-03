@@ -1,9 +1,13 @@
 <script setup>
 import { ref, onMounted } from 'vue'
+import IconSidebar from './components/IconSidebar.vue'
 import Sidebar from './components/Sidebar.vue'
 import ChatArea from './components/ChatArea.vue'
+import SettingsDialog from './components/SettingsDialog.vue'
 
 const isSidebarOpen = ref(true)
+const activeTab = ref('chat')
+const isSettingsOpen = ref(false)
 
 const toggleSidebar = () => {
   isSidebarOpen.value = !isSidebarOpen.value
@@ -18,40 +22,127 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="flex h-screen bg-[#f9fafb] overflow-hidden text-gray-900 font-['Inter'] relative">
-    <!-- Desktop Sidebar -->
+  <div class="wechat-app">
+    <!-- Icon Sidebar (always visible on desktop) -->
+    <div class="icon-sidebar-container">
+      <IconSidebar 
+        :active-tab="activeTab" 
+        @update:activeTab="activeTab = $event"
+        @open-settings="isSettingsOpen = true"
+      />
+    </div>
+
+    <!-- Conversation List Sidebar -->
     <div 
-      class="hidden md:block overflow-hidden transition-all duration-300 ease-in-out border-r border-gray-200"
-      :class="isSidebarOpen ? 'w-[260px]' : 'w-0'"
+      class="sidebar-container"
+      :class="{ collapsed: !isSidebarOpen }"
     >
-      <Sidebar @toggle-sidebar="toggleSidebar" />
+      <Sidebar />
     </div>
 
     <!-- Mobile Sidebar Overlay (Only on small screens) -->
     <div 
       v-if="isSidebarOpen"
-      class="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 md:hidden"
+      class="mobile-overlay md:hidden"
       @click="isSidebarOpen = false"
     >
       <div 
-        class="w-[280px] h-full bg-white shadow-2xl transition-transform duration-300 transform"
-        :class="isSidebarOpen ? 'translate-x-0' : '-translate-x-full'"
+        class="mobile-sidebar"
         @click.stop
       >
-        <Sidebar @toggle-sidebar="toggleSidebar" />
+        <IconSidebar 
+          :active-tab="activeTab" 
+          @update:activeTab="activeTab = $event"
+          @open-settings="isSettingsOpen = true"
+        />
+        <Sidebar />
       </div>
     </div>
 
     <!-- Main Chat Area -->
-    <main class="flex-1 flex flex-col min-w-0 bg-white shadow-sm ring-1 ring-gray-200">
+    <main class="chat-container">
       <ChatArea 
         :is-sidebar-collapsed="!isSidebarOpen" 
         @toggle-sidebar="toggleSidebar" 
       />
     </main>
+
+    <!-- Settings Dialog -->
+    <SettingsDialog v-model:open="isSettingsOpen" />
   </div>
 </template>
 
 <style>
-/* Any global App styles if needed */
+/* Reset and base styles */
+.wechat-app {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #f5f5f5;
+}
+
+/* Icon Sidebar */
+.icon-sidebar-container {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  .icon-sidebar-container {
+    display: block;
+    flex-shrink: 0;
+  }
+}
+
+/* Conversation Sidebar */
+.sidebar-container {
+  display: none;
+  flex-shrink: 0;
+  transition: width 0.3s ease;
+}
+
+@media (min-width: 768px) {
+  .sidebar-container {
+    display: block;
+    width: 260px;
+  }
+  
+  .sidebar-container.collapsed {
+    width: 0;
+    overflow: hidden;
+  }
+}
+
+/* Chat Container */
+.chat-container {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Mobile Overlay */
+.mobile-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  z-index: 50;
+}
+
+.mobile-sidebar {
+  display: flex;
+  height: 100%;
+  background: #e9e9e9;
+  width: 316px;
+  max-width: 90vw;
+  box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+}
+
+/* Hide on md and up */
+@media (min-width: 768px) {
+  .mobile-overlay {
+    display: none !important;
+  }
+}
 </style>
