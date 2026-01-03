@@ -104,3 +104,42 @@ async def send_message(
             yield f"event: {event_type}\ndata: {json_data}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+# --- Friend-centric APIs (WeChat-style) ---
+
+@router.get("/friends/{friend_id}/messages", response_model=List[chat_schemas.MessageRead])
+def read_friend_messages(
+    *,
+    db: Session = Depends(deps.get_db),
+    friend_id: int,
+    skip: int = 0,
+    limit: int = 200,
+):
+    """
+    Get all messages for a specific friend across all sessions.
+    This provides a WeChat-style merged chat history view.
+    """
+    messages = chat_service.get_messages_by_friend(db, friend_id=friend_id, skip=skip, limit=limit)
+    return messages
+
+@router.post("/friends/{friend_id}/messages")
+async def send_message_to_friend(
+    *,
+    db: Session = Depends(deps.get_db),
+    friend_id: int,
+    message_in: chat_schemas.MessageCreate,
+):
+    """
+    Send a message to a friend. This will find or create an appropriate session.
+    """
+    # Get or create a session for this friend
+    session = chat_service.get_or_create_session_for_friend(db, friend_id=friend_id)
+    
+    async def event_generator():
+        async for event_data in chat_service.send_message_stream(db, session_id=session.id, message_in=message_in):
+            event_type = event_data.get("event", "message")
+            data_payload = event_data.get("data", {})
+            json_data = json.dumps(data_payload, ensure_ascii=False)
+            yield f"event: {event_type}\ndata: {json_data}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")

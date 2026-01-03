@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useSessionStore } from '@/stores/session'
+import { useFriendStore } from '@/stores/friend'
 import { Menu, Plus, Mic, Smile, MoreHorizontal } from 'lucide-vue-next'
 import {
   Conversation,
@@ -32,25 +33,37 @@ const emit = defineEmits(['toggle-sidebar'])
 
 const { messages, input, status, isThinkingMode, toggleThinkingMode, handleSubmit } = useChat()
 
-const store = useSessionStore()
+const sessionStore = useSessionStore()
+const friendStore = useFriendStore()
 
-const currentSessionTitle = computed(() => {
-  const session = store.sessions.find(s => s.id === store.currentSessionId)
-  return session ? session.title : '豆豆'
+// Get current friend's name for header
+const currentFriendName = computed(() => {
+  if (!sessionStore.currentFriendId) return '选择好友'
+  const friend = friendStore.getFriend(sessionStore.currentFriendId)
+  return friend ? friend.name : '好友'
 })
 
-const shouldShowLoader = computed(() => {
-  if (status.value !== 'submitted') return false
-  if (messages.value.length === 0) return true
-  const lastMsg = messages.value[messages.value.length - 1]
-  return lastMsg.role !== 'assistant' || (!lastMsg.content && !lastMsg.thinkingContent)
-})
+// Check if a specific message is in loading state (assistant message with no content yet)
+const isMessageLoading = (msg: any, index: number) => {
+  if (msg.role !== 'assistant') return false
+  if (status.value !== 'submitted' && status.value !== 'streaming') return false
+  // Only the last message can be loading
+  if (index !== messages.value.length - 1) return false
+  // Loading if no content and no thinking content
+  return !msg.content && !msg.thinkingContent
+}
 
 const hasMessages = computed(() => messages.value.length > 0)
 
 // Get avatar for user/assistant
 const getUserAvatar = () => 'https://api.dicebear.com/7.x/avataaars/svg?seed=user123'
-const getAssistantAvatar = () => 'https://api.dicebear.com/7.x/bottts/svg?seed=doudou'
+const getAssistantAvatar = () => {
+  // Use friend's avatar if available
+  if (sessionStore.currentFriendId) {
+    return `https://api.dicebear.com/7.x/bottts/svg?seed=${sessionStore.currentFriendId}`
+  }
+  return 'https://api.dicebear.com/7.x/bottts/svg?seed=doudou'
+}
 </script>
 
 <template>
@@ -64,7 +77,7 @@ const getAssistantAvatar = () => 'https://api.dicebear.com/7.x/bottts/svg?seed=d
       >
         <Menu :size="20" />
       </button>
-      <h2 class="chat-title">{{ currentSessionTitle }}</h2>
+      <h2 class="chat-title">{{ currentFriendName }}</h2>
       <button class="more-btn">
         <MoreHorizontal :size="20" />
       </button>
@@ -115,7 +128,13 @@ const getAssistantAvatar = () => 'https://api.dicebear.com/7.x/bottts/svg?seed=d
                   <ReasoningContent :content="msg.thinkingContent" />
                 </Reasoning>
 
-                <div v-if="msg.content" class="message-bubble">
+                <!-- Loading state for assistant message -->
+                <div v-if="isMessageLoading(msg, index)" class="message-bubble loading-bubble">
+                  <Loader class="h-5 w-5 text-gray-400" />
+                </div>
+                
+                <!-- Normal message content -->
+                <div v-else-if="msg.content" class="message-bubble">
                   <MessageContent>
                     <MessageResponse :content="msg.content" />
                   </MessageContent>
@@ -124,15 +143,7 @@ const getAssistantAvatar = () => 'https://api.dicebear.com/7.x/bottts/svg?seed=d
             </div>
           </template>
 
-          <!-- Loading State -->
-          <div v-if="shouldShowLoader" class="message-wrapper message-assistant">
-            <div class="message-avatar">
-              <img :src="getAssistantAvatar()" alt="Avatar" />
-            </div>
-            <div class="message-bubble loading-bubble">
-              <Loader class="h-5 w-5 text-gray-400" />
-            </div>
-          </div>
+          <!-- Note: Loading state is now handled within the message loop above -->
         </ConversationContent>
         <ConversationScrollButton />
       </Conversation>

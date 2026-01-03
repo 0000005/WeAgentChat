@@ -100,6 +100,63 @@ def get_messages(db: Session, session_id: int, skip: int = 0, limit: int = 100) 
         .all()
     )
 
+def get_messages_by_friend(db: Session, friend_id: int, skip: int = 0, limit: int = 200) -> List[Message]:
+    """
+    Get all messages for a specific friend across all sessions.
+    Messages are merged and sorted by create_time.
+    """
+    # Get all non-deleted sessions for this friend
+    sessions = (
+        db.query(ChatSession)
+        .filter(ChatSession.friend_id == friend_id, ChatSession.deleted == False)
+        .all()
+    )
+    session_ids = [s.id for s in sessions]
+    
+    if not session_ids:
+        return []
+    
+    # Get all messages from these sessions
+    return (
+        db.query(Message)
+        .filter(Message.session_id.in_(session_ids), Message.deleted == False)
+        .order_by(Message.create_time.asc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+
+def get_sessions_by_friend(db: Session, friend_id: int) -> List[ChatSession]:
+    """
+    Get all sessions for a specific friend.
+    """
+    return (
+        db.query(ChatSession)
+        .filter(ChatSession.friend_id == friend_id, ChatSession.deleted == False)
+        .order_by(ChatSession.update_time.desc())
+        .all()
+    )
+
+def get_or_create_session_for_friend(db: Session, friend_id: int) -> ChatSession:
+    """
+    Get the most recent session for a friend, or create a new one if none exists.
+    """
+    # Find the most recent session for this friend
+    session = (
+        db.query(ChatSession)
+        .filter(ChatSession.friend_id == friend_id, ChatSession.deleted == False)
+        .order_by(ChatSession.update_time.desc())
+        .first()
+    )
+    
+    if session:
+        return session
+    
+    # Create a new session if none exists
+    from app.schemas.chat import ChatSessionCreate
+    session_in = ChatSessionCreate(friend_id=friend_id)
+    return create_session(db, session_in=session_in)
+
 async def send_message(db: Session, session_id: int, message_in: chat_schemas.MessageCreate) -> Message:
     """
     Send a message (User) and get a real LLM response using openai-agents.

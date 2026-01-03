@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useSessionStore } from '@/stores/session'
+import { useFriendStore } from '@/stores/friend'
 import { storeToRefs } from 'pinia'
 import { 
   Search, 
   Plus,
   MoreVertical,
   Trash2,
+  UserPlus,
+  Pencil,
 } from 'lucide-vue-next'
 import {
   DropdownMenu,
@@ -23,18 +26,29 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 
 const sessionStore = useSessionStore()
-const { sessions, currentSessionId } = storeToRefs(sessionStore)
+const friendStore = useFriendStore()
+const { currentFriendId } = storeToRefs(sessionStore)
+const { friends, isLoading: friendsLoading } = storeToRefs(friendStore)
 
 const searchQuery = ref('')
 
-// Session formatting helpers
-const formatTime = (timestamp: number): string => {
-  const date = new Date(timestamp)
+// Get friend's last message preview (placeholder for now)
+const getLastMessagePreview = (friend: any): string => {
+  // In real implementation, this could be cached or fetched
+  return '点击开始聊天...'
+}
+
+// Get friend's last active time (placeholder for now)
+const getLastActiveTime = (friend: any): string => {
+  const date = new Date(friend.update_time)
   const now = new Date()
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
   const yesterday = today - 86400000
+  const timestamp = date.getTime()
   
   if (timestamp >= today) {
     return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
@@ -45,46 +59,144 @@ const formatTime = (timestamp: number): string => {
   }
 }
 
-const getSessionPreview = (session: any): string => {
-  // For now, return a placeholder. In real app, this would be the last message.
-  return session.lastMessage || '开始新对话...'
+// Get friend's avatar
+const getFriendAvatar = (friend: any): string => {
+  // Generate a unique avatar based on friend id
+  return `https://api.dicebear.com/7.x/shapes/svg?seed=${friend.id}`
 }
 
-const getSessionAvatar = (session: any): string => {
-  // Generate a unique avatar based on session id
-  return `https://api.dicebear.com/7.x/shapes/svg?seed=${session.id}`
-}
-
-const filteredSessions = computed(() => {
-  if (!searchQuery.value) return sessions.value
+const filteredFriends = computed(() => {
+  if (!searchQuery.value) return friends.value
   const query = searchQuery.value.toLowerCase()
-  return sessions.value.filter(s => s.title.toLowerCase().includes(query))
+  return friends.value.filter(f => f.name.toLowerCase().includes(query))
 })
 
-const onSelectSession = (id: number) => {
-  sessionStore.selectSession(id)
+const onSelectFriend = (friendId: number) => {
+  sessionStore.selectFriend(friendId)
 }
 
-const onNewChat = () => {
-  sessionStore.createSession()
-}
+// Add Friend Dialog Logic
+const isAddFriendOpen = ref(false)
+const isSubmitting = ref(false)
+const newFriendForm = ref({
+  name: '',
+  description: '',
+  system_prompt: '',
+})
 
-// Delete Session Dialog Logic
-const isDeleteSessionOpen = ref(false)
-const sessionToDelete = ref<number | null>(null)
-
-const openDeleteSessionDialog = (id: number) => {
-  sessionToDelete.value = id
-  isDeleteSessionOpen.value = true
-}
-
-const confirmDeleteSession = () => {
-  if (sessionToDelete.value) {
-    sessionStore.deleteSession(sessionToDelete.value)
+const resetAddFriendForm = () => {
+  newFriendForm.value = {
+    name: '',
+    description: '',
+    system_prompt: '',
   }
-  isDeleteSessionOpen.value = false
-  sessionToDelete.value = null
 }
+
+const onAddFriend = () => {
+  resetAddFriendForm()
+  isAddFriendOpen.value = true
+}
+
+const confirmAddFriend = async () => {
+  if (!newFriendForm.value.name.trim()) {
+    return
+  }
+  isSubmitting.value = true
+  try {
+    const createdFriend = await friendStore.addFriend({
+      name: newFriendForm.value.name.trim(),
+      description: newFriendForm.value.description.trim() || undefined,
+      system_prompt: newFriendForm.value.system_prompt.trim() || undefined,
+      is_preset: false,
+    })
+    isAddFriendOpen.value = false
+    // Select the newly created friend
+    sessionStore.selectFriend(createdFriend.id)
+  } catch (e) {
+    console.error('Failed to add friend:', e)
+  } finally {
+    isSubmitting.value = false
+  }
+}
+
+// Delete Friend Dialog Logic
+const isDeleteFriendOpen = ref(false)
+const friendToDelete = ref<number | null>(null)
+
+const openDeleteFriendDialog = (id: number) => {
+  friendToDelete.value = id
+  isDeleteFriendOpen.value = true
+}
+
+const confirmDeleteFriend = async () => {
+  if (friendToDelete.value) {
+    try {
+      await friendStore.deleteFriend(friendToDelete.value)
+      // If we deleted the current friend, clear selection
+      if (currentFriendId.value === friendToDelete.value) {
+        sessionStore.selectFriend(friends.value[0]?.id || 0)
+      }
+    } catch (e) {
+      console.error('Failed to delete friend:', e)
+    }
+  }
+  isDeleteFriendOpen.value = false
+  friendToDelete.value = null
+}
+
+// Edit Friend Dialog Logic
+const isEditFriendOpen = ref(false)
+const friendToEdit = ref<number | null>(null)
+const editFriendForm = ref({
+  name: '',
+  description: '',
+  system_prompt: '',
+})
+
+const openEditFriendDialog = (id: number) => {
+  const friend = friendStore.getFriend(id)
+  if (friend) {
+    friendToEdit.value = id
+    editFriendForm.value = {
+      name: friend.name,
+      description: friend.description || '',
+      system_prompt: friend.system_prompt || '',
+    }
+    isEditFriendOpen.value = true
+  }
+}
+
+const confirmEditFriend = async () => {
+  if (!friendToEdit.value || !editFriendForm.value.name.trim()) {
+    return
+  }
+  isSubmitting.value = true
+  try {
+    await friendStore.updateFriend(friendToEdit.value, {
+      name: editFriendForm.value.name.trim(),
+      description: editFriendForm.value.description.trim() || null,
+      system_prompt: editFriendForm.value.system_prompt.trim() || null,
+    })
+    isEditFriendOpen.value = false
+    friendToEdit.value = null
+  } catch (e) {
+    console.error('Failed to update friend:', e)
+  } finally {
+    isSubmitting.value = false
+  }
+}
+
+// Initialize: select first friend if none selected
+onMounted(async () => {
+  // Wait for friends to load if not already
+  if (friends.value.length === 0) {
+    await friendStore.fetchFriends()
+  }
+  // Select first friend if no friend is selected
+  if (currentFriendId.value === null && friends.value.length > 0) {
+    sessionStore.selectFriend(friends.value[0].id)
+  }
+})
 </script>
 
 <template>
@@ -100,33 +212,40 @@ const confirmDeleteSession = () => {
           class="search-input"
         />
       </div>
-      <button class="add-btn" @click="onNewChat" title="新增好友">
-        <Plus :size="18" />
+      <button class="add-btn" @click="onAddFriend" title="新增好友">
+        <UserPlus :size="18" />
       </button>
     </div>
 
-    <!-- Session List -->
-    <div class="session-list">
+    <!-- Friend List -->
+    <div class="friend-list">
+      <!-- Loading State -->
+      <div v-if="friendsLoading" class="loading-state">
+        <p>加载中...</p>
+      </div>
+
+      <!-- Friend Items -->
       <div
-        v-for="session in filteredSessions"
-        :key="session.id"
-        class="session-item"
-        :class="{ active: session.id === currentSessionId }"
-        @click="onSelectSession(session.id)"
+        v-else
+        v-for="friend in filteredFriends"
+        :key="friend.id"
+        class="friend-item"
+        :class="{ active: friend.id === currentFriendId }"
+        @click="onSelectFriend(friend.id)"
       >
         <!-- Avatar -->
-        <div class="session-avatar">
-          <img :src="getSessionAvatar(session)" :alt="session.title" />
+        <div class="friend-avatar">
+          <img :src="getFriendAvatar(friend)" :alt="friend.name" />
         </div>
 
         <!-- Content -->
-        <div class="session-content">
-          <div class="session-header">
-            <span class="session-name">{{ session.title }}</span>
-            <span class="session-time">{{ formatTime(session.createdAt) }}</span>
+        <div class="friend-content">
+          <div class="friend-header">
+            <span class="friend-name">{{ friend.name }}</span>
+            <span class="friend-time">{{ getLastActiveTime(friend) }}</span>
           </div>
-          <div class="session-preview">
-            {{ getSessionPreview(session) }}
+          <div class="friend-preview">
+            {{ friend.description || getLastMessagePreview(friend) }}
           </div>
         </div>
 
@@ -134,7 +253,7 @@ const confirmDeleteSession = () => {
         <DropdownMenu>
           <DropdownMenuTrigger as-child>
             <button 
-              class="session-actions" 
+              class="friend-actions" 
               @click.stop
             >
               <MoreVertical :size="14" />
@@ -142,35 +261,156 @@ const confirmDeleteSession = () => {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem 
-              @click.stop="openDeleteSessionDialog(session.id)" 
+              @click.stop="openEditFriendDialog(friend.id)" 
+              class="cursor-pointer"
+            >
+              <Pencil class="mr-2 h-4 w-4" />
+              编辑好友
+            </DropdownMenuItem>
+            <DropdownMenuItem 
+              @click.stop="openDeleteFriendDialog(friend.id)" 
               class="text-red-600 focus:text-red-600 cursor-pointer"
             >
               <Trash2 class="mr-2 h-4 w-4" />
-              删除会话
+              删除好友
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
 
       <!-- Empty State -->
-      <div v-if="filteredSessions.length === 0" class="empty-state">
-        <p>暂无会话</p>
-        <button class="new-chat-btn" @click="onNewChat">开始新对话</button>
+      <div v-if="!friendsLoading && filteredFriends.length === 0" class="empty-state">
+        <p>暂无好友</p>
+        <button class="add-friend-btn" @click="onAddFriend">添加好友</button>
       </div>
     </div>
 
-    <!-- Delete Session Dialog -->
-    <Dialog v-model:open="isDeleteSessionOpen">
+    <!-- Delete Friend Dialog -->
+    <Dialog v-model:open="isDeleteFriendOpen">
       <DialogContent class="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>确认删除</DialogTitle>
           <DialogDescription>
-            您确定要删除此会话吗？此操作无法撤销。
+            您确定要删除此好友吗？相关的聊天记录也会被删除。此操作无法撤销。
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <Button variant="outline" @click="isDeleteSessionOpen = false">取消</Button>
-          <Button variant="destructive" @click="confirmDeleteSession">删除</Button>
+          <Button variant="outline" @click="isDeleteFriendOpen = false">取消</Button>
+          <Button variant="destructive" @click="confirmDeleteFriend">删除</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <!-- Add Friend Dialog -->
+    <Dialog v-model:open="isAddFriendOpen">
+      <DialogContent class="sm:max-w-[500px] add-friend-dialog">
+        <DialogHeader>
+          <DialogTitle>新增好友</DialogTitle>
+          <DialogDescription>
+            创建一个新的 AI 好友，设置其名称和人格特征。
+          </DialogDescription>
+        </DialogHeader>
+        
+        <div class="dialog-form">
+          <div class="form-group">
+            <label for="friend-name" class="form-label">好友名称 <span class="required">*</span></label>
+            <Input 
+              id="friend-name"
+              v-model="newFriendForm.name"
+              placeholder="请输入好友名称，如：小助手、知心姐姐"
+              class="form-input"
+            />
+          </div>
+          
+          <div class="form-group">
+            <label for="friend-description" class="form-label">好友描述</label>
+            <Input 
+              id="friend-description"
+              v-model="newFriendForm.description"
+              placeholder="简短描述这个好友的特点"
+              class="form-input"
+            />
+          </div>
+          
+          <div class="form-group">
+            <label for="friend-system-prompt" class="form-label">系统提示词</label>
+            <Textarea 
+              id="friend-system-prompt"
+              v-model="newFriendForm.system_prompt"
+              placeholder="设置这个好友的人格特征和行为准则，例如：你是一个温暖友善的朋友，喜欢倾听和给出建设性意见..."
+              class="form-textarea"
+              :rows="5"
+            />
+            <p class="form-hint">系统提示词决定了 AI 好友的人格和回复风格</p>
+          </div>
+        </div>
+        
+        <DialogFooter>
+          <Button variant="outline" @click="isAddFriendOpen = false" :disabled="isSubmitting">取消</Button>
+          <Button 
+            @click="confirmAddFriend" 
+            :disabled="!newFriendForm.name.trim() || isSubmitting"
+            class="add-confirm-btn"
+          >
+            {{ isSubmitting ? '创建中...' : '创建好友' }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <!-- Edit Friend Dialog -->
+    <Dialog v-model:open="isEditFriendOpen">
+      <DialogContent class="sm:max-w-[500px] add-friend-dialog">
+        <DialogHeader>
+          <DialogTitle>编辑好友</DialogTitle>
+          <DialogDescription>
+            修改 AI 好友的名称和人格特征。
+          </DialogDescription>
+        </DialogHeader>
+        
+        <div class="dialog-form">
+          <div class="form-group">
+            <label for="edit-friend-name" class="form-label">好友名称 <span class="required">*</span></label>
+            <Input 
+              id="edit-friend-name"
+              v-model="editFriendForm.name"
+              placeholder="请输入好友名称"
+              class="form-input"
+            />
+          </div>
+          
+          <div class="form-group">
+            <label for="edit-friend-description" class="form-label">好友描述</label>
+            <Input 
+              id="edit-friend-description"
+              v-model="editFriendForm.description"
+              placeholder="简短描述这个好友的特点"
+              class="form-input"
+            />
+          </div>
+          
+          <div class="form-group">
+            <label for="edit-friend-system-prompt" class="form-label">系统提示词</label>
+            <Textarea 
+              id="edit-friend-system-prompt"
+              v-model="editFriendForm.system_prompt"
+              placeholder="设置这个好友的人格特征和行为准则..."
+              class="form-textarea"
+              :rows="5"
+            />
+            <p class="form-hint">系统提示词决定了 AI 好友的人格和回复风格</p>
+          </div>
+        </div>
+        
+        <DialogFooter>
+          <Button variant="outline" @click="isEditFriendOpen = false" :disabled="isSubmitting">取消</Button>
+          <Button 
+            @click="confirmEditFriend" 
+            :disabled="!editFriendForm.name.trim() || isSubmitting"
+            class="add-confirm-btn"
+          >
+            {{ isSubmitting ? '保存中...' : '保存修改' }}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -242,12 +482,21 @@ const confirmDeleteSession = () => {
   color: #333;
 }
 
-.session-list {
+.friend-list {
   flex: 1;
   overflow-y: auto;
 }
 
-.session-item {
+.loading-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  color: #888;
+  font-size: 13px;
+}
+
+.friend-item {
   display: flex;
   align-items: center;
   padding: 12px;
@@ -257,15 +506,15 @@ const confirmDeleteSession = () => {
   position: relative;
 }
 
-.session-item:hover {
+.friend-item:hover {
   background: #d9d9d9;
 }
 
-.session-item.active {
+.friend-item.active {
   background: #c9c9c9;
 }
 
-.session-avatar {
+.friend-avatar {
   width: 40px;
   height: 40px;
   border-radius: 4px;
@@ -274,13 +523,13 @@ const confirmDeleteSession = () => {
   background: #fff;
 }
 
-.session-avatar img {
+.friend-avatar img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-.session-content {
+.friend-content {
   flex: 1;
   min-width: 0;
   display: flex;
@@ -288,13 +537,13 @@ const confirmDeleteSession = () => {
   gap: 4px;
 }
 
-.session-header {
+.friend-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
-.session-name {
+.friend-name {
   font-size: 14px;
   color: #333;
   font-weight: 500;
@@ -304,14 +553,14 @@ const confirmDeleteSession = () => {
   flex: 1;
 }
 
-.session-time {
+.friend-time {
   font-size: 11px;
   color: #999;
   flex-shrink: 0;
   margin-left: 8px;
 }
 
-.session-preview {
+.friend-preview {
   font-size: 12px;
   color: #888;
   overflow: hidden;
@@ -319,7 +568,7 @@ const confirmDeleteSession = () => {
   white-space: nowrap;
 }
 
-.session-actions {
+.friend-actions {
   position: absolute;
   right: 8px;
   top: 50%;
@@ -338,12 +587,12 @@ const confirmDeleteSession = () => {
   transition: all 0.15s;
 }
 
-.session-item:hover .session-actions,
-.session-actions[data-state="open"] {
+.friend-item:hover .friend-actions,
+.friend-actions[data-state="open"] {
   opacity: 1;
 }
 
-.session-actions:hover {
+.friend-actions:hover {
   background: #fff;
   color: #333;
 }
@@ -362,7 +611,7 @@ const confirmDeleteSession = () => {
   font-size: 13px;
 }
 
-.new-chat-btn {
+.add-friend-btn {
   padding: 8px 16px;
   background: #07c160;
   color: white;
@@ -373,7 +622,60 @@ const confirmDeleteSession = () => {
   transition: background 0.15s;
 }
 
-.new-chat-btn:hover {
+.add-friend-btn:hover {
   background: #06ad56;
+}
+
+/* Add Friend Dialog Styles */
+.dialog-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 8px 0;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
+}
+
+.form-label .required {
+  color: #dc2626;
+}
+
+.form-input {
+  font-size: 14px;
+}
+
+.form-textarea {
+  font-size: 14px;
+  resize: none;
+  min-height: 100px;
+}
+
+.form-hint {
+  font-size: 12px;
+  color: #888;
+  margin: 0;
+}
+
+.add-confirm-btn {
+  background: #07c160;
+}
+
+.add-confirm-btn:hover:not(:disabled) {
+  background: #06ad56;
+}
+
+.add-confirm-btn:disabled {
+  background: #a0a0a0;
+  cursor: not-allowed;
 }
 </style>
