@@ -1,7 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import * as ChatAPI from '@/api/chat'
-import { useFriendStore } from './friend'
 
 export interface Message {
     id: number
