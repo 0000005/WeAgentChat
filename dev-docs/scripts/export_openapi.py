@@ -11,7 +11,7 @@ root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 server_dir = os.path.join(root_dir, "server")
 sys.path.append(server_dir)
 
-from app.api.endpoints import chat, health, llm, persona
+from app.api.endpoints import chat, health, llm, friend
 
 def export_docs():
     # Mapping of filename (without ext) -> router
@@ -19,7 +19,7 @@ def export_docs():
         "chat": {"router": chat.router, "prefix": "/chat"},
         "health": {"router": health.router, "prefix": "/health"},
         "llm": {"router": llm.router, "prefix": "/llm"},
-        "persona": {"router": persona.router, "prefix": "/persona"},
+        "friend": {"router": friend.router, "prefix": "/friends"},
     }
 
     # Output to dev-docs/swagger-api

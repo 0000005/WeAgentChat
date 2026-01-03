@@ -1,7 +1,7 @@
 export interface ChatSession {
   id: number
   title: string | null
-  persona_id: number
+  friend_id: number
   create_time: string
   update_time: string
   deleted: boolean
@@ -9,7 +9,7 @@ export interface ChatSession {
 
 export interface ChatSessionCreate {
   title?: string | null
-  persona_id: number
+  friend_id: number
 }
 
 export interface ChatSessionUpdate {
@@ -21,7 +21,7 @@ export interface Message {
   role: 'user' | 'assistant' | 'system'
   content: string
   session_id: number
-  persona_id?: number | null
+  friend_id?: number | null
   create_time: string
   update_time: string
   deleted: boolean

@@ -6,7 +6,7 @@ class ChatSession(Base):
     __tablename__ = "chat_sessions"
 
     id = Column(Integer, primary_key=True, index=True)
-    persona_id = Column(Integer, ForeignKey("personas.id"), nullable=False)
+    friend_id = Column(Integer, ForeignKey("friends.id"), nullable=False)
     title = Column(String(128), default="新对话", nullable=True)
     create_time = Column(DateTime, default=func.now(), nullable=False)
     update_time = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
@@ -14,14 +14,14 @@ class ChatSession(Base):
 
     # Relationships
     messages = relationship("Message", back_populates="session", cascade="all, delete-orphan")
-    # persona = relationship("Persona") # Optional, if needed
+    # friend = relationship("Friend") # Optional, if needed
 
 class Message(Base):
     __tablename__ = "messages"
 
     id = Column(Integer, primary_key=True, index=True)
     session_id = Column(Integer, ForeignKey("chat_sessions.id"), nullable=False)
-    persona_id = Column(Integer, ForeignKey("personas.id"), nullable=True)
+    friend_id = Column(Integer, ForeignKey("friends.id"), nullable=True)
     role = Column(String(20), nullable=False)
     content = Column(Text, nullable=False)
     create_time = Column(DateTime, default=func.now(), nullable=False)

@@ -12,8 +12,8 @@ class StartEventData(TypedDict):
     message_id: Optional[int]  # AI 消息 ID，流开始时可能还未分配
     user_message_id: int
     model: str
-    persona_id: int
-    persona_name: str
+    friend_id: int
+    friend_name: str
     created_at: str  # ISO 8601 格式
 
 

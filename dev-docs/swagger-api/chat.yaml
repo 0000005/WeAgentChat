@@ -162,7 +162,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
     post:
       summary: Send Message
-      description: Send a message to a session and get the AI response.
+      description: Send a message to a session and get the AI response via SSE.
       operationId: send_message_chat_sessions__session_id__messages_post
       parameters:
       - name: session_id
@@ -182,8 +182,7 @@ paths:
           description: Successful Response
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/MessageRead'
+              schema: {}
         '422':
           description: Validation Error
           content:
@@ -200,12 +199,12 @@ components:
           - type: 'null'
           title: Title
           default: 新对话
-        persona_id:
+        friend_id:
           type: integer
-          title: Persona Id
+          title: Friend Id
       type: object
       required:
-      - persona_id
+      - friend_id
       title: ChatSessionCreate
     ChatSessionRead:
       properties:
@@ -215,9 +214,9 @@ components:
           - type: 'null'
           title: Title
           default: 新对话
-        persona_id:
+        friend_id:
           type: integer
-          title: Persona Id
+          title: Friend Id
         id:
           type: integer
           title: Id
@@ -234,7 +233,7 @@ components:
           title: Deleted
       type: object
       required:
-      - persona_id
+      - friend_id
       - id
       - create_time
       - update_time
@@ -263,6 +262,10 @@ components:
         content:
           type: string
           title: Content
+        enable_thinking:
+          type: boolean
+          title: Enable Thinking
+          default: false
       type: object
       required:
       - content
@@ -275,11 +278,11 @@ components:
         content:
           type: string
           title: Content
-        persona_id:
+        friend_id:
           anyOf:
           - type: integer
           - type: 'null'
-          title: Persona Id
+          title: Friend Id
         id:
           type: integer
           title: Id

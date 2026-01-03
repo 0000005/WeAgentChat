@@ -1,2 +1,2 @@
 from .llm import LLMConfig
-from .persona import Persona
+from .friend import Friend

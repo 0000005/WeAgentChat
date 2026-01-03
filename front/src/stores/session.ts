@@ -1,13 +1,13 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import * as ChatAPI from '@/api/chat'
-import { usePersonaStore } from './persona'
+import { useFriendStore } from './friend'
 
 export interface Session {
     id: number
     title: string
     createdAt: number
-    personaId: number
+    friendId: number
 }
 
 export interface Message {
@@ -39,7 +39,7 @@ export const useSessionStore = defineStore('session', () => {
                 id: s.id,
                 title: s.title || '新对话',
                 createdAt: new Date(s.create_time).getTime(),
-                personaId: s.persona_id
+                friendId: s.friend_id
             }))
 
             // If we have sessions but no current one, select the first
@@ -69,38 +69,38 @@ export const useSessionStore = defineStore('session', () => {
         }
     }
 
-    const createSession = async (personaId?: number) => {
-        const personaStore = usePersonaStore()
+    const createSession = async (friendId?: number) => {
+        const friendStore = useFriendStore()
 
-        // Ensure personas are loaded if needed
-        if (personaStore.personas.length === 0) {
+        // Ensure friends are loaded if needed
+        if (friendStore.friends.length === 0) {
             try {
-                await personaStore.fetchPersonas()
+                await friendStore.fetchFriends()
             } catch (e) {
-                console.error("Failed to load personas for creating session", e)
+                console.error("Failed to load friends for creating session", e)
             }
         }
 
-        let targetPersonaId = personaId
-        if (!targetPersonaId) {
-            if (personaStore.personas.length > 0) {
-                targetPersonaId = personaStore.personas[0].id
+        let targetFriendId = friendId
+        if (!targetFriendId) {
+            if (friendStore.friends.length > 0) {
+                targetFriendId = friendStore.friends[0].id
             } else {
-                console.warn("No personas available to create session")
+                console.warn("No friends available to create session")
                 return
             }
         }
 
         try {
             const newSessionApi = await ChatAPI.createSession({
-                persona_id: targetPersonaId!
+                friend_id: targetFriendId!
             })
 
             const newSession: Session = {
                 id: newSessionApi.id,
                 title: newSessionApi.title || '新对话',
                 createdAt: new Date(newSessionApi.create_time).getTime(),
-                personaId: newSessionApi.persona_id
+                friendId: newSessionApi.friend_id
             }
 
             sessions.value.unshift(newSession)

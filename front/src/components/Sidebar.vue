@@ -100,7 +100,7 @@ const confirmDeleteSession = () => {
           class="search-input"
         />
       </div>
-      <button class="add-btn" @click="onNewChat" title="新建对话">
+      <button class="add-btn" @click="onNewChat" title="新增好友">
         <Plus :size="18" />
       </button>
     </div>

@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 class MessageBase(BaseModel):
     role: str
     content: str
-    persona_id: Optional[int] = None
+    friend_id: Optional[int] = None
 
 class MessageCreate(BaseModel):
     content: str
@@ -25,7 +25,7 @@ class MessageRead(MessageBase):
 # --- ChatSession Schemas ---
 class ChatSessionBase(BaseModel):
     title: Optional[str] = "新对话"
-    persona_id: int
+    friend_id: int
 
 class ChatSessionCreate(ChatSessionBase):
     pass

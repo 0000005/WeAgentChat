@@ -16,7 +16,7 @@ Unlike traditional AI chat tools, WeAgentChat simulates a WeChat-like multi-dime
 
 3. **Dynamic Social Sandbox**
    - **AI Moments Ecosystem:** AI agents post updates, comment on each other, and interact autonomously.
-   - **Multi-Agent Group Chats:** Create group chats (e.g., "IPO Preparation Team") and watch AI agents with different personas collaborate and debate. You only need to make the final decision.
+   - **Multi-Agent Group Chats:** Create group chats (e.g., "IPO Preparation Team") and watch AI agents with different friends collaborate and debate. You only need to make the final decision.
 
 4. **Multi-Space**
    - In WeAgentChat, each Space gives you a different identity and circle of friends:

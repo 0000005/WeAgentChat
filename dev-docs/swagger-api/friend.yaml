@@ -1,14 +1,14 @@
 openapi: 3.1.0
 info:
-  title: DouDouChat - Persona API
-  description: OpenAPI specification for the persona module
+  title: DouDouChat - Friend API
+  description: OpenAPI specification for the friend module
   version: 1.0.0
 paths:
-  /persona/:
+  /friends/:
     get:
-      summary: Read Personas
-      description: Retrieve personas.
-      operationId: read_personas_persona__get
+      summary: Read Friends
+      description: Retrieve friends.
+      operationId: read_friends_friends__get
       parameters:
       - name: skip
         in: query
@@ -32,8 +32,8 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Persona'
-                title: Response Read Personas Persona  Get
+                  $ref: '#/components/schemas/Friend'
+                title: Response Read Friends Friends  Get
         '422':
           description: Validation Error
           content:
@@ -41,47 +41,47 @@ paths:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
     post:
-      summary: Create Persona
-      description: Create new persona.
-      operationId: create_persona_persona__post
+      summary: Create Friend
+      description: Create new friend.
+      operationId: create_friend_friends__post
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/PersonaCreate'
+              $ref: '#/components/schemas/FriendCreate'
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Persona'
+                $ref: '#/components/schemas/Friend'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-  /persona/{persona_id}:
+  /friends/{friend_id}:
     get:
-      summary: Read Persona
-      description: Get persona by ID.
-      operationId: read_persona_persona__persona_id__get
+      summary: Read Friend
+      description: Get friend by ID.
+      operationId: read_friend_friends__friend_id__get
       parameters:
-      - name: persona_id
+      - name: friend_id
         in: path
         required: true
         schema:
           type: integer
-          title: Persona Id
+          title: Friend Id
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Persona'
+                $ref: '#/components/schemas/Friend'
         '422':
           description: Validation Error
           content:
@@ -89,29 +89,29 @@ paths:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
     put:
-      summary: Update Persona
-      description: Update a persona.
-      operationId: update_persona_persona__persona_id__put
+      summary: Update Friend
+      description: Update a friend.
+      operationId: update_friend_friends__friend_id__put
       parameters:
-      - name: persona_id
+      - name: friend_id
         in: path
         required: true
         schema:
           type: integer
-          title: Persona Id
+          title: Friend Id
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/PersonaUpdate'
+              $ref: '#/components/schemas/FriendUpdate'
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Persona'
+                $ref: '#/components/schemas/Friend'
         '422':
           description: Validation Error
           content:
@@ -119,23 +119,23 @@ paths:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
     delete:
-      summary: Delete Persona
-      description: Delete a persona.
-      operationId: delete_persona_persona__persona_id__delete
+      summary: Delete Friend
+      description: Delete a friend.
+      operationId: delete_friend_friends__friend_id__delete
       parameters:
-      - name: persona_id
+      - name: friend_id
         in: path
         required: true
         schema:
           type: integer
-          title: Persona Id
+          title: Friend Id
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Persona'
+                $ref: '#/components/schemas/Friend'
         '422':
           description: Validation Error
           content:
@@ -144,29 +144,20 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
-    HTTPValidationError:
-      properties:
-        detail:
-          items:
-            $ref: '#/components/schemas/ValidationError'
-          type: array
-          title: Detail
-      type: object
-      title: HTTPValidationError
-    Persona:
+    Friend:
       properties:
         name:
           type: string
           maxLength: 64
           title: Name
-          description: 角色名称
+          description: 好友名称
         description:
           anyOf:
           - type: string
             maxLength: 255
           - type: 'null'
           title: Description
-          description: 角色描述
+          description: 好友描述
         system_prompt:
           anyOf:
           - type: string
@@ -199,21 +190,21 @@ components:
       - create_time
       - update_time
       - deleted
-      title: Persona
-    PersonaCreate:
+      title: Friend
+    FriendCreate:
       properties:
         name:
           type: string
           maxLength: 64
           title: Name
-          description: 角色名称
+          description: 好友名称
         description:
           anyOf:
           - type: string
             maxLength: 255
           - type: 'null'
           title: Description
-          description: 角色描述
+          description: 好友描述
         system_prompt:
           anyOf:
           - type: string
@@ -228,8 +219,8 @@ components:
       type: object
       required:
       - name
-      title: PersonaCreate
-    PersonaUpdate:
+      title: FriendCreate
+    FriendUpdate:
       properties:
         name:
           anyOf:
@@ -254,7 +245,16 @@ components:
           - type: 'null'
           title: Is Preset
       type: object
-      title: PersonaUpdate
+      title: FriendUpdate
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
     ValidationError:
       properties:
         loc:

@@ -33,14 +33,14 @@ def test_send_message(client: TestClient, db: Session):
     db.add(llm_config)
     db.commit()
 
-    # 1. Create a Persona (needed for session)
-    persona_data = {"name": "Test Persona", "is_preset": False, "system_prompt": "You are a helpful test assistant."}
-    response = client.post("/api/personas/", json=persona_data)
+    # 1. Create a Friend (needed for session)
+    friend_data = {"name": "Test Friend", "is_preset": False, "system_prompt": "You are a helpful test assistant."}
+    response = client.post("/api/friends/", json=friend_data)
     assert response.status_code == 200
-    persona_id = response.json()["id"]
+    friend_id = response.json()["id"]
 
     # 2. Create a Session
-    session_data = {"persona_id": persona_id, "title": "Test Chat"}
+    session_data = {"friend_id": friend_id, "title": "Test Chat"}
     response = client.post("/api/chat/sessions", json=session_data)
     assert response.status_code == 200
     session_id = response.json()["id"]
@@ -98,12 +98,12 @@ def test_send_message_thinking(client: TestClient, db: Session):
     db.add(llm_config)
     db.commit()
 
-    # 1. Create Persona & Session
-    persona_data = {"name": "Test Persona", "is_preset": False}
-    p_resp = client.post("/api/personas/", json=persona_data)
-    persona_id = p_resp.json()["id"]
+    # 1. Create Friend & Session
+    friend_data = {"name": "Test Friend", "is_preset": False}
+    p_resp = client.post("/api/friends/", json=friend_data)
+    friend_id = p_resp.json()["id"]
     
-    s_resp = client.post("/api/chat/sessions", json={"persona_id": persona_id})
+    s_resp = client.post("/api/chat/sessions", json={"friend_id": friend_id})
     session_id = s_resp.json()["id"]
 
     # 2. Mock Stream with split tags
@@ -162,12 +162,12 @@ def test_send_message_llm_error(client: TestClient, db: Session):
     db.add(llm_config)
     db.commit()
 
-    # 1. Create Persona & Session
-    persona_data = {"name": "Test Persona", "is_preset": False}
-    p_resp = client.post("/api/personas/", json=persona_data)
-    persona_id = p_resp.json()["id"]
+    # 1. Create Friend & Session
+    friend_data = {"name": "Test Friend", "is_preset": False}
+    p_resp = client.post("/api/friends/", json=friend_data)
+    friend_id = p_resp.json()["id"]
     
-    s_resp = client.post("/api/chat/sessions", json={"persona_id": persona_id})
+    s_resp = client.post("/api/chat/sessions", json={"friend_id": friend_id})
     session_id = s_resp.json()["id"]
 
     # 2. Mock Runner to raise an exception

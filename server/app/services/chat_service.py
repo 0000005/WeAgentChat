@@ -4,7 +4,7 @@ import re
 import time
 import logging
 from app.models.chat import ChatSession, Message
-from app.models.persona import Persona
+from app.models.friend import Friend
 from app.models.llm import LLMConfig
 from app.schemas import chat as chat_schemas
 from datetime import datetime
@@ -49,7 +49,7 @@ def create_session(db: Session, session_in: chat_schemas.ChatSessionCreate) -> C
     Create a new chat session.
     """
     db_session = ChatSession(
-        persona_id=session_in.persona_id,
+        friend_id=session_in.friend_id,
         title=session_in.title or "新对话"
     )
     db.add(db_session)
@@ -104,13 +104,13 @@ async def send_message(db: Session, session_id: int, message_in: chat_schemas.Me
     """
     Send a message (User) and get a real LLM response using openai-agents.
     """
-    # 1. Verify session and fetch persona/config
+    # 1. Verify session and fetch friend/config
     db_session = get_session(db, session_id)
     if not db_session:
         return None
 
-    persona = db.query(Persona).filter(Persona.id == db_session.persona_id).first()
-    system_prompt = persona.system_prompt if persona else "你是一名通用问答型 AI 助手。"
+    friend = db.query(Friend).filter(Friend.id == db_session.friend_id).first()
+    system_prompt = friend.system_prompt if friend else "你是一名通用问答型 AI 助手。"
 
     llm_config = db.query(LLMConfig).filter(LLMConfig.deleted == False).order_by(LLMConfig.id.desc()).first()
     if not llm_config:
@@ -154,7 +154,7 @@ async def send_message(db: Session, session_id: int, message_in: chat_schemas.Me
     set_default_openai_api("chat_completions")
 
     agent = Agent(
-        name=persona.name if persona else "AI",
+        name=friend.name if friend else "AI",
         instructions=system_prompt,
         model=llm_config.model_name
     )
@@ -176,7 +176,7 @@ async def send_message(db: Session, session_id: int, message_in: chat_schemas.Me
         session_id=session_id,
         role="assistant",
         content=ai_content,
-        persona_id=db_session.persona_id
+        friend_id=db_session.friend_id
     )
     db.add(ai_msg)
     
@@ -193,15 +193,15 @@ async def send_message_stream(db: Session, session_id: int, message_in: chat_sch
     Send a message (User) and stream the LLM response using SSE event structure.
     Yields dictionaries representing SSE events.
     """
-    # 1. Verify session and fetch persona/config
+    # 1. Verify session and fetch friend/config
     db_session = get_session(db, session_id)
     if not db_session:
         yield {"event": "error", "data": {"code": "session_not_found", "detail": "Session not found"}}
         return
 
-    persona = db.query(Persona).filter(Persona.id == db_session.persona_id).first()
-    system_prompt = persona.system_prompt if persona else "你是一名通用问答型 AI 助手。"
-    persona_name = persona.name if persona else "AI"
+    friend = db.query(Friend).filter(Friend.id == db_session.friend_id).first()
+    system_prompt = friend.system_prompt if friend else "你是一名通用问答型 AI 助手。"
+    friend_name = friend.name if friend else "AI"
 
     llm_config = db.query(LLMConfig).filter(LLMConfig.deleted == False).order_by(LLMConfig.id.desc()).first()
     if not llm_config:
@@ -239,7 +239,7 @@ async def send_message_stream(db: Session, session_id: int, message_in: chat_sch
         session_id=session_id,
         role="assistant",
         content="", # Placeholder, will be updated
-        persona_id=db_session.persona_id
+        friend_id=db_session.friend_id
     )
     db.add(ai_msg)
     db.commit()
@@ -252,8 +252,8 @@ async def send_message_stream(db: Session, session_id: int, message_in: chat_sch
             "message_id": ai_msg.id,
             "user_message_id": user_msg.id,
             "model": llm_config.model_name,
-            "persona_id": db_session.persona_id,
-            "persona_name": persona_name,
+            "friend_id": db_session.friend_id,
+            "friend_name": friend_name,
             "created_at": datetime.now().isoformat()
         }
     }
@@ -267,7 +267,7 @@ async def send_message_stream(db: Session, session_id: int, message_in: chat_sch
     set_default_openai_api("chat_completions")
 
     agent = Agent(
-        name=persona_name,
+        name=friend_name,
         instructions=system_prompt,
         model=llm_config.model_name
     )
