@@ -2,6 +2,9 @@ import asyncio
 import logging
 from typing import List, Optional
 from app.core.config import settings
+from app.db.session import SessionLocal
+from app.models.llm import LLMConfig
+from app.models.embedding import EmbeddingSetting
 from app.vendor.memobase_server.connectors import init_db
 from app.vendor.memobase_server.env import reinitialize_config
 from app.vendor.memobase_server.controllers.buffer_background import start_memobase_worker
@@ -38,29 +41,72 @@ from app.vendor.memobase_server.llms import llm_sanity_check
 from app.vendor.memobase_server.llms.embeddings import check_embedding_sanity
 
 
-async def initialize_memo_sdk():
+def reload_sdk_config():
     """
-    Initialize the Memobase SDK with settings from the main app.
+    Reloads Memobase SDK configuration from Database (priority) or Environment.
     """
     # 1. Map main app settings to Memobase config
+    
+    # Load defaults from Environment Variables (settings)
+    llm_api_key = settings.MEMOBASE_LLM_API_KEY
+    llm_base_url = settings.MEMOBASE_LLM_BASE_URL
+    best_llm_model = settings.MEMOBASE_BEST_LLM_MODEL
+    
+    embedding_api_key = settings.MEMOBASE_EMBEDDING_API_KEY
+    embedding_base_url = settings.MEMOBASE_EMBEDDING_BASE_URL
+    embedding_model = settings.MEMOBASE_EMBEDDING_MODEL
+    embedding_dim = settings.MEMOBASE_EMBEDDING_DIM
+
+    # Override with Database Configurations if available
+    try:
+        # Use a new session scope
+        with SessionLocal() as db:
+            # 1.1 LLM Config
+            llm_config_db = db.query(LLMConfig).filter(LLMConfig.deleted == False).first()
+            if llm_config_db:
+                if llm_config_db.api_key: llm_api_key = llm_config_db.api_key
+                if llm_config_db.base_url: llm_base_url = llm_config_db.base_url
+                if llm_config_db.model_name: best_llm_model = llm_config_db.model_name
+            
+            # 1.2 Embedding Config
+            embedding_config_db = db.query(EmbeddingSetting).filter(EmbeddingSetting.deleted == False).first()
+            if embedding_config_db:
+                if embedding_config_db.embedding_api_key: embedding_api_key = embedding_config_db.embedding_api_key
+                if embedding_config_db.embedding_base_url: embedding_base_url = embedding_config_db.embedding_base_url
+                if embedding_config_db.embedding_model: embedding_model = embedding_config_db.embedding_model
+                if embedding_config_db.embedding_dim is not None: embedding_dim = embedding_config_db.embedding_dim
+                
+    except Exception as e:
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Error loading Memobase config from DB: {e}. Using environment defaults.")
+
     memo_config = {
-        "llm_api_key": settings.MEMOBASE_LLM_API_KEY,
-        "llm_base_url": settings.MEMOBASE_LLM_BASE_URL,
-        "best_llm_model": settings.MEMOBASE_BEST_LLM_MODEL,
+        "llm_api_key": llm_api_key,
+        "llm_base_url": llm_base_url,
+        "best_llm_model": best_llm_model,
         "enable_event_embedding": settings.MEMOBASE_ENABLE_EVENT_EMBEDDING,
-        "embedding_api_key": settings.MEMOBASE_EMBEDDING_API_KEY,
-        "embedding_base_url": settings.MEMOBASE_EMBEDDING_BASE_URL,
-        "embedding_model": settings.MEMOBASE_EMBEDDING_MODEL,
-        "embedding_dim": settings.MEMOBASE_EMBEDDING_DIM,
+        "embedding_api_key": embedding_api_key,
+        "embedding_base_url": embedding_base_url,
+        "embedding_model": embedding_model,
+        "embedding_dim": embedding_dim,
     }
     
     # 2. Reinitialize the global CONFIG object in SDK
     reinitialize_config(memo_config)
+    return memo_config
+
+
+async def initialize_memo_sdk():
+    """
+    Initialize the Memobase SDK with settings from the main app.
+    """
+    # 1. Load and apply config
+    reload_sdk_config()
     
-    # 3. Initialize Database
+    # 2. Initialize Database
     init_db(settings.MEMOBASE_DB_URL)
     
-    # 4. Perform Sanity Checks (Optional but recommended)
+    # 3. Perform Sanity Checks (Optional but recommended)
     logger = logging.getLogger(__name__)
     try:
         await check_embedding_sanity()
@@ -70,7 +116,7 @@ async def initialize_memo_sdk():
         # Log warning but don't fail - allows graceful degradation
         logger.warning(f"Memobase SDK Sanity Check Failed: {e}. Memory features may not work correctly.")
     
-    # 5. Start background worker
+    # 4. Start background worker
     worker_task = asyncio.create_task(start_memobase_worker(interval_s=60))
     
     return worker_task

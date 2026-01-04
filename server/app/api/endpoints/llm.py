@@ -1,10 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import Any
+import logging
 
 from app.api import deps
 from app.schemas.llm import LLMConfig, LLMConfigUpdate
 from app.services.llm_service import llm_service
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -33,4 +36,12 @@ def update_llm_config(
     Update or create the LLM configuration.
     """
     config = llm_service.update_config(db, config_in)
+    
+    # Reload Memobase SDK config
+    try:
+        from app.services.memo import reload_sdk_config
+        reload_sdk_config()
+    except Exception as e:
+        logger.warning(f"Failed to reload Memobase config: {e}")
+        
     return config
