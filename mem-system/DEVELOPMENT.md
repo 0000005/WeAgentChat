@@ -19,7 +19,7 @@ graph TD
     C --> H[Profile Controller]
     
     E & F & G & H --> I[Database Layer]
-    E & F & G & H --> J[Redis Cache]
+    E & F & G & H --> J[In-Memory Cache]
     
     K[LLM Service] --> H
     K --> L[Prompt Templates]
@@ -43,10 +43,11 @@ memobase/
 │   ├── profile/            # User profile management
 │   └── modal/              # Modal processing
 ├── connectors/             # External Services
-│   └── connectors.py       # Database and Redis connections
+│   └── connectors.py       # Database connections
 ├── llms/                   # LLM Integration
 │   ├── __init__.py        # LLM service initialization
 │   └── openai.py          # OpenAI implementation
+├── memory_store.py          # In-memory store for cache and queue
 └── prompts/               # LLM Prompt Templates
 ```
 
@@ -59,12 +60,12 @@ sequenceDiagram
     participant Controller
     participant DB
     participant LLM
-    participant Redis
+    participant MemoryStore
 
     Client->>API: Request
     API->>Controller: Process
     Controller->>DB: Query/Update
-    Controller->>Redis: Cache Check
+    Controller->>MemoryStore: Cache Check
     Controller->>LLM: Memory Processing
     Controller->>API: Response
     API->>Client: Result
@@ -86,6 +87,7 @@ sequenceDiagram
 ### 3. External Dependencies
 - SQLite Database + sqlite-vec
 - OpenAI/LLM Service
+- *No external cache dependency (Self-contained)*
 
 ## Quick Start Routes
 
@@ -173,7 +175,7 @@ curl -X GET http://localhost:8019/api/v1/users/profile/{user_id}
 - Connection: `connectors.py`
 - Queries: Controllers
 
-### 3. Cache Integration
-- Redis Config: `connectors.py`
+### 3. Cache & Queue Integration
+- Store: `memory_store.py`
 - Buffer System: `controllers/buffer/`
 - Cache Keys: `utils.py`

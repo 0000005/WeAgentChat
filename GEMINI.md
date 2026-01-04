@@ -121,3 +121,14 @@ The project is currently in the **active development phase**.
     *   布局（侧边栏、对话列表、聊天窗口的排布）。
     *   交互细节（点击反馈、对话气泡样式等）。
 *   **Unit Testing:** Run tests using `server\venv\Scripts\python -m pytest server/tests`.
+
+---
+
+# Memobase Server (`mem-system/`)
+
+"双轨长期记忆系统"的后端服务，为 LLM 应用提供持久化、上下文感知的记忆能力。
+
+- **Tech:** FastAPI (Python 3.12+) + SQLite + `sqlite-vec`
+- **Caching:** In-memory (无 Redis 依赖)
+- **Run:** `cd mem-system && uv sync && python -m uvicorn api:app --reload --port 8019`
+
