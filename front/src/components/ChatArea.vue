@@ -49,8 +49,8 @@ const isMessageLoading = (msg: any, index: number) => {
   if (status.value !== 'submitted' && status.value !== 'streaming') return false
   // Only the last message can be loading
   if (index !== messages.value.length - 1) return false
-  // Loading if no content and no thinking content
-  return !msg.content && !msg.thinkingContent
+  // Loading if no content (showing loader even if thinking, to keep avatar company)
+  return !msg.content
 }
 
 const hasMessages = computed(() => messages.value.length > 0)
@@ -127,30 +127,35 @@ const handleNewChat = async () => {
             <div v-if="msg.role === 'system'" class="message-system">
               <span>{{ msg.content }}</span>
             </div>
-            <div v-else class="message-wrapper" :class="msg.role === 'user' ? 'message-user' : 'message-assistant'">
-              <!-- Avatar -->
-              <div class="message-avatar">
-                <img :src="msg.role === 'user' ? getUserAvatar() : getAssistantAvatar()" alt="Avatar" />
-              </div>
-
-              <!-- Message Bubble -->
-              <div class="message-bubble-container">
-                <Reasoning v-if="msg.role === 'assistant' && msg.thinkingContent"
-                  :is-streaming="status === 'submitted' && index === messages.length - 1" class="reasoning-block">
+            <div v-else class="message-group" :class="msg.role === 'user' ? 'group-user' : 'group-assistant'">
+              <!-- Thinking Block (Assistant Only) - Placed above the message row -->
+              <div v-if="msg.role === 'assistant' && msg.thinkingContent" class="reasoning-external-container">
+                <Reasoning :is-streaming="status === 'submitted' && index === messages.length - 1"
+                  class="reasoning-block">
                   <ReasoningTrigger />
                   <ReasoningContent :content="msg.thinkingContent" />
                 </Reasoning>
+              </div>
 
-                <!-- Loading state for assistant message -->
-                <div v-if="isMessageLoading(msg, index)" class="message-bubble loading-bubble">
-                  <Loader class="h-5 w-5 text-gray-400" />
+              <div class="message-wrapper" :class="msg.role === 'user' ? 'message-user' : 'message-assistant'">
+                <!-- Avatar -->
+                <div class="message-avatar">
+                  <img :src="msg.role === 'user' ? getUserAvatar() : getAssistantAvatar()" alt="Avatar" />
                 </div>
 
-                <!-- Normal message content -->
-                <div v-else-if="msg.content" class="message-bubble">
-                  <MessageContent>
-                    <MessageResponse :content="msg.content" />
-                  </MessageContent>
+                <!-- Message Bubble -->
+                <div class="message-bubble-container">
+                  <!-- Loading state for assistant message -->
+                  <div v-if="isMessageLoading(msg, index)" class="message-bubble loading-bubble">
+                    <Loader class="h-5 w-5 text-gray-400" />
+                  </div>
+
+                  <!-- Normal message content -->
+                  <div v-else-if="msg.content" class="message-bubble">
+                    <MessageContent>
+                      <MessageResponse :content="msg.content" />
+                    </MessageContent>
+                  </div>
                 </div>
               </div>
             </div>
@@ -529,5 +534,35 @@ const handleNewChat = async () => {
 
 :deep(.conversation) {
   height: 100%;
+}
+
+/* Message Group Wrapper */
+.message-group {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.group-user {
+  align-items: flex-end;
+}
+
+.group-assistant {
+  align-items: flex-start;
+}
+
+/* External Reasoning Container */
+.reasoning-external-container {
+  margin-left: 50px;
+  /* Align with message text (40px avatar + 10px gap) */
+  margin-bottom: 4px;
+  max-width: calc(100% - 60px);
+  /* Prevent overflow */
+}
+
+@media (min-width: 640px) {
+  .reasoning-external-container {
+    max-width: calc(85% - 50px);
+  }
 }
 </style>
