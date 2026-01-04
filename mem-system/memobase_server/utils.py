@@ -1,7 +1,8 @@
 import re
 import yaml
 import json
-from typing import cast
+import uuid
+from typing import cast, Any
 from datetime import timezone, datetime
 from functools import wraps
 from pydantic import ValidationError
@@ -19,7 +20,15 @@ from .models.response import UserEventData, EventData
 from .models.utils import Promise, CODE
 from .connectors import get_redis_client, PROJECT_ID
 
-LIST_INT_REGEX = re.compile(r"\[\s*(?:\d+(?:\s*,\s*\d+)*\s*)?\]")
+LIST_INT_REGEX = re.compile(r"[\s*(?:\d+(?:\s*,\s*\d+)*\s*)?]")
+
+
+def to_uuid(val: Any) -> uuid.UUID:
+    if isinstance(val, uuid.UUID):
+        return val
+    if isinstance(val, str):
+        return uuid.UUID(val)
+    return val
 
 
 def event_str_repr(event: UserEventData) -> str:
@@ -87,16 +96,13 @@ def find_list_int_or_none(content: str) -> list[int] | None:
 def get_encoded_tokens(content: str) -> list[int]:
     return ENCODER.encode(content)
 
-
 def get_decoded_tokens(tokens: list[int]) -> str:
     return ENCODER.decode(tokens)
-
 
 def truncate_string(content: str, max_tokens: int) -> str:
     tokens = get_encoded_tokens(content)
     tailing = "" if len(tokens) <= max_tokens else "..."
     return get_decoded_tokens(tokens[:max_tokens]) + tailing
-
 
 def pack_blob_from_db(blob: GeneralBlob, blob_type: BlobType) -> Blob:
     blob_data = blob.blob_data
@@ -110,9 +116,9 @@ def pack_blob_from_db(blob: GeneralBlob, blob_type: BlobType) -> Blob:
         case _:
             raise ValueError(f"Unsupported Blob Type: {blob_type}")
 
-
 def get_message_timestamp(
-    message: OpenAICompatibleMessage, fallback_blob_timestamp: datetime
+    message: OpenAICompatibleMessage,
+    fallback_blob_timestamp: datetime
 ):
     fallback_blob_timestamp = fallback_blob_timestamp or datetime.now()
     fallback_blob_timestamp = fallback_blob_timestamp.astimezone(CONFIG.timezone)
@@ -122,14 +128,12 @@ def get_message_timestamp(
         else fallback_blob_timestamp.strftime("%Y/%m/%d")
     )
 
-
 def get_message_name(message: OpenAICompatibleMessage):
     if message.alias:
         # if message.role == "assistant":
         #     return f"{message.alias}"
         return f"{message.alias}({message.role})"
     return message.role
-
 
 def get_blob_str(blob: Blob):
     match blob.type:
@@ -149,14 +153,11 @@ def get_blob_str(blob: Blob):
         case _:
             raise ValueError(f"Unsupported Blob Type: {blob.type}")
 
-
 def get_blob_token_size(blob: Blob):
     return len(get_encoded_tokens(get_blob_str(blob)))
 
-
 def seconds_from_now(dt: datetime):
     return (datetime.now().astimezone() - dt.astimezone()).seconds
-
 
 def is_valid_profile_config(profile_config: str | None) -> Promise[None]:
     if profile_config is None:

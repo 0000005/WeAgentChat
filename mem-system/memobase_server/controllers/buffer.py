@@ -4,6 +4,7 @@ from ..env import CONFIG, BufferStatus, TRACE_LOG
 from ..utils import (
     get_blob_token_size,
     pack_blob_from_db,
+    to_uuid,
 )
 from ..models.utils import Promise
 from ..models.response import CODE, ChatModalResponse, IdsData
@@ -16,11 +17,12 @@ from .modal import BLOBS_PROCESS
 async def get_buffer_capacity(
     user_id: str, project_id: str, blob_type: BlobType
 ) -> Promise[int]:
+    user_id_uuid = to_uuid(user_id)
     with Session() as session:
         buffer_count = (
             session.query(BufferZone.id)
             .filter_by(
-                user_id=user_id,
+                user_id=user_id_uuid,
                 blob_type=str(blob_type),
                 project_id=project_id,
                 status=BufferStatus.idle,
@@ -33,10 +35,12 @@ async def get_buffer_capacity(
 async def insert_blob_to_buffer(
     user_id: str, project_id: str, blob_id: str, blob_data: Blob
 ) -> Promise[None]:
+    user_id_uuid = to_uuid(user_id)
+    blob_id_uuid = to_uuid(blob_id)
     with Session() as session:
         buffer = BufferZone(
-            user_id=user_id,
-            blob_id=blob_id,
+            user_id=user_id_uuid,
+            blob_id=blob_id_uuid,
             blob_type=blob_data.type,
             token_size=get_blob_token_size(blob_data),
             project_id=project_id,
@@ -66,12 +70,13 @@ async def wait_insert_done_then_flush(
 async def detect_buffer_full_or_not(
     user_id: str, project_id: str, blob_type: BlobType
 ) -> Promise[IdsData | None]:
+    user_id_uuid = to_uuid(user_id)
     with Session() as session:
         # 1. if buffer size reach maximum, flush it
         buffer_zone = (
             session.query(BufferZone.id, BufferZone.token_size)
             .filter_by(
-                user_id=user_id,
+                user_id=user_id_uuid,
                 blob_type=str(blob_type),
                 project_id=project_id,
                 status=BufferStatus.idle,
@@ -100,11 +105,12 @@ async def get_unprocessed_buffer_ids(
     blob_type: BlobType,
     select_status: str = BufferStatus.idle,
 ) -> Promise[IdsData]:
+    user_id_uuid = to_uuid(user_id)
     with Session() as session:
         buffer_ids = (
             session.query(BufferZone.id)
             .filter_by(
-                user_id=user_id,
+                user_id=user_id_uuid,
                 blob_type=str(blob_type),
                 project_id=project_id,
                 status=select_status,
@@ -130,6 +136,9 @@ async def flush_buffer_by_ids(
     # Log initial pool status
     log_pool_status(f"flush_buffer_by_ids_start_{blob_type}")
 
+    user_id_uuid = to_uuid(user_id)
+    buffer_uuids = [to_uuid(bid) for bid in buffer_ids]
+
     with Session() as session:
         # Join BufferZone with GeneralBlob to get all data in one query
         buffer_blob_data = (
@@ -143,13 +152,13 @@ async def flush_buffer_by_ids(
             )
             .join(GeneralBlob, BufferZone.blob_id == GeneralBlob.id)
             .filter(
-                BufferZone.user_id == user_id,
+                BufferZone.user_id == user_id_uuid,
                 BufferZone.blob_type == str(blob_type),
                 BufferZone.project_id == project_id,
-                GeneralBlob.user_id == user_id,
+                GeneralBlob.user_id == user_id_uuid,
                 GeneralBlob.project_id == project_id,
                 BufferZone.status == select_status,
-                BufferZone.id.in_(buffer_ids),
+                BufferZone.id.in_(buffer_uuids),
             )
             .order_by(BufferZone.created_at)
             .all()

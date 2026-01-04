@@ -84,8 +84,7 @@ sequenceDiagram
 - Buffer Management
 
 ### 3. External Dependencies
-- PostgreSQL Database
-- Redis Cache
+- SQLite Database + sqlite-vec
 - OpenAI/LLM Service
 
 ## Quick Start Routes
@@ -105,8 +104,7 @@ sequenceDiagram
 ### Environment Setup
 ```bash
 .env
-├── DATABASE_URL
-├── REDIS_URL
+├── DATABASE_URL (optional)
 ├── PROJECT_ID
 └── ACCESS_TOKEN
 ```

@@ -3,15 +3,17 @@ from ..models.utils import Promise
 from ..models.database import UserStatus
 from ..models.response import CODE, UserStatusesData, UserStatusData, IdData
 from ..connectors import Session
+from ..utils import to_uuid
 
 
 async def get_user_statuses(
     user_id: str, project_id: str, type: str, page: int = 1, page_size: int = 10
 ) -> Promise[UserStatusesData]:
+    user_id_uuid = to_uuid(user_id)
     with Session() as session:
         status = (
             session.query(UserStatus)
-            .filter_by(user_id=user_id, project_id=project_id, type=type)
+            .filter_by(user_id=user_id_uuid, project_id=project_id, type=type)
             .order_by(UserStatus.created_at.desc())
             .offset((page - 1) * page_size)
             .limit(page_size)
@@ -35,9 +37,10 @@ async def get_user_statuses(
 async def append_user_status(
     user_id: str, project_id: str, type: str, attributes: dict
 ) -> Promise[IdData]:
+    user_id_uuid = to_uuid(user_id)
     with Session() as session:
         status = UserStatus(
-            user_id=user_id, project_id=project_id, type=type, attributes=attributes
+            user_id=user_id_uuid, project_id=project_id, type=type, attributes=attributes
         )
         session.add(status)
         session.commit()

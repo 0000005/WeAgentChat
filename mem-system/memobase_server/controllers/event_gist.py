@@ -3,14 +3,18 @@ from ..models.database import UserEventGist
 from ..models.response import UserEventGistsData, UserEventGistData
 from ..models.utils import Promise, CODE
 from ..connectors import Session
-from ..utils import get_encoded_tokens, event_str_repr, event_embedding_str
+from ..utils import get_encoded_tokens, event_str_repr, event_embedding_str, to_uuid
 
 from ..llms.embeddings import get_embedding
 from datetime import timedelta
 from sqlalchemy import desc, select
 from sqlalchemy.sql import func
 from ..env import TRACE_LOG, CONFIG
+import struct
 
+def serialize_embedding(embedding: list[float]) -> bytes:
+    """Serialize a list of floats to a binary format compatible with sqlite-vec (float32 array)."""
+    return struct.pack(f"{len(embedding)}f", *embedding)
 
 async def get_user_event_gists(
     user_id: str,
@@ -18,10 +22,11 @@ async def get_user_event_gists(
     topk: int = 10,
     time_range_in_days: int = 21,
 ) -> Promise[UserEventGistsData]:
+    user_id_uuid = to_uuid(user_id)
     with Session() as session:
         query = (
             session.query(UserEventGist)
-            .filter_by(user_id=user_id, project_id=project_id)
+            .filter_by(user_id=user_id_uuid, project_id=project_id)
             .filter(
                 UserEventGist.created_at
                 > (func.now() - timedelta(days=time_range_in_days))
@@ -70,6 +75,7 @@ async def search_user_event_gists(
     similarity_threshold: float = 0.2,
     time_range_in_days: int = 21,
 ) -> Promise[UserEventGistsData]:
+    user_id_uuid = to_uuid(user_id)
     if not CONFIG.enable_event_embedding:
         TRACE_LOG.warning(
             project_id,
@@ -91,12 +97,17 @@ async def search_user_event_gists(
         )
         return query_embeddings
     query_embedding = query_embeddings.data()[0]
+    
+    # Serialize embedding for sqlite-vec
+    query_embedding_bytes = serialize_embedding(query_embedding)
 
     # Calculate the time cutoff once
     time_cutoff = func.now() - timedelta(days=time_range_in_days)
 
     # Store the similarity expression to avoid recomputation
-    similarity_expr = 1 - UserEventGist.embedding.cosine_distance(query_embedding)
+    # sqlite-vec uses vec_distance_cosine
+    distance_expr = func.vec_distance_cosine(UserEventGist.embedding, query_embedding_bytes)
+    similarity_expr = 1 - distance_expr
 
     stmt = (
         select(
@@ -104,10 +115,10 @@ async def search_user_event_gists(
             similarity_expr.label("similarity"),
         )
         .where(
-            UserEventGist.user_id == user_id,
+            UserEventGist.user_id == user_id_uuid,
             UserEventGist.project_id == project_id,
             UserEventGist.created_at > time_cutoff,
-            similarity_expr > similarity_threshold,
+            (1 - distance_expr) > similarity_threshold,
             UserEventGist.embedding.is_not(None),  # Skip null embeddings
         )
         .order_by(desc("similarity"))

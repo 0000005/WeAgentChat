@@ -1,9 +1,9 @@
 from pydantic import ValidationError
 from ..models.utils import Promise
-from ..models.database import GeneralBlob, UserProfile
-from ..models.response import CODE, IdData, IdsData, UserProfilesData, ProfileAttributes
+from ..models.database import UserProfile
+from ..models.response import CODE, IdsData, UserProfilesData, ProfileAttributes
 from ..connectors import Session, get_redis_client
-from ..utils import get_encoded_tokens
+from ..utils import get_encoded_tokens, to_uuid
 from ..env import CONFIG, TRACE_LOG
 
 
@@ -73,6 +73,7 @@ async def truncate_profiles(
 
 
 async def get_user_profiles(user_id: str, project_id: str) -> Promise[UserProfilesData]:
+    user_id_uuid = to_uuid(user_id)
     async with get_redis_client() as redis_client:
         user_profiles = await redis_client.get(
             f"user_profiles::{project_id}::{user_id}"
@@ -92,7 +93,7 @@ async def get_user_profiles(user_id: str, project_id: str) -> Promise[UserProfil
     with Session() as session:
         user_profiles = (
             session.query(UserProfile)
-            .filter_by(user_id=user_id, project_id=project_id)
+            .filter_by(user_id=user_id_uuid, project_id=project_id)
             .order_by(UserProfile.updated_at.desc())
             .all()
         )
@@ -123,6 +124,7 @@ async def add_user_profiles(
     profiles: list[str],
     attributes: list[dict],
 ) -> Promise[IdsData]:
+    user_id_uuid = to_uuid(user_id)
     assert len(profiles) == len(
         attributes
     ), "Length of profiles, attributes must be equal"
@@ -136,7 +138,7 @@ async def add_user_profiles(
     with Session() as session:
         db_profiles = [
             UserProfile(
-                user_id=user_id, project_id=project_id, content=content, attributes=attr
+                user_id=user_id_uuid, project_id=project_id, content=content, attributes=attr
             )
             for content, attr in zip(profiles, attributes)
         ]
@@ -154,6 +156,8 @@ async def update_user_profiles(
     contents: list[str],
     attributes: list[dict | None],
 ) -> Promise[IdsData]:
+    user_id_uuid = to_uuid(user_id)
+    profile_uuids = [to_uuid(pid) for pid in profile_ids]
     assert len(profile_ids) == len(
         contents
     ), "Length of profile_ids, contents must be equal"
@@ -162,10 +166,10 @@ async def update_user_profiles(
     ), "Length of profile_ids, attributes must be equal"
     with Session() as session:
         db_profiles = []
-        for profile_id, content, attribute in zip(profile_ids, contents, attributes):
+        for profile_id, content, attribute in zip(profile_uuids, contents, attributes):
             db_profile = (
                 session.query(UserProfile)
-                .filter_by(id=profile_id, user_id=user_id, project_id=project_id)
+                .filter_by(id=profile_id, user_id=user_id_uuid, project_id=project_id)
                 .one_or_none()
             )
             if db_profile is None:
@@ -187,10 +191,12 @@ async def update_user_profiles(
 async def delete_user_profile(
     user_id: str, project_id: str, profile_id: str
 ) -> Promise[None]:
+    user_id_uuid = to_uuid(user_id)
+    profile_uuid = to_uuid(profile_id)
     with Session() as session:
         db_profile = (
             session.query(UserProfile)
-            .filter_by(id=profile_id, user_id=user_id, project_id=project_id)
+            .filter_by(id=profile_uuid, user_id=user_id_uuid, project_id=project_id)
             .one_or_none()
         )
         if db_profile is None:
@@ -206,10 +212,12 @@ async def delete_user_profile(
 async def delete_user_profiles(
     user_id: str, project_id: str, profile_ids: list[str]
 ) -> Promise[IdsData]:
+    user_id_uuid = to_uuid(user_id)
+    profile_uuids = [to_uuid(pid) for pid in profile_ids]
     with Session() as session:
         session.query(UserProfile).filter(
-            UserProfile.id.in_(profile_ids),
-            UserProfile.user_id == user_id,
+            UserProfile.id.in_(profile_uuids),
+            UserProfile.user_id == user_id_uuid,
             UserProfile.project_id == project_id,
         ).delete(synchronize_session=False)
         session.commit()
@@ -233,6 +241,10 @@ async def add_update_delete_user_profiles(
     update_attributes: list[dict | None],
     delete_profile_ids: list[str],
 ) -> Promise[IdsData]:
+    user_id_uuid = to_uuid(user_id)
+    update_profile_uuids = [to_uuid(pid) for pid in update_profile_ids]
+    delete_profile_uuids = [to_uuid(pid) for pid in delete_profile_ids]
+    
     assert len(add_profiles) == len(
         add_attributes
     ), "Length of add_profiles, add_attributes must be equal"
@@ -260,7 +272,7 @@ async def add_update_delete_user_profiles(
             if len(add_profiles):
                 add_db_profiles = [
                     UserProfile(
-                        user_id=user_id,
+                        user_id=user_id_uuid,
                         project_id=project_id,
                         content=content,
                         attributes=attr,
@@ -268,17 +280,17 @@ async def add_update_delete_user_profiles(
                     for content, attr in zip(add_profiles, add_attributes)
                 ]
                 session.add_all(add_db_profiles)
-                add_profile_ids = [p.id for p in add_db_profiles]
+                add_profile_ids_list = [p.id for p in add_db_profiles]
             else:
-                add_profile_ids = []
+                add_profile_ids_list = []
             # 2. update existing profiles
             update_db_profiles = []
             for profile_id, content, attribute in zip(
-                update_profile_ids, update_contents, update_attributes
+                update_profile_uuids, update_contents, update_attributes
             ):
                 db_profile = (
                     session.query(UserProfile)
-                    .filter_by(id=profile_id, user_id=user_id, project_id=project_id)
+                    .filter_by(id=profile_id, user_id=user_id_uuid, project_id=project_id)
                     .one_or_none()
                 )
                 if db_profile is None:
@@ -295,8 +307,8 @@ async def add_update_delete_user_profiles(
 
             # 3. delete profiles
             session.query(UserProfile).filter(
-                UserProfile.id.in_(delete_profile_ids),
-                UserProfile.user_id == user_id,
+                UserProfile.id.in_(delete_profile_uuids),
+                UserProfile.user_id == user_id_uuid,
                 UserProfile.project_id == project_id,
             ).delete(synchronize_session=False)
 
@@ -313,4 +325,4 @@ async def add_update_delete_user_profiles(
             )
 
     await refresh_user_profile_cache(user_id, project_id)
-    return Promise.resolve(IdsData(ids=add_profile_ids))
+    return Promise.resolve(IdsData(ids=add_profile_ids_list))

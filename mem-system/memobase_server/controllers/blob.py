@@ -1,12 +1,14 @@
 import pydantic
 from ..models.utils import Promise
-from ..models.database import GeneralBlob, DEFAULT_PROJECT_ID
+from ..models.database import GeneralBlob
 from ..models.response import CODE, BlobData, IdData
-from ..models.blob import ChatBlob, DocBlob, BlobType
+from ..models.blob import BlobType
 from ..connectors import Session
+from ..utils import to_uuid
 
 
 async def insert_blob(user_id: str, project_id: str, blob: BlobData) -> Promise[IdData]:
+    user_id_uuid = to_uuid(user_id)
     try:
         blob_parsed = blob.to_blob()
     except pydantic.ValidationError as e:
@@ -16,7 +18,7 @@ async def insert_blob(user_id: str, project_id: str, blob: BlobData) -> Promise[
             blob_type=blob_parsed.type,
             blob_data=blob_parsed.get_blob_data(),
             additional_fields=blob_parsed.fields,
-            user_id=user_id,
+            user_id=user_id_uuid,
             project_id=project_id,
         )
         session.add(blob_db)
@@ -26,10 +28,12 @@ async def insert_blob(user_id: str, project_id: str, blob: BlobData) -> Promise[
 
 
 async def get_blob(user_id: str, project_id: str, blob_id: str) -> Promise[BlobData]:
+    user_id_uuid = to_uuid(user_id)
+    blob_id_uuid = to_uuid(blob_id)
     with Session() as session:
         blob_db = (
             session.query(GeneralBlob)
-            .filter_by(id=blob_id, user_id=user_id, project_id=project_id)
+            .filter_by(id=blob_id_uuid, user_id=user_id_uuid, project_id=project_id)
             .one_or_none()
         )
         if not blob_db:
@@ -47,10 +51,12 @@ async def get_blob(user_id: str, project_id: str, blob_id: str) -> Promise[BlobD
 
 
 async def remove_blob(user_id: str, project_id: str, blob_id: str) -> Promise[None]:
+    user_id_uuid = to_uuid(user_id)
+    blob_id_uuid = to_uuid(blob_id)
     with Session() as session:
         blob_db = (
             session.query(GeneralBlob)
-            .filter_by(id=blob_id, user_id=user_id, project_id=project_id)
+            .filter_by(id=blob_id_uuid, user_id=user_id_uuid, project_id=project_id)
             .one_or_none()
         )
         if not blob_db:

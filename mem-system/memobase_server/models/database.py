@@ -1,5 +1,6 @@
 import os
 import uuid
+import struct
 from typing import Optional
 from datetime import datetime
 from sqlalchemy import (
@@ -15,9 +16,12 @@ from sqlalchemy import (
     Boolean,
     PrimaryKeyConstraint,
     ForeignKeyConstraint,
+    JSON,
+    Uuid,
+    LargeBinary,
+    TypeDecorator
 )
 from dataclasses import dataclass
-from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import (
     relationship,
     Mapped,
@@ -37,7 +41,6 @@ from ..env import (
     BufferStatus,
 )
 from sqlalchemy.orm.attributes import get_history
-from pgvector.sqlalchemy import Vector
 
 REG = registry()
 DEFAULT_PROJECT_ID = "__root__"
@@ -52,51 +55,37 @@ def next_month_first_day() -> datetime:
     # Otherwise, move to the first day of next month
     return datetime(today.year, today.month + 1, 1)
 
+class Vector(TypeDecorator):
+    """
+    SQLite-compatible Vector type that stores embeddings as BLOBs (Float32 array).
+    """
+    impl = LargeBinary
+    cache_ok = True
+
+    def __init__(self, dim):
+        super().__init__()
+        self.dim = dim
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return None
+        if isinstance(value, bytes):
+            return value
+        # Ensure input is a list of floats
+        return struct.pack(f'{len(value)}f', *value)
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return None
+        # Convert bytes back to list of floats
+        count = len(value) // 4
+        return list(struct.unpack(f'{count}f', value))
 
 def check_legal_embedding_dim(cls, session):
-    try:
-        # Use table_name from the ORM class to avoid hardcoding
-        table_name = cls.__tablename__
-
-        # Use text() to properly declare SQL expression
-        sql = text(
-            """
-        SELECT atttypmod
-        FROM pg_attribute
-        JOIN pg_class ON pg_attribute.attrelid = pg_class.oid
-        JOIN pg_namespace ON pg_class.relnamespace = pg_namespace.oid
-        WHERE pg_class.relname = :table_name
-        AND pg_attribute.attname = 'embedding'
-        AND pg_namespace.nspname = current_schema();
-        """
-        )
-
-        result = session.execute(sql, {"table_name": table_name}).scalar()
-
-        # Table or column might not exist yet
-        if result is None:
-            raise ValueError(
-                "`embedding` column does not exist in the table, please check the table schema"
-            )
-
-        # In pgvector, atttypmod - 8 is the dimension
-        actual_dim = result
-
-        if actual_dim != CONFIG.embedding_dim:
-            raise ValueError(
-                f"Configuration embedding dimension ({CONFIG.embedding_dim}) "
-                f"does not match database dimension ({actual_dim}). "
-                f"This may cause errors when inserting embeddings."
-            )
-        LOG.info(
-            f"Configuration embedding dimension ({CONFIG.embedding_dim}) "
-            f"matches database dimension ({actual_dim}). "
-        )
-        return actual_dim
-
-    except Exception as e:
-        LOG.warning(f"Failed to check embedding dimension: {str(e)}")
-        raise e
+    # For SQLite/sqlite-vec, we might not strictly enforce dimension at the schema level 
+    # in the same way pgvector does, but we can keep the hook for future use.
+    LOG.info(f"Skipping strict embedding dimension check for SQLite/sqlite-vec compatibility.")
+    pass
 
 
 @dataclass
@@ -104,8 +93,8 @@ class Base:
     __abstract__ = True
 
     # Common columns
-    id: Mapped[str] = mapped_column(
-        UUID(as_uuid=True),
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
         default_factory=uuid.uuid4,
         init=False,
     )
@@ -158,8 +147,8 @@ class ProjectBilling:
         ForeignKey("projects.project_id", ondelete="CASCADE", onupdate="CASCADE"),
         nullable=False,
     )
-    billing_id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True),
+    billing_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
         ForeignKey("billings.id", ondelete="CASCADE", onupdate="CASCADE"),
         nullable=False,
     )
@@ -263,7 +252,7 @@ class User(Base):
 
     # Default columns
     additional_fields: Mapped[Optional[dict]] = mapped_column(
-        JSONB, nullable=True, default=None
+        JSON, nullable=True, default=None
     )
 
     project_id: Mapped[Optional[str]] = mapped_column(
@@ -287,14 +276,14 @@ class GeneralBlob(Base):
     __tablename__ = "general_blobs"
 
     # Add project_id to match Users table's composite key
-    user_id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True),
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
         nullable=False,
     )
 
     # Specific columns
     blob_type: Mapped[str] = mapped_column(VARCHAR(SHORT_ENUM_SIZE), nullable=False)
-    blob_data: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    blob_data: Mapped[dict] = mapped_column(JSON, nullable=False)
 
     related_buffers: Mapped[list["BufferZone"]] = relationship(
         "BufferZone",
@@ -310,7 +299,7 @@ class GeneralBlob(Base):
         default=DEFAULT_PROJECT_ID,
     )
     additional_fields: Mapped[Optional[dict]] = mapped_column(
-        JSONB, nullable=True, default=None
+        JSON, nullable=True, default=None
     )
     user: Mapped[User] = relationship(
         "User",
@@ -351,13 +340,13 @@ class BufferZone(Base):
     token_size: Mapped[int] = mapped_column(Integer, nullable=False)
 
     # Relationships
-    user_id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True),
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
         nullable=False,
     )
 
-    blob_id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True),
+    blob_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
         nullable=False,
     )
 
@@ -423,12 +412,12 @@ class UserProfile(Base):
     content: Mapped[str] = mapped_column(TEXT, nullable=False)
 
     # Relationships
-    user_id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True),
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
         nullable=False,
     )
 
-    attributes: Mapped[dict] = mapped_column(JSONB, nullable=True, default=None)
+    attributes: Mapped[dict] = mapped_column(JSON, nullable=True, default=None)
 
     project_id: Mapped[str] = mapped_column(
         VARCHAR(64),
@@ -460,12 +449,12 @@ class UserEvent(Base):
     __tablename__ = "user_events"
 
     # Specific columns
-    event_data: Mapped[dict] = mapped_column(JSONB)
+    event_data: Mapped[dict] = mapped_column(JSON)
 
     # Relationships
 
-    user_id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True),
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
         nullable=False,
     )
 
@@ -516,16 +505,16 @@ class UserEventGist(Base):
     __tablename__ = "user_event_gists"
 
     # Specific columns
-    gist_data: Mapped[dict] = mapped_column(JSONB)
+    gist_data: Mapped[dict] = mapped_column(JSON)
 
     # Relationships
-    event_id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True),
+    event_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
         nullable=False,
     )
 
-    user_id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True),
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
         nullable=False,
     )
 
@@ -592,11 +581,11 @@ class UserStatus(Base):
 
     # Specific columns
     type: Mapped[str] = mapped_column(VARCHAR(SHORT_ENUM_SIZE * 2), nullable=False)
-    attributes: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    attributes: Mapped[dict] = mapped_column(JSON, nullable=False)
 
     # Relationships
-    user_id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True),
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
         nullable=False,
     )
 

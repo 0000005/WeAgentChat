@@ -1,22 +1,24 @@
 from ..models.utils import Promise
-from ..models.database import User, GeneralBlob, UserProfile
-from ..models.response import CODE, UserData, IdData, IdsData, UserProfilesData
+from ..models.database import User, GeneralBlob
+from ..models.response import CODE, UserData, IdData, IdsData
 from ..connectors import Session
 from .profile import refresh_user_profile_cache
 from ..models.blob import BlobType
+from ..utils import to_uuid
 
 
 async def create_user(data: UserData, project_id: str) -> Promise[IdData]:
     with Session() as session:
         db_user = User(additional_fields=data.data, project_id=project_id)
         if data.id is not None:
-            db_user.id = str(data.id)
+            db_user.id = to_uuid(data.id)
         session.add(db_user)
         session.commit()
         return Promise.resolve(IdData(id=db_user.id))
 
 
 async def get_user(user_id: str, project_id: str) -> Promise[UserData]:
+    user_id = to_uuid(user_id)
     with Session() as session:
         db_user = (
             session.query(User)
@@ -35,6 +37,7 @@ async def get_user(user_id: str, project_id: str) -> Promise[UserData]:
 
 
 async def update_user(user_id: str, project_id: str, data: dict) -> Promise[IdData]:
+    user_id = to_uuid(user_id)
     with Session() as session:
         db_user = (
             session.query(User)
@@ -49,6 +52,7 @@ async def update_user(user_id: str, project_id: str, data: dict) -> Promise[IdDa
 
 
 async def delete_user(user_id: str, project_id: str) -> Promise[None]:
+    user_id = to_uuid(user_id)
     with Session() as session:
         db_user = (
             session.query(User)
@@ -70,6 +74,7 @@ async def get_user_all_blobs(
     page: int = 0,
     page_size: int = 10,
 ) -> Promise[IdsData]:
+    user_id = to_uuid(user_id)
     with Session() as session:
         user_blobs = (
             session.query(GeneralBlob.id)

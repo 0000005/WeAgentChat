@@ -3,14 +3,18 @@ from ..models.database import UserEvent, UserEventGist
 from ..models.response import UserEventData, UserEventsData, EventData
 from ..models.utils import Promise, CODE
 from ..connectors import Session
-from ..utils import get_encoded_tokens, event_str_repr, event_embedding_str
+from ..utils import get_encoded_tokens, event_str_repr, event_embedding_str, to_uuid
 
 from ..llms.embeddings import get_embedding
 from datetime import timedelta
-from sqlalchemy import desc, select
+from sqlalchemy import desc, select, text
 from sqlalchemy.sql import func
 from ..env import TRACE_LOG, CONFIG
+import struct
 
+def serialize_embedding(embedding: list[float]) -> bytes:
+    """Serialize a list of floats to a binary format compatible with sqlite-vec (float32 array)."""
+    return struct.pack(f"{len(embedding)}f", *embedding)
 
 async def get_user_events(
     user_id: str,
@@ -19,10 +23,11 @@ async def get_user_events(
     need_summary: bool = False,
     time_range_in_days: int = 21,
 ) -> Promise[UserEventsData]:
+    user_id_uuid = to_uuid(user_id)
     with Session() as session:
         query = (
             session.query(UserEvent)
-            .filter_by(user_id=user_id, project_id=project_id)
+            .filter_by(user_id=user_id_uuid, project_id=project_id)
             .filter(
                 UserEvent.created_at > (func.now() - timedelta(days=time_range_in_days))
             )
@@ -68,6 +73,7 @@ async def truncate_events(
 async def append_user_event(
     user_id: str, project_id: str, event_data: dict
 ) -> Promise[str]:
+    user_id_uuid = to_uuid(user_id)
     try:
         validated_event = EventData(**event_data)
     except ValidationError as e:
@@ -143,7 +149,7 @@ async def append_user_event(
             )
     with Session() as session:
         user_event = UserEvent(
-            user_id=user_id,
+            user_id=user_id_uuid,
             project_id=project_id,
             event_data=validated_event.model_dump(),
             embedding=embedding[0],
@@ -152,7 +158,7 @@ async def append_user_event(
         for event_gist_data in event_gist_dbs:
             session.add(
                 UserEventGist(
-                    user_id=user_id,
+                    user_id=user_id_uuid,
                     project_id=project_id,
                     event_id=user_event.id,
                     gist_data=event_gist_data["gist_data"],
@@ -167,10 +173,12 @@ async def append_user_event(
 async def delete_user_event(
     user_id: str, project_id: str, event_id: str
 ) -> Promise[None]:
+    user_id_uuid = to_uuid(user_id)
+    event_uuid = to_uuid(event_id)
     with Session() as session:
         user_event = (
             session.query(UserEvent)
-            .filter_by(user_id=user_id, project_id=project_id, id=event_id)
+            .filter_by(user_id=user_id_uuid, project_id=project_id, id=event_uuid)
             .first()
         )
         if user_event is None:
@@ -186,6 +194,8 @@ async def delete_user_event(
 async def update_user_event(
     user_id: str, project_id: str, event_id: str, event_data: dict
 ) -> Promise[None]:
+    user_id_uuid = to_uuid(user_id)
+    event_uuid = to_uuid(event_id)
     try:
         EventData(**event_data)
     except ValidationError as e:
@@ -197,7 +207,7 @@ async def update_user_event(
     with Session() as session:
         user_event = (
             session.query(UserEvent)
-            .filter_by(user_id=user_id, project_id=project_id, id=event_id)
+            .filter_by(user_id=user_id_uuid, project_id=project_id, id=event_uuid)
             .first()
         )
         if user_event is None:
@@ -221,6 +231,7 @@ async def search_user_events(
     similarity_threshold: float = 0.2,
     time_range_in_days: int = 21,
 ) -> Promise[UserEventsData]:
+    user_id_uuid = to_uuid(user_id)
     if not CONFIG.enable_event_embedding:
         TRACE_LOG.warning(
             project_id,
@@ -243,19 +254,24 @@ async def search_user_events(
         )
         return query_embeddings
     query_embedding = query_embeddings.data()[0]
+    
+    # Serialize embedding for sqlite-vec
+    query_embedding_bytes = serialize_embedding(query_embedding)
 
+    # Calculate distance using sqlite-vec function
+    # Note: sqlite-vec functions might change based on version. 
+    # Usually vec_distance_cosine(vec1, vec2)
+    distance_expr = func.vec_distance_cosine(UserEvent.embedding, query_embedding_bytes)
+    
     stmt = (
         select(
             UserEvent,
-            (1 - UserEvent.embedding.cosine_distance(query_embedding)).label(
-                "similarity"
-            ),
+            (1 - distance_expr).label("similarity"),
         )
-        .where(UserEvent.user_id == user_id, UserEvent.project_id == project_id)
+        .where(UserEvent.user_id == user_id_uuid, UserEvent.project_id == project_id)
         .where(UserEvent.created_at > func.now() - timedelta(days=time_range_in_days))
         .where(
-            (1 - UserEvent.embedding.cosine_distance(query_embedding))
-            > similarity_threshold
+            (1 - distance_expr) > similarity_threshold
         )
         .order_by(desc("similarity"))
         .limit(topk)
@@ -309,36 +325,42 @@ async def filter_user_events(
     Returns:
         Promise containing filtered UserEventsData
     """
+    user_id_uuid = to_uuid(user_id)
     with Session() as session:
         query = session.query(UserEvent).filter_by(
-            user_id=user_id, project_id=project_id
+            user_id=user_id_uuid, project_id=project_id
         )
 
         # Apply tag filters if provided
+        # For SQLite, we use json_each inside existing clauses since we don't have containment operator @>
         if has_event_tag or event_tag_equal:
-            # Build filter conditions for events that have event_tags
-            query = query.filter(UserEvent.event_data.has_key("event_tags"))
-            query = query.filter(UserEvent.event_data["event_tags"].isnot(None))
-
             # Filter by tag existence (has_event_tag)
             if has_event_tag:
-                for tag_name in has_event_tag:
-                    # Check if any event_tag in the array has the specified tag name
-                    query = query.filter(
-                        UserEvent.event_data["event_tags"].op("@>")(
-                            f'[{{"tag": "{tag_name}"}}]'
+                for i, tag_name in enumerate(has_event_tag):
+                    # Check if any element in event_tags array has tag == tag_name
+                    query = query.filter(text(
+                        f"""
+                        EXISTS (
+                            SELECT 1 
+                            FROM json_each(json_extract(event_data, '$.event_tags')) 
+                            WHERE json_extract(value, '$.tag') = :tag_{i}
                         )
-                    )
+                        """
+                    ).params(**{f"tag_{i}": tag_name}))
 
             # Filter by exact tag-value pairs (event_tag_equal)
             if event_tag_equal:
-                for tag_name, tag_value in event_tag_equal.items():
-                    # Check if any event_tag in the array has both the tag name and value
-                    query = query.filter(
-                        UserEvent.event_data["event_tags"].op("@>")(
-                            f'[{{"tag": "{tag_name}", "value": "{tag_value}"}}]'
+                for i, (tag_name, tag_value) in enumerate(event_tag_equal.items()):
+                    query = query.filter(text(
+                        f"""
+                        EXISTS (
+                            SELECT 1 
+                            FROM json_each(json_extract(event_data, '$.event_tags')) 
+                            WHERE json_extract(value, '$.tag') = :tag_eq_{i} 
+                            AND json_extract(value, '$.value') = :val_eq_{i}
                         )
-                    )
+                        """
+                    ).params(**{f"tag_eq_{i}": tag_name, f"val_eq_{i}": tag_value}))
 
         user_events = query.order_by(UserEvent.created_at.desc()).limit(topk).all()
 

@@ -40,8 +40,8 @@ Memobase is a user memory system designed for LLM Applications. It provides a Fa
   - Profile merging and extraction
 
 ### 4. Connectors (`connectors.py`)
-- Database connection management (PostgreSQL)
-- Redis connection handling
+- Database connection management (SQLite + sqlite-vec)
+- Local memory cache handling
 - Health check implementations
 - Connection pooling configuration
 
@@ -85,7 +85,7 @@ Memobase is a user memory system designed for LLM Applications. It provides a Fa
 ## Dependencies
 - FastAPI: Web framework
 - SQLAlchemy: Database ORM
-- Redis: Caching and temporary storage
+- sqlite-vec: Vector search
 - Pydantic: Data validation
 - Tiktoken: Token management
 - Rich: Enhanced logging

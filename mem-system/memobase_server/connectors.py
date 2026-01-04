@@ -1,13 +1,15 @@
 import os
 import asyncio
-from sqlalchemy import create_engine, text
+import sqlite3
+import sqlite_vec
+from sqlalchemy import create_engine, text, event
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import OperationalError
 from .env import LOG
 from .models.database import REG, Project, UserEvent, UserEventGist
 from .memory_store import LocalMemoryCache
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///data/memobase.db")
 PROJECT_ID = os.getenv("PROJECT_ID")
 ADMIN_URL = os.getenv("ADMIN_URL")
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN")
@@ -16,39 +18,47 @@ if PROJECT_ID is None:
     LOG.warning(f"PROJECT_ID is not set")
     PROJECT_ID = "default"
 LOG.info(f"Project ID: {PROJECT_ID}")
+
+# Ensure database directory exists if using sqlite file
+if DATABASE_URL.startswith("sqlite:///"):
+    db_path = DATABASE_URL.replace("sqlite:///", "")
+    if db_path and db_path != ":memory:":
+        os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
+        LOG.info(f"Ensured database directory exists for: {db_path}")
+
 LOG.info(f"Database URL: {DATABASE_URL}")
 
 # Create an engine
+# Note: SQLite connection pooling is different. For simple file-based usage, 
+# standard pool is fine.
 DB_ENGINE = create_engine(
     DATABASE_URL,
-    pool_size=75,  # Increased from 50 to handle more concurrent operations
-    max_overflow=50,  # Increased from 30 to provide more buffer
-    pool_recycle=300,  # Reduced from 600 to recycle connections more frequently
-    pool_pre_ping=True,  # Verify connections before using
-    pool_timeout=45,  # Increased from 30 seconds for better handling under load
-    pool_reset_on_return="commit",  # Ensure clean state when connections are returned
-    echo_pool=False,  # Set to True for debugging pool issues
+    pool_recycle=300,
+    pool_pre_ping=True,
+    echo_pool=False,
 )
+
+# Load sqlite-vec extension
+@event.listens_for(DB_ENGINE, "connect")
+def load_extensions(dbapi_connection, connection_record):
+    # Ensure we are dealing with a sqlite3 connection
+    if isinstance(dbapi_connection, sqlite3.Connection):
+        try:
+            dbapi_connection.enable_load_extension(True)
+            sqlite_vec.load(dbapi_connection)
+            dbapi_connection.enable_load_extension(False)
+            # LOG.info("sqlite-vec extension loaded successfully") # Verbose logging
+        except Exception as e:
+            LOG.error(f"Failed to load sqlite-vec extension: {e}")
 
 Session = sessionmaker(bind=DB_ENGINE)
 
 
-def create_pgvector_extension():
-    try:
-        with Session() as session:
-            session.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
-            session.commit()
-            LOG.info("pgvector extension created or already exists")
-    except Exception as e:
-        LOG.error(f"Failed to create pgvector extension: {e}")
-
-
 def create_tables():
-    create_pgvector_extension()
-
     REG.metadata.create_all(DB_ENGINE)
     with Session() as session:
         Project.initialize_root_project(session)
+        # These checks are now no-ops or logs in the model file, but kept for flow consistency
         UserEvent.check_legal_embedding_dim(session)
         UserEventGist.check_legal_embedding_dim(session)
     LOG.info("Database tables created successfully")
@@ -109,7 +119,7 @@ def log_pool_status(operation: str = "unknown"):
             f"({status['utilization_percent']}%) - "
             f"Available: {status['checked_in']}, Overflow: {status['overflow']}"
         )
-    LOG.info(f"[DB pool status] {operation}: {status}")
+    # LOG.info(f"[DB pool status] {operation}: {status}")
 
 
 if __name__ == "__main__":
