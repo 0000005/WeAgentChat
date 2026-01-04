@@ -97,5 +97,8 @@ profile = await MemoService.get_user_context(user_id=user_id, project_id=space_i
 
 ## 5. 后续确认清单 (Checklist)
 - [ ] 验证 `sqlite-vec` 扩展在主项目的 Python 环境中加载路径是否正确。
-- [ ] 确保主项目的 `alembic` 不会误扫 `vendor` 目录下的迁移脚本。
+  - 需在真实环境运行 `insert_chat` 或 `search_memories` 进行验证。
+- [x] 确保主项目的 `alembic` 不会误扫 `vendor` 目录下的迁移脚本。
+  - ✅ 已验证：主项目 `alembic/env.py` 使用 `app.db.base.Base.metadata`，与 Memobase 的 `REG.metadata` 完全隔离。
 - [ ] 确认并测试大并发下，SDK 版的 sqlite 连接池稳定性。
+  - 建议使用 `locust` 或 `k6` 进行压力测试。

@@ -12,26 +12,20 @@ logger = logging.getLogger(__name__)
 
 def run_migrations(alembic_cfg_path: str, db_url: str = None, tag: str = "main"):
     """Generic function to run alembic migrations."""
-    print(f"Running Alembic migrations for [{tag}]...")
+    logger.info(f"Running Alembic migrations for [{tag}]...")
     try:
         if not os.path.exists(alembic_cfg_path):
-            print(f"Warning: alembic.ini not found at {alembic_cfg_path}. Skipping migrations for {tag}.")
+            logger.warning(f"alembic.ini not found at {alembic_cfg_path}. Skipping migrations for {tag}.")
             return
 
         alembic_cfg = Config(alembic_cfg_path)
         if db_url:
             alembic_cfg.set_main_option("sqlalchemy.url", db_url)
         
-        # In case we are running from a different directory, adjust script_location if it is relative
-        # script_location = alembic_cfg.get_main_option("script_location")
-        # if not os.path.isabs(script_location):
-        #     base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        #     alembic_cfg.set_main_option("script_location", os.path.join(base_dir, script_location))
-
         command.upgrade(alembic_cfg, "head")
-        print(f"Alembic migrations for [{tag}] applied successfully.")
+        logger.info(f"Alembic migrations for [{tag}] applied successfully.")
     except Exception as e:
-        print(f"Error running Alembic migrations for [{tag}]: {e}")
+        logger.error(f"Error running Alembic migrations for [{tag}]: {e}")
 
 def init_db():
     base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -43,7 +37,7 @@ def init_db():
     
     needs_init = not os.path.exists(db_path) or os.path.getsize(db_path) == 0
     if needs_init:
-        print(f"Initializing main database at {db_path}...")
+        logger.info(f"Initializing main database at {db_path}...")
         try:
             conn = sqlite3.connect(db_path)
             with open(sql_path, 'r', encoding='utf-8') as f:
@@ -51,13 +45,13 @@ def init_db():
             conn.executescript(sql_script)
             conn.commit()
             conn.close()
-            print("Main database initialized successfully with init.sql.")
+            logger.info("Main database initialized successfully with init.sql.")
         except Exception as e:
-            print(f"Error initializing main database: {e}")
+            logger.error(f"Error initializing main database: {e}")
             # If main init fails, we probably shouldn't continue
             return
     else:
-        print("Main database already exists. Skipping SQL initialization.")
+        logger.debug("Main database already exists. Skipping SQL initialization.")
 
     # --- 2. Run Main Alembic Migrations ---
     main_alembic_cfg = os.path.join(base_dir, "alembic.ini")
@@ -68,11 +62,13 @@ def init_db():
     run_migrations(memo_alembic_cfg, settings.MEMOBASE_DB_URL, tag="memobase")
 
     # --- 4. Initialize Memobase Static Data ---
-    print("Initializing Memobase static data...")
+    logger.info("Initializing Memobase static data...")
     try:
         init_memo_db(settings.MEMOBASE_DB_URL)
         with MemoSession() as session:
             MemoProject.initialize_root_project(session)
-        print("Memobase static data initialized successfully.")
+        logger.info("Memobase static data initialized successfully.")
     except Exception as e:
-        print(f"Error initializing Memobase static data: {e}")
+        logger.error(f"Error initializing Memobase static data: {e}")
+        # Memobase is critical for memory features, raise to halt startup
+        raise

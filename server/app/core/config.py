@@ -12,7 +12,7 @@ class Settings(BaseSettings):
 
     # Memobase SDK Configuration
     MEMOBASE_DB_URL: str = f"sqlite:///{os.path.join(DATA_DIR, 'memobase.db')}"
-    MEMOBASE_LLM_API_KEY: str = "sk-..."
+    MEMOBASE_LLM_API_KEY: str = ""  # Required: Set via environment variable
     MEMOBASE_LLM_BASE_URL: str | None = None
     MEMOBASE_BEST_LLM_MODEL: str = "gpt-4o-mini"
     

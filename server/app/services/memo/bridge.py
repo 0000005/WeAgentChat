@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from typing import List, Optional
 from app.core.config import settings
 from app.vendor.memobase_server.connectors import init_db
@@ -60,12 +61,14 @@ async def initialize_memo_sdk():
     init_db(settings.MEMOBASE_DB_URL)
     
     # 4. Perform Sanity Checks (Optional but recommended)
+    logger = logging.getLogger(__name__)
     try:
         await check_embedding_sanity()
         await llm_sanity_check()
+        logger.info("Memobase SDK sanity checks passed.")
     except Exception as e:
-        # In production, we might just log this instead of failing hard
-        print(f"Memobase SDK Sanity Check Failed: {e}")
+        # Log warning but don't fail - allows graceful degradation
+        logger.warning(f"Memobase SDK Sanity Check Failed: {e}. Memory features may not work correctly.")
     
     # 5. Start background worker
     worker_task = asyncio.create_task(start_memobase_worker(interval_s=60))
