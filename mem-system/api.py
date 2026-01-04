@@ -8,7 +8,6 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.middleware.cors import CORSMiddleware
 from memobase_server.connectors import (
     close_connection,
-    init_redis_pool,
 )
 from memobase_server import api_layer
 from memobase_server.env import LOG
@@ -20,7 +19,6 @@ from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_redis_pool()
     await check_embedding_sanity()
     await llm_sanity_check()
     LOG.info(f"Start Memobase Server {memobase_server.__version__} 🖼️")

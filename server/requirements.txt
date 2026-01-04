@@ -7,3 +7,4 @@ httpx
 openai
 openai-agents
 python-multipart
+alembic

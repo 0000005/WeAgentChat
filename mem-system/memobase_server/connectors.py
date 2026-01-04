@@ -1,16 +1,13 @@
 import os
 import asyncio
-import redis.exceptions as redis_exceptions
-import redis.asyncio as redis
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import OperationalError
-from uuid import uuid4
 from .env import LOG
 from .models.database import REG, Project, UserEvent, UserEventGist
+from .memory_store import LocalMemoryCache
 
 DATABASE_URL = os.getenv("DATABASE_URL")
-REDIS_URL = os.getenv("REDIS_URL")
 PROJECT_ID = os.getenv("PROJECT_ID")
 ADMIN_URL = os.getenv("ADMIN_URL")
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN")
@@ -20,7 +17,6 @@ if PROJECT_ID is None:
     PROJECT_ID = "default"
 LOG.info(f"Project ID: {PROJECT_ID}")
 LOG.info(f"Database URL: {DATABASE_URL}")
-LOG.info(f"Redis URL: {REDIS_URL}")
 
 # Create an engine
 DB_ENGINE = create_engine(
@@ -33,7 +29,6 @@ DB_ENGINE = create_engine(
     pool_reset_on_return="commit",  # Ensure clean state when connections are returned
     echo_pool=False,  # Set to True for debugging pool issues
 )
-REDIS_POOL = None
 
 Session = sessionmaker(bind=DB_ENGINE)
 
@@ -74,33 +69,17 @@ def db_health_check() -> bool:
 
 
 async def redis_health_check() -> bool:
-    try:
-        async with get_redis_client() as redis_client:
-            await redis_client.ping()
-    except redis_exceptions.ConnectionError as e:
-        LOG.error(f"Redis connection failed: {e}")
-        return False
-    else:
-        return True
+    # Always true for in-memory
+    return True
 
 
 async def close_connection():
     DB_ENGINE.dispose()
-    if REDIS_POOL is not None:
-        await REDIS_POOL.aclose()
     LOG.info("Connections closed")
 
 
-def init_redis_pool():
-    global REDIS_POOL
-    REDIS_POOL = redis.ConnectionPool.from_url(REDIS_URL, decode_responses=True)
-
-
-def get_redis_client() -> redis.Redis:
-    if REDIS_POOL is not None:
-        return redis.Redis(connection_pool=REDIS_POOL, decode_responses=True)
-    else:
-        return redis.Redis.from_url(REDIS_URL, decode_responses=True)
+def get_redis_client() -> LocalMemoryCache:
+    return LocalMemoryCache()
 
 
 def get_pool_status() -> dict:
