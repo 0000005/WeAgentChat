@@ -21,6 +21,11 @@ export const useSessionStore = defineStore('session', () => {
     const isLoading = ref(false)
     const isStreaming = ref(false)
 
+    // Current specific session ID (if not null, show only this session's messages)
+    const currentSessionId = ref<number | null>(null)
+    const currentSessions = ref<ChatAPI.ChatSession[]>([])
+    const fetchError = ref<string | null>(null)
+
     // Get messages for current friend
     const currentMessages = computed(() => {
         if (!currentFriendId.value) return []
@@ -44,12 +49,66 @@ export const useSessionStore = defineStore('session', () => {
         }
     }
 
+    // Fetch all sessions for a specific friend
+    const fetchFriendSessions = async (friendId: number) => {
+        fetchError.value = null
+        try {
+            const sessions = await ChatAPI.getFriendSessions(friendId)
+            currentSessions.value = sessions
+        } catch (error) {
+            console.error(`Failed to fetch sessions for friend ${friendId}:`, error)
+            fetchError.value = '无法加载会话列表，请检查网络连接。'
+        }
+    }
+
+    // Reset to merged view (all messages for the friend)
+    const resetToMergedView = async () => {
+        if (!currentFriendId.value) return
+        currentSessionId.value = null
+        isLoading.value = true
+        try {
+            await fetchFriendMessages(currentFriendId.value)
+        } finally {
+            isLoading.value = false
+        }
+    }
+
+    // Load messages for a SPECIFIC session
+    const loadSpecificSession = async (sessionId: number) => {
+        currentSessionId.value = sessionId
+        isLoading.value = true
+        try {
+            const apiMessages = await ChatAPI.getMessages(sessionId)
+            const mappedMessages = apiMessages.map(m => ({
+                id: m.id,
+                role: m.role as 'user' | 'assistant' | 'system',
+                content: m.content,
+                createdAt: new Date(m.create_time).getTime(),
+                sessionId: m.session_id
+            }))
+
+            // For now, we reuse the same list but clear it if we are switching to a specific session
+            // In a more persistent setup, we might want a separate map for sessions
+            if (currentFriendId.value) {
+                messagesMap.value[currentFriendId.value] = mappedMessages
+            }
+        } catch (error) {
+            console.error(`Failed to load session ${sessionId}:`, error)
+        } finally {
+            isLoading.value = false
+        }
+    }
+
     // Select a friend and load their chat history
     const selectFriend = async (friendId: number) => {
         currentFriendId.value = friendId
+        currentSessionId.value = null // Reset to default merged/latest view
         isLoading.value = true
         try {
-            await fetchFriendMessages(friendId)
+            await Promise.all([
+                fetchFriendMessages(friendId),
+                fetchFriendSessions(friendId)
+            ])
         } finally {
             isLoading.value = false
         }
@@ -86,7 +145,10 @@ export const useSessionStore = defineStore('session', () => {
         messagesMap.value[friendId].push(assistantMsg.value)
 
         try {
-            const stream = ChatAPI.sendMessageToFriendStream(friendId, { content, enable_thinking: enableThinking })
+            // 如果当前正在查看特定会话，则按会话 ID 发送消息；否则按好友 ID 发送（由后端自动寻址）
+            const stream = currentSessionId.value
+                ? ChatAPI.sendMessageStream(currentSessionId.value, { content, enable_thinking: enableThinking })
+                : ChatAPI.sendMessageToFriendStream(friendId, { content, enable_thinking: enableThinking })
 
             for await (const { event, data } of stream) {
                 const msgIndex = messagesMap.value[friendId].findIndex(m => m.id === assistantMsgId)
@@ -111,6 +173,8 @@ export const useSessionStore = defineStore('session', () => {
                         messagesMap.value[friendId][msgIndex].id = data.message_id
                     }
                     isStreaming.value = false
+                    // 异步刷新会话列表统计
+                    fetchFriendSessions(friendId)
                 }
             }
 
@@ -135,14 +199,22 @@ export const useSessionStore = defineStore('session', () => {
         currentFriendId,
         messagesMap,
         currentMessages,
+        currentSessions,
+        currentSessionId,
+        fetchError,
         isLoading,
         isStreaming,
         selectFriend,
         sendMessage,
         fetchFriendMessages,
+        fetchFriendSessions,
+        loadSpecificSession,
+        resetToMergedView,
         clearFriendMessages,
         startNewSession: async () => {
             if (!currentFriendId.value) return
+
+            currentSessionId.value = null // 重置为活跃视图
 
             // Prevent multiple consecutive new sessions
             const messages = messagesMap.value[currentFriendId.value]
@@ -155,6 +227,7 @@ export const useSessionStore = defineStore('session', () => {
 
             try {
                 await ChatAPI.createSession({ friend_id: currentFriendId.value })
+                await fetchFriendSessions(currentFriendId.value) // 刷新会话列表
                 // Add system message manually to the local list
                 if (!messagesMap.value[currentFriendId.value]) {
                     messagesMap.value[currentFriendId.value] = []

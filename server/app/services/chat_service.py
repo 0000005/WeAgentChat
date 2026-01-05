@@ -158,6 +158,76 @@ def get_sessions_by_friend(db: Session, friend_id: int) -> List[ChatSession]:
         .all()
     )
 
+def get_sessions_with_stats_by_friend(db: Session, friend_id: int) -> List[dict]:
+    """
+    获取指定好友的所有会话，包含消息计数和预览，已优化性能。
+    """
+    from sqlalchemy import func
+    
+    # 按照最近更新时间倒序获取会话
+    sessions = (
+        db.query(ChatSession)
+        .filter(ChatSession.friend_id == friend_id, ChatSession.deleted == False)
+        .order_by(ChatSession.update_time.desc())
+        .all()
+    )
+    
+    if not sessions:
+        return []
+
+    session_ids = [s.id for s in sessions]
+    
+    # 批量获取所有会话的消息计数
+    counts_query = (
+        db.query(Message.session_id, func.count(Message.id).label('count'))
+        .filter(Message.session_id.in_(session_ids), Message.deleted == False)
+        .group_by(Message.session_id)
+        .all()
+    )
+    counts_map = {row.session_id: row.count for row in counts_query}
+
+    # 批量获取每个会话的最后一条消息内容
+    # 对于每个会话，获取最新的消息 ID
+    latest_msg_ids_subq = (
+        db.query(Message.session_id, func.max(Message.id).label('max_id'))
+        .filter(Message.session_id.in_(session_ids), Message.deleted == False)
+        .group_by(Message.session_id)
+        .subquery()
+    )
+    
+    latest_messages = (
+        db.query(Message)
+        .join(latest_msg_ids_subq, Message.id == latest_msg_ids_subq.c.max_id)
+        .all()
+    )
+    previews_map = {}
+    for msg in latest_messages:
+        role_name = "AI" if msg.role == "assistant" else "我"
+        text = msg.content[:50]
+        previews_map[msg.session_id] = f"{role_name}: {text}{'...' if len(msg.content) > 50 else ''}"
+
+    # 第一个是活跃会话（因为按 update_time 倒序排列）
+    active_session_id = sessions[0].id
+
+    result = []
+    for s in sessions:
+        res_dict = {
+            "id": s.id,
+            "friend_id": s.friend_id,
+            "title": s.title,
+            "create_time": s.create_time,
+            "update_time": s.update_time,
+            "deleted": s.deleted,
+            "memory_generated": s.memory_generated,
+            "last_message_time": s.last_message_time or s.update_time,
+            "message_count": counts_map.get(s.id, 0),
+            "last_message_preview": previews_map.get(s.id, ""),
+            "is_active": s.id == active_session_id
+        }
+        result.append(res_dict)
+        
+    return result
+
 def get_or_create_session_for_friend(db: Session, friend_id: int) -> ChatSession:
     """
     获取好友最近的会话，如果已超时或不存在则创建新会话。
@@ -670,6 +740,12 @@ async def send_message_stream(db: Session, session_id: int, message_in: chat_sch
     now = datetime.now()
     db_session.update_time = now
     db_session.last_message_time = now
+    
+    # 如果该会话之前已归档，产生新消息后重置为“未处理”状态，以便再次扫描记忆
+    if db_session.memory_generated:
+        db_session.memory_generated = False
+        logger.info(f"[Session Stream] Resetting memory_generated=False for session {session_id} due to new message.")
+        
     db.commit()
     db.refresh(ai_msg)
 

@@ -5,6 +5,11 @@ export interface ChatSession {
   create_time: string
   update_time: string
   deleted: boolean
+  // 以下是统计字段，仅在获取列表时提供
+  message_count?: number
+  last_message_preview?: string
+  is_active?: boolean
+  memory_generated?: boolean
 }
 
 export interface ChatSessionCreate {
@@ -197,6 +202,14 @@ export async function getFriendMessages(friendId: number, skip: number = 0, limi
   const response = await fetch(`/api/chat/friends/${friendId}/messages?${params}`)
   if (!response.ok) {
     throw new Error('Failed to fetch friend messages')
+  }
+  return response.json()
+}
+
+export async function getFriendSessions(friendId: number): Promise<ChatSession[]> {
+  const response = await fetch(`/api/chat/friends/${friendId}/sessions`)
+  if (!response.ok) {
+    throw new Error('Failed to fetch friend sessions')
   }
   return response.json()
 }

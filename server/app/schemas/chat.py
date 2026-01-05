@@ -47,3 +47,8 @@ class ChatSessionRead(ChatSessionBase):
     class Config:
         from_attributes = True
 
+class ChatSessionReadWithStats(ChatSessionRead):
+    message_count: int = 0
+    last_message_preview: Optional[str] = None
+    is_active: bool = False
+

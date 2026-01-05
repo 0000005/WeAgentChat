@@ -122,6 +122,18 @@ def read_friend_messages(
     messages = chat_service.get_messages_by_friend(db, friend_id=friend_id, skip=skip, limit=limit)
     return messages
 
+@router.get("/friends/{friend_id}/sessions", response_model=List[chat_schemas.ChatSessionReadWithStats])
+def read_friend_sessions(
+    *,
+    db: Session = Depends(deps.get_db),
+    friend_id: int,
+):
+    """
+    Get all chat sessions for a specific friend with statistics.
+    """
+    sessions = chat_service.get_sessions_with_stats_by_friend(db, friend_id=friend_id)
+    return sessions
+
 @router.post("/friends/{friend_id}/messages")
 async def send_message_to_friend(
     *,
