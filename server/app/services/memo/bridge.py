@@ -359,15 +359,23 @@ class MemoService:
         cls, 
         user_id: str, 
         space_id: str, 
-        messages: List[OpenAICompatibleMessage]
+        messages: List[OpenAICompatibleMessage],
+        fields: dict = None
     ) -> IdData:
         """
         Inserts a chat record into the buffer for memory processing.
+        
+        Args:
+            user_id: User identifier
+            space_id: Space/project identifier
+            messages: Chat messages in OpenAI format
+            fields: Optional metadata (e.g., friend_id, session_id, archived_at)
         """
         chat_blob = ChatBlob(messages=messages)
         blob_data = BlobData(
             blob_type=BlobType.chat,
-            blob_data=chat_blob.get_blob_data()
+            blob_data=chat_blob.get_blob_data(),
+            fields=fields or {}
         )
         promise = await insert_blob(
             user_id=user_id, 

@@ -7,6 +7,8 @@ from fastapi.responses import JSONResponse
 from app.core.config import settings
 from app.api.api import api_router
 from app.db.init_db import init_db
+from app.db.session import SessionLocal
+from app.services.chat_service import check_and_archive_expired_sessions
 
 # 配置日志 - 确保异常能输出到控制台
 logging.basicConfig(
@@ -24,6 +26,25 @@ async def lifespan(app: FastAPI):
     from app.services.memo import initialize_memo_sdk
     memo_worker_task = await initialize_memo_sdk()
     
+    # Start Session Archiver Task (Every 1 minute)
+    async def run_session_archiver():
+        logger.info("Starting session archiver background task...")
+        while True:
+            try:
+                with SessionLocal() as db:
+                     count = check_and_archive_expired_sessions(db)
+                     if count > 0:
+                         logger.info(f"Session archiver: archived {count} expired sessions.")
+                await asyncio.sleep(60)  # 1 minute
+            except asyncio.CancelledError:
+                logger.info("Session archiver task cancelled.")
+                break
+            except Exception as e:
+                logger.error(f"Error in session archiver task: {e}")
+                await asyncio.sleep(60)
+
+    archiver_task = asyncio.create_task(run_session_archiver())
+    
     yield
     
     # Clean up
@@ -31,6 +52,13 @@ async def lifespan(app: FastAPI):
         memo_worker_task.cancel()
         try:
             await memo_worker_task
+        except asyncio.CancelledError:
+            pass
+
+    if archiver_task:
+        archiver_task.cancel()
+        try:
+            await archiver_task
         except asyncio.CancelledError:
             pass
 

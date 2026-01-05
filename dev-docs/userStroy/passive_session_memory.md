@@ -103,7 +103,7 @@
 
 #### C. 定时任务 (Background Task)
 在 `app/main.py` 的 lifespan 中启动周期性任务：
-- **执行频率**：每 10 分钟扫描一次。
+- **执行频率**：每 1 分钟扫描一次。
 - **扫描逻辑**：
   ```sql
   SELECT * FROM chat_sessions 
@@ -177,16 +177,17 @@
 | **后端 API** | `/api/settings/{group_name}` (分组查询/批量更新) | `server/app/api/endpoints/settings.py` | RESTful 设计 |
 | **后端 API** | `/api/settings/{group_name}/{key}` (单项查询/更新) | `server/app/api/endpoints/settings.py` | PUT 使用 Request Body |
 | **业务逻辑** | 被动会话超时判定 (`get_or_create_session_for_friend`) | `server/app/services/chat_service.py` | 读取 `session.passive_timeout` |
-| **业务逻辑** | `archive_session` 函数 (边界检查 + 标记) | `server/app/services/chat_service.py` | 消息数 < 2 跳过 |
+| **业务逻辑** | `archive_session` 函数 (边界检查 + Memobase SDK 集成) | `server/app/services/chat_service.py` | 消息数 < 2 跳过，metadata 传递 |
 | **数据库迁移** | 索引状态一致性修复 | `server/alembic/versions/fix_001_*.py` | 幂等处理 |
 
-### 🚧 进行中 / 待开发
+### ✅ 后端已完成 (含优化)
 
-| 模块 | 功能 | 优先级 | 备注 |
+| 模块 | 功能 | 相关文件 | 备注 |
 | :--- | :--- | :--- | :--- |
-| **后端 - 记忆集成** | `archive_session` 调用 Memobase SDK 提取摘要 | 🔴 高 | 当前仅做标记，TODO 实现 |
-| **后端 - 定时任务** | 周期性扫描过期会话并归档 | 🟡 中 | 在 `main.py` lifespan 中实现 |
-| **后端 - 手动新建会话** | 新建会话时强制归档旧会话 | 🟡 中 | 需更新 `create_session` 逻辑 |
+| **后端 - 记忆集成** | `archive_session` 调用 Memobase SDK 提取摘要 | `server/app/services/chat_service.py` | ✅ 异步调用 + metadata 传递 (friend_id, session_id, archived_at) |
+| **后端 - 定时任务** | 周期性扫描过期会话并归档 (每1分钟) | `server/app/main.py` | ✅ 启动时立即执行首次扫描 |
+| **后端 - 手动新建会话** | 新建会话时强制归档旧会话 | `server/app/services/chat_service.py` | ✅ 使用 ID 列表避免对象状态问题 |
+| **SDK 接口扩展** | `MemoService.insert_chat` 支持 metadata | `server/app/services/memo/bridge.py` | ✅ 新增 `fields` 参数 |
 
 ### ✅ 前端已完成
 

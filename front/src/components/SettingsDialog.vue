@@ -275,13 +275,7 @@ const originalSetTab = (tab: string) => {
                                     </p>
                                 </div>
 
-                                <div class="p-4 bg-gray-50 rounded-lg border border-gray-100">
-                                    <h4 class="text-sm font-medium text-gray-700 mb-2">当前配置</h4>
-                                    <div class="text-sm text-gray-600">
-                                        <p>• 会话过期时间：<span class="font-mono">{{ passiveTimeoutMinutes }}</span> 分钟（{{ passiveTimeout }} 秒）</p>
-                                        <p class="mt-1 text-xs text-gray-400">系统将在用户停止聊天后自动处理会话归档和记忆提取。</p>
-                                    </div>
-                                </div>
+
                             </div>
                         </div>
                     </template>

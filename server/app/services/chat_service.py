@@ -7,7 +7,7 @@ from app.models.chat import ChatSession, Message
 from app.models.friend import Friend
 from app.models.llm import LLMConfig
 from app.schemas import chat as chat_schemas
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # Initialize logger for this module
 logger = logging.getLogger(__name__)
@@ -50,7 +50,25 @@ def get_session(db: Session, session_id: int) -> Optional[ChatSession]:
 def create_session(db: Session, session_in: chat_schemas.ChatSessionCreate) -> ChatSession:
     """
     Create a new chat session.
+    手动新建会话时，强制归档该好友现有的活跃会话。
     """
+    # 检查是否存在未归档的活跃会话，仅提取 ID 列表
+    existing_session_ids = [
+        s.id for s in db.query(ChatSession.id)
+        .filter(
+            ChatSession.friend_id == session_in.friend_id,
+            ChatSession.deleted == False,
+            ChatSession.memory_generated == False
+        )
+        .all()
+    ]
+    
+    # 强制归档所有旧会话
+    for session_id in existing_session_ids:
+        logger.info(f"[Create Session] Force archiving old session {session_id} for friend {session_in.friend_id}")
+        archive_session(db, session_id)
+    
+    # 创建新会话
     db_session = ChatSession(
         friend_id=session_in.friend_id,
         title=session_in.title or "新对话"
@@ -187,8 +205,9 @@ def get_or_create_session_for_friend(db: Session, friend_id: int) -> ChatSession
 
 def archive_session(db: Session, session_id: int):
     """
-    将指定会话归档并准备生成记忆。
+    将指定会话归档并准备生成记忆（同步版本）。
     - 消息数 < 2 的会话跳过记忆生成，仅标记为已处理。
+    - 调用 Memobase SDK 异步生成记忆摘要。
     """
     session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
     if not session:
@@ -211,11 +230,91 @@ def archive_session(db: Session, session_id: int):
         logger.info(f"[Archive] Session {session_id} skipped (msg_count={msg_count} < 2). Marked as processed.")
         return
 
-    # TODO: 真正调用记忆系统 SDK 提取摘要
-    # 目前仅做标记
+    # 提取消息上下文
+    messages = (
+        db.query(Message)
+        .filter(
+            Message.session_id == session_id,
+            Message.deleted == False,
+            Message.role.in_(["user", "assistant"])
+        )
+        .order_by(Message.create_time.asc())
+        .all()
+    )
+    
+    # 格式化为 OpenAI 兼容格式
+    openai_messages = [{"role": m.role, "content": m.content} for m in messages]
+    
+    # 获取好友信息用于 metadata
+    friend = db.query(Friend).filter(Friend.id == session.friend_id).first()
+    friend_id = session.friend_id
+    friend_name = friend.name if friend else "Unknown"
+    
+    # 调用 Memobase SDK 异步任务（在后台执行）
+    import asyncio
+    loop = asyncio.get_running_loop()
+    asyncio.create_task(_archive_session_async(
+        session_id=session_id,
+        openai_messages=openai_messages,
+        friend_id=friend_id,
+        friend_name=friend_name
+    ))
+    logger.info(f"[Archive] Session {session_id} memory generation task scheduled.")
+    
+    # 标记为已处理
     session.memory_generated = True
     db.commit()
-    logger.info(f"[Archive] Session {session_id} SUCCESSFULLY archived. Ready for memory generation (TODO).")
+    logger.info(f"[Archive] Session {session_id} marked as archived.")
+
+
+async def _archive_session_async(
+    session_id: int,
+    openai_messages: List[dict],
+    friend_id: int,
+    friend_name: str
+):
+    """
+    异步执行记忆生成任务。
+    调用 Memobase SDK 插入聊天记录并触发摘要提取。
+    """
+    from app.services.memo.bridge import MemoService, MemoServiceException
+    from app.vendor.memobase_server.models.blob import BlobType
+    from datetime import datetime
+    
+    # 硬编码用户和空间 ID（单用户模式，未来需从 Session/Context 获取）
+    user_id = "default_user"
+    space_id = "default"
+    
+    try:
+        # 1. 确保用户存在
+        await MemoService.ensure_user(user_id=user_id, space_id=space_id)
+        
+        # 2. 插入聊天记录到 buffer，包含 metadata
+        result = await MemoService.insert_chat(
+            user_id=user_id,
+            space_id=space_id,
+            messages=openai_messages,
+            fields={
+                "friend_id": str(friend_id),
+                "friend_name": friend_name,
+                "session_id": str(session_id),
+                "archived_at": datetime.now().isoformat()
+            }
+        )
+        logger.info(f"[Archive Async] Session {session_id} chat inserted with metadata. Blob ID: {result.id if hasattr(result, 'id') else result}")
+        
+        # 3. 立即触发 buffer flush 以生成摘要
+        await MemoService.trigger_buffer_flush(
+            user_id=user_id,
+            space_id=space_id,
+            blob_type=BlobType.chat
+        )
+        logger.info(f"[Archive Async] Session {session_id} buffer flush triggered. Memory generation complete.")
+        
+    except MemoServiceException as e:
+        logger.error(f"[Archive Async] Session {session_id} Memobase SDK error: {e}")
+    except Exception as e:
+        logger.error(f"[Archive Async] Session {session_id} unexpected error: {e}")
 
 async def send_message(db: Session, session_id: int, message_in: chat_schemas.MessageCreate) -> Message:
     """
@@ -588,3 +687,42 @@ async def send_message_stream(db: Session, session_id: int, message_in: chat_sch
             "message_id": ai_msg.id
         }
     }
+
+def check_and_archive_expired_sessions(db: Session) -> int:
+    """
+    检查并归档所有过期的会话。
+    用于后台定时任务。
+    """
+    from app.services.settings_service import SettingsService
+    timeout = SettingsService.get_setting(db, "session", "passive_timeout", 1800)
+    
+    # Calculate threshold time
+    threshold_time = datetime.now() - timedelta(seconds=timeout)
+    
+    # Query candidate sessions
+    # memory_generated = False AND deleted = False AND last_message_time < threshold
+    # 注意：last_message_time 为 NULL 的会话（新建但无消息）会被自动过滤，符合预期
+    candidates = (
+        db.query(ChatSession)
+        .filter(
+            ChatSession.memory_generated == False,
+            ChatSession.deleted == False,
+            ChatSession.last_message_time < threshold_time  # NULL 值自动过滤
+        )
+        .all()
+    )
+    
+    if not candidates:
+        return 0
+        
+    logger.info(f"[Background Task] Found {len(candidates)} expired sessions. Archiving...")
+    
+    count = 0
+    for session in candidates:
+        try:
+            archive_session(db, session.id)
+            count += 1
+        except Exception as e:
+            logger.error(f"[Background Task] Error archiving session {session.id}: {str(e)}")
+            
+    return count
