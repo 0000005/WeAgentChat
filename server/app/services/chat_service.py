@@ -9,6 +9,9 @@ from app.models.llm import LLMConfig
 from app.schemas import chat as chat_schemas
 from datetime import datetime
 
+# Initialize logger for this module
+logger = logging.getLogger(__name__)
+
 # SSE Debug logger
 sse_logger = logging.getLogger("sse_debug")
 sse_logger.setLevel(logging.DEBUG)
@@ -143,7 +146,7 @@ def get_or_create_session_for_friend(db: Session, friend_id: int) -> ChatSession
     """
     from app.services.settings_service import SettingsService
     timeout = SettingsService.get_setting(db, "session", "passive_timeout", 1800)
-
+    
     # 查找受该好友最近的一个非删除会话
     session = (
         db.query(ChatSession)
@@ -155,21 +158,30 @@ def get_or_create_session_for_friend(db: Session, friend_id: int) -> ChatSession
     if session:
         # 判定是否超时
         if session.last_message_time:
-            # 兼容：如果 last_message_time 还是 None，且已存在会话，可能需要根据 update_time 判定或直接返回
-            elapsed = (datetime.now() - session.last_message_time).total_seconds()
+            now_time = datetime.now()
+            elapsed = (now_time - session.last_message_time).total_seconds()
+            
+            logger.info(f"[Session Check] Session {session.id} (Friend {friend_id}): Last msg {session.last_message_time}, Elapsed {elapsed:.1f}s, Timeout {timeout}s")
+            
             if elapsed > timeout:
+                logger.info(f"[Session Check] Session {session.id} EXPIRED. Triggering archive...")
                 # 触发归档逻辑（异步或标记）
                 archive_session(db, session.id)
                 session = None # 强制进入下面的创建逻辑
+            else:
+                logger.info(f"[Session Check] Session {session.id} ACTIVE. Continuing.")
         else:
+            logger.info(f"[Session Check] Session {session.id} has no last_message_time. Treated as ACTIVE/NEW.")
             # 如果没有 last_message_time，可能是一个刚创建的空会话，直接使用
             return session
 
     if not session:
+        logger.info(f"[Session Check] Creating NEW session for friend {friend_id}...")
         # 创建新会话
         from app.schemas.chat import ChatSessionCreate
         session_in = ChatSessionCreate(friend_id=friend_id)
         session = create_session(db, session_in=session_in)
+        logger.info(f"[Session Check] New session {session.id} created.")
     
     return session
 
@@ -178,9 +190,13 @@ def archive_session(db: Session, session_id: int):
     将指定会话归档并准备生成记忆。
     - 消息数 < 2 的会话跳过记忆生成，仅标记为已处理。
     """
-    logger = logging.getLogger(__name__)
     session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
-    if not session or session.memory_generated:
+    if not session:
+        logger.warning(f"[Archive] Session {session_id} not found.")
+        return
+    
+    if session.memory_generated:
+        logger.info(f"[Archive] Session {session_id} already archived (memory_generated=True). Skipping.")
         return
 
     # 边界检查：消息数 < 2 跳过
@@ -192,14 +208,14 @@ def archive_session(db: Session, session_id: int):
     if msg_count < 2:
         session.memory_generated = True  # 标记为已处理但无需生成记忆
         db.commit()
-        logger.info(f"Session {session_id} skipped (msg_count={msg_count}).")
+        logger.info(f"[Archive] Session {session_id} skipped (msg_count={msg_count} < 2). Marked as processed.")
         return
 
     # TODO: 真正调用记忆系统 SDK 提取摘要
     # 目前仅做标记
     session.memory_generated = True
     db.commit()
-    logger.info(f"Session {session_id} archived.")
+    logger.info(f"[Archive] Session {session_id} SUCCESSFULLY archived. Ready for memory generation (TODO).")
 
 async def send_message(db: Session, session_id: int, message_in: chat_schemas.MessageCreate) -> Message:
     """
