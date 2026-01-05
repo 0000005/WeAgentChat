@@ -4,7 +4,7 @@ from app.services.memo.constants import DEFAULT_USER_ID, DEFAULT_SPACE_ID
 from app.schemas.memory import (
     ProfileCreate, ProfileUpdate, ConfigUpdate, BatchDeleteRequest, StatusResponse, CreateProfileResponse
 )
-from app.vendor.memobase_server.models.response import UserProfilesData, ProfileConfigData
+from app.vendor.memobase_server.models.response import UserProfilesData, ProfileConfigData, UserEventGistsData
 
 router = APIRouter()
 
@@ -144,5 +144,23 @@ async def delete_single_profile(
             profile_ids=[profile_id]
         )
         return StatusResponse()
+    except MemoServiceException as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.get(
+    "/events_gists", 
+    response_model=UserEventGistsData,
+    summary="获取好友记忆列表",
+    description="获取指定好友的事件摘要列表（Gists）。"
+)
+async def get_friend_event_gists(friend_id: int, limit: int = 50):
+    await ensure_defaults()
+    try:
+        return await MemoService.filter_friend_event_gists(
+            user_id=DEFAULT_USER_ID, 
+            space_id=DEFAULT_SPACE_ID, 
+            friend_id=friend_id,
+            topk=limit
+        )
     except MemoServiceException as e:
         raise HTTPException(status_code=400, detail=str(e))

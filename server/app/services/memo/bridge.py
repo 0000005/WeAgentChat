@@ -5,9 +5,13 @@ from app.core.config import settings
 from app.db.session import SessionLocal
 from app.models.llm import LLMConfig
 from app.models.embedding import EmbeddingSetting
-from app.vendor.memobase_server.connectors import init_db
+from app.vendor.memobase_server.connectors import init_db, Session
 from app.vendor.memobase_server.env import reinitialize_config
 from app.vendor.memobase_server.controllers.buffer_background import start_memobase_worker
+from app.vendor.memobase_server.models.database import UserEvent, UserEventGist
+from app.vendor.memobase_server.utils import to_uuid
+from sqlalchemy import text, desc
+from datetime import datetime, timedelta
 
 # SDK Controllers
 from app.vendor.memobase_server.controllers.user import get_user, create_user, delete_user
@@ -28,7 +32,8 @@ from app.vendor.memobase_server.controllers.project import (
 
 # SDK Models
 from app.vendor.memobase_server.models.response import (
-    UserProfilesData, ContextData, IdData, UserData, UserEventGistsData, IdsData, UserEventsData, ProfileConfigData
+    UserProfilesData, ContextData, IdData, UserData, UserEventGistsData, IdsData, UserEventsData, ProfileConfigData,
+    EventGistData, UserEventGistData
 )
 from app.vendor.memobase_server.models.blob import BlobData, BlobType, ChatBlob, OpenAICompatibleMessage
 from app.vendor.memobase_server.models.utils import PromiseUnpackError
@@ -417,3 +422,53 @@ class MemoService:
         """
         promise = await update_project_profile_config(project_id=space_id, profile_config=profile_config)
         cls._unwrap(promise)
+
+    @classmethod
+    async def filter_friend_event_gists(
+        cls, user_id: str, space_id: str, friend_id: int, topk: int = 50
+    ) -> UserEventGistsData:
+        """
+        Filter event gists by friend_id tag.
+        """
+        user_id_uuid = to_uuid(user_id)
+        # Use a safe time window (e.g., last 365 days)
+        days_ago = datetime.utcnow() - timedelta(days=365)
+        
+        with Session() as session:
+            # Query UserEventGist and join with UserEvent to filter by tags
+            query = (
+                session.query(UserEventGist)
+                .join(UserEvent, UserEventGist.event_id == UserEvent.id)
+                .filter(
+                    UserEvent.user_id == user_id_uuid,
+                    UserEvent.project_id == space_id,
+                    UserEvent.created_at >= days_ago
+                )
+            )
+            
+            # Filter by exact tag-value pair (friend_id)
+            # SQLite specific JSON filtering
+            query = query.filter(text(
+                """
+                EXISTS (
+                    SELECT 1 
+                    FROM json_each(json_extract(user_events.event_data, '$.event_tags')) 
+                    WHERE json_extract(value, '$.tag') = 'friend_id' 
+                    AND json_extract(value, '$.value') = :friend_id
+                )
+                """
+            ).params(friend_id=str(friend_id)))
+            
+            gists = query.order_by(desc(UserEventGist.created_at)).limit(topk).all()
+            
+            result_gists = [
+                UserEventGistData(
+                    id=g.id,
+                    gist_data=EventGistData(**g.gist_data),
+                    created_at=g.created_at,
+                    updated_at=g.updated_at
+                )
+                for g in gists
+            ]
+            
+            return UserEventGistsData(gists=result_gists, events=[])

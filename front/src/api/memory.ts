@@ -19,6 +19,24 @@ export interface BatchDeleteRequest {
     profile_ids: string[]
 }
 
+export interface EventGistData {
+    content: string
+}
+
+export interface UserEventGist {
+    id: string
+    gist_data: EventGistData
+    created_at: string
+    updated_at: string
+}
+
+export interface UserEventGistsData {
+    gists: UserEventGist[]
+    events: any[]
+}
+
+// --- API Functions ---
+
 export async function getMemoryConfig(): Promise<ProfileConfig> {
     const response = await fetch('/api/memory/config')
     if (!response.ok) {
@@ -97,6 +115,14 @@ export async function deleteProfiles(ids: string[]): Promise<any> {
     })
     if (!response.ok) {
         throw new Error('Failed to delete profiles')
+    }
+    return response.json()
+}
+
+export async function getFriendEventGists(friendId: number, limit: number = 50): Promise<UserEventGistsData> {
+    const response = await fetch(`/api/memory/events_gists?friend_id=${friendId}&limit=${limit}`)
+    if (!response.ok) {
+        throw new Error('Failed to fetch friend event gists')
     }
     return response.json()
 }

@@ -15,8 +15,10 @@ import {
     Pin,
     Trash2,
     ChevronLeft,
-    CheckCircle2
+    CheckCircle2,
+    RefreshCw
 } from 'lucide-vue-next'
+import { getFriendEventGists, type UserEventGist } from '@/api/memory'
 
 interface MenuItem {
     id: string
@@ -38,7 +40,30 @@ const sessionStore = useSessionStore()
 const friendStore = useFriendStore()
 
 // 视图状态控制
-const viewState = ref<'menu' | 'sessions'>('menu')
+const viewState = ref<'menu' | 'sessions' | 'memories'>('menu')
+
+// 记忆相关状态
+const memories = ref<UserEventGist[]>([])
+const isLoadingMemories = ref(false)
+const fetchMemoriesError = ref<string | null>(null)
+
+const fetchMemories = async () => {
+    if (!sessionStore.currentFriendId) return
+    isLoadingMemories.value = true
+    fetchMemoriesError.value = null
+    try {
+        const data = await getFriendEventGists(sessionStore.currentFriendId)
+        memories.value = data.gists
+    } catch (err: any) {
+        fetchMemoriesError.value = err.message || '加载记忆失败'
+    } finally {
+        isLoadingMemories.value = false
+    }
+}
+
+const cleanGistContent = (content: string) => {
+    return content.trim().replace(/^- /, '')
+}
 
 // 获取当前好友信息
 const currentFriend = computed(() => {
@@ -93,6 +118,12 @@ const menuItems = computed<MenuItem[]>(() => [
 const handleMenuClick = (menuId: string) => {
     if (menuId === 'sessions') {
         viewState.value = 'sessions'
+        if (sessionStore.currentFriendId) {
+            sessionStore.fetchFriendSessions(sessionStore.currentFriendId)
+        }
+    } else if (menuId === 'memories') {
+        viewState.value = 'memories'
+        fetchMemories()
     } else {
         console.log(`Menu clicked: ${menuId}`)
     }
@@ -134,7 +165,7 @@ const formatTime = (dateStr?: string) => {
     <Sheet :open="open" @update:open="handleClose">
         <SheetContent side="right" class="w-[360px] sm:w-[360px] p-0 flex flex-col">
             <!-- Header: 动态切换 -->
-            <SheetHeader class="drawer-header" :class="{ 'header-white': viewState === 'sessions' }">
+            <SheetHeader class="drawer-header" :class="{ 'header-white': viewState !== 'menu' }">
                 <template v-if="viewState === 'menu'">
                     <div class="friend-info">
                         <div class="friend-avatar">
@@ -149,7 +180,9 @@ const formatTime = (dateStr?: string) => {
                             <ChevronLeft :size="20" />
                             <span>返回</span>
                         </button>
-                        <SheetTitle class="header-title">会话列表</SheetTitle>
+                        <SheetTitle class="header-title">
+                            {{ viewState === 'sessions' ? '会话列表' : '记忆列表' }}
+                        </SheetTitle>
                     </div>
                 </template>
             </SheetHeader>
@@ -166,6 +199,7 @@ const formatTime = (dateStr?: string) => {
             <!-- Sessions List View -->
             <div v-else-if="viewState === 'sessions'" class="session-history-list">
                 <div v-if="sessionStore.isLoading" class="list-loading">
+                    <RefreshCw class="animate-spin mr-2 h-4 w-4 inline" />
                     <span>加载中...</span>
                 </div>
                 <div v-else-if="sessionStore.fetchError" class="list-error">
@@ -213,6 +247,33 @@ const formatTime = (dateStr?: string) => {
                         </div>
                     </button>
                 </template>
+            </div>
+
+            <!-- Memories List View -->
+            <div v-else-if="viewState === 'memories'" class="memory-history-list">
+                <div v-if="isLoadingMemories" class="list-loading">
+                    <RefreshCw class="animate-spin mr-2 h-4 w-4 inline" />
+                    <span>加载中...</span>
+                </div>
+                <div v-else-if="fetchMemoriesError" class="list-error">
+                    <p>{{ fetchMemoriesError }}</p>
+                    <button class="retry-btn" @click="fetchMemories">重试</button>
+                </div>
+                <div v-else-if="memories.length === 0" class="list-empty">
+                    <Brain :size="48" class="empty-icon" />
+                    <p>暂无相关记忆</p>
+                    <span class="text-xs text-gray-400 mt-2">AI 会根据对话自动整理记忆</span>
+                </div>
+                <div v-else class="memory-items">
+                    <div v-for="memory in memories" :key="memory.id" class="memory-card">
+                        <div class="memory-content">
+                            {{ cleanGistContent(memory.gist_data.content) }}
+                        </div>
+                        <div class="memory-footer">
+                            <span class="memory-time">{{ formatTime(memory.created_at) }}</span>
+                        </div>
+                    </div>
+                </div>
             </div>
         </SheetContent>
     </Sheet>
@@ -404,6 +465,48 @@ const formatTime = (dateStr?: string) => {
 .merged-view-item {
     background: #fbfbfb;
     border-bottom: 2px solid #f0f0f0;
+}
+
+/* Memory List View Styles */
+.memory-history-list {
+    flex: 1;
+    background: #f8f9fa;
+    overflow-y: auto;
+    padding: 16px;
+}
+
+.memory-items {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.memory-card {
+    background: #fff;
+    border-radius: 8px;
+    padding: 14px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    border: 1px solid #f0f0f0;
+}
+
+.memory-content {
+    font-size: 14px;
+    color: #333;
+    line-height: 1.6;
+    word-break: break-word;
+}
+
+.memory-footer {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid #f9f9f9;
+}
+
+.memory-time {
+    font-size: 11px;
+    color: #b2b2b2;
 }
 
 .menu-item {
