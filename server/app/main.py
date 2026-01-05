@@ -1,20 +1,27 @@
-import asyncio
 import logging
+import sys
+
+# 1. 立即配置日志 (必须在导入任何业务模块之前)
+# 显式指定 StreamHandler(sys.stdout) 是为了确保在 Uvicorn 环境下日志能流向控制台
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+
+import asyncio
 import traceback
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+
+# 现在安全地导入业务模块
 from app.core.config import settings
 from app.api.api import api_router
 from app.db.init_db import init_db
 from app.db.session import SessionLocal
 from app.services.chat_service import check_and_archive_expired_sessions
 
-# 配置日志 - 确保异常能输出到控制台
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
 logger = logging.getLogger(__name__)
 
 @asynccontextmanager
