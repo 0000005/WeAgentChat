@@ -37,7 +37,7 @@
 | :--- | :--- | :--- |
 | `id` | Integer | 主键，自增 |
 | `group_name` | String(50) | 配置分组名，如 `session`、`memory`、`notification` |
-| `key` | String(100) | 配置项键名，如 `passive_timeout`、`auto_trigger` |
+| `key` | String(100) | 配置项键名，如 `passive_timeout` |
 | `value` | Text | 配置项值（字符串存储，应用层负责类型转换） |
 | `value_type` | String(20) | 值类型提示：`int`、`bool`、`string`、`float`、`json` |
 | `description` | Text | 配置项描述（可选，用于前端展示） |
@@ -51,13 +51,11 @@
 | group_name | key | value | value_type | description |
 | :--- | :--- | :--- | :--- | :--- |
 | `session` | `passive_timeout` | `1800` | `int` | 会话过期时间（秒） |
-| `memory` | `auto_trigger` | `true` | `bool` | 是否自动触发记忆摘要生成 |
 
 ### 3.2 后端逻辑设计
 
 **配置加载**: 所有超时和自动触发相关的参数均从数据库 `system_settings` 表动态读取，支持用户在前端设置界面实时修改。应用层通过 `SettingsService` 统一读取配置，并提供类型转换和默认值回退。
-- `session.passive_timeout`: 默认 1800 秒（30 分钟）  
-- `memory.auto_trigger`: 默认 `True`
+- `session.passive_timeout`: 默认 1800 秒（30 分钟）
 
 #### A. 消息发送时的前置检查 (`chat_service.py`)
 在 `get_or_create_session_for_friend` 函数中增强逻辑：
@@ -141,7 +139,6 @@
     - 新增 **"记忆设置"** (Memory Settings) 侧边栏选项卡。
     - 增加参数配置表单：
         - `session.passive_timeout` (Input/Number): 会话过期时间（秒），默认 1800。
-        - `memory.auto_trigger` (Switch/Boolean): 是否自动生成记忆摘要，默认 True。
     - 需配套增加对应的前端 Store 和后端 API 接口（调用 `system_settings` 相关 API）。
 
 ## 5. 边界情况与注意事项
@@ -163,7 +160,6 @@
 | group_name | key | 默认值 | 描述 |
 | :--- | :--- | :--- | :--- |
 | `session` | `passive_timeout` | `1800` (秒) | 会话判定过期的非活跃时长 (30分钟) |
-| `memory` | `auto_trigger` | `true` | 是否在会话归档时立即触发 `flush_buffer` 强制生成摘要。<br>关闭后仍会调用 `insert_chat`，但由后台异步处理（可能延迟数分钟）。 |
 
 ---
 

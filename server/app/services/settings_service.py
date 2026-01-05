@@ -97,7 +97,6 @@ class SettingsService:
         try:
             defaults = [
                 ("session", "passive_timeout", 1800, "int", "会话判定过期的非活跃时长 (秒)"),
-                ("memory", "auto_trigger", True, "bool", "是否在会话归档时立即触发摘要生成"),
             ]
             for group, key, val, vtype, desc in defaults:
                 try:
