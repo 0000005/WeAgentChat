@@ -1,16 +1,19 @@
 import asyncio
 import logging
-from typing import List, Optional
+import struct
+from typing import List, Optional, Dict, Any
 from app.core.config import settings
 from app.db.session import SessionLocal
 from app.models.llm import LLMConfig
 from app.models.embedding import EmbeddingSetting
 from app.vendor.memobase_server.connectors import init_db, Session
-from app.vendor.memobase_server.env import reinitialize_config
+from app.vendor.memobase_server.env import reinitialize_config, CONFIG
 from app.vendor.memobase_server.controllers.buffer_background import start_memobase_worker
 from app.vendor.memobase_server.models.database import UserEvent, UserEventGist
 from app.vendor.memobase_server.utils import to_uuid
-from sqlalchemy import text, desc
+from app.vendor.memobase_server.controllers.post_process.profile import filter_profiles_with_chats
+from app.vendor.memobase_server.llms.embeddings import get_embedding
+from sqlalchemy import text, desc, select, func
 from datetime import datetime, timedelta
 
 # SDK Controllers
@@ -487,3 +490,260 @@ class MemoService:
             ]
             
             return UserEventGistsData(gists=result_gists, events=[])
+
+    # --- Recall / Search Extensions ---
+
+    @classmethod
+    async def search_profiles_semantic(
+        cls, 
+        user_id: str, 
+        space_id: str, 
+        query: str, 
+        topk: int = 5
+    ) -> UserProfilesData:
+        """
+        Search profiles semantically using LLM to pick most relevant profiles.
+        
+        Args:
+            user_id: User identifier
+            space_id: Space/project identifier
+            query: Query string to search for relevant profiles
+            topk: Maximum number of profiles to return
+            
+        Returns:
+            UserProfilesData with filtered profiles
+        """
+        logger = logging.getLogger(__name__)
+        
+        # 1. Get all profiles
+        all_profiles = await cls.get_user_profiles(user_id, space_id)
+        if not all_profiles.profiles:
+            logger.debug(f"No profiles found for user {user_id} in space {space_id}")
+            return UserProfilesData(profiles=[])
+        
+        # 2. Wrap query as OpenAICompatibleMessage for filter_profiles_with_chats
+        messages = [{"role": "user", "content": query}]
+        
+        # 3. Call filter_profiles_with_chats to get top relevant profiles
+        result_promise = await filter_profiles_with_chats(
+            user_id=user_id,
+            project_id=space_id,
+            profiles=all_profiles,
+            chats=messages,
+            max_filter_num=topk
+        )
+        
+        if not result_promise.ok():
+            logger.warning(f"Profile semantic search failed: {result_promise.msg()}")
+            return UserProfilesData(profiles=[])
+        
+        filter_result = result_promise.data()
+        filtered_profiles = filter_result.get("profiles", [])
+        
+        logger.debug(f"Profile semantic search returned {len(filtered_profiles)} results for query: {query[:50]}...")
+        return UserProfilesData(profiles=filtered_profiles)
+
+    @classmethod
+    async def search_memories_with_tags(
+        cls,
+        user_id: str,
+        space_id: str,
+        query: str,
+        friend_id: int,
+        topk: int = 5,
+        similarity_threshold: float = 0.5
+    ) -> UserEventGistsData:
+        """
+        Search event gists using vector similarity with friend_id tag filtering.
+        
+        Args:
+            user_id: User identifier
+            space_id: Space/project identifier
+            query: Query string to search
+            friend_id: Friend ID to filter by (tag-based filtering)
+            topk: Maximum number of results to return
+            similarity_threshold: Minimum similarity score (0-1)
+            
+        Returns:
+            UserEventGistsData with filtered event gists
+        """
+        logger = logging.getLogger(__name__)
+        user_id_uuid = to_uuid(user_id)
+        
+        # 1. Check if event embedding is enabled
+        if not CONFIG.enable_event_embedding:
+            logger.warning("Event embedding is not enabled, falling back to filter_friend_event_gists")
+            return await cls.filter_friend_event_gists(user_id, space_id, friend_id, topk)
+        
+        # 2. Get query embedding
+        query_embeddings = await get_embedding(
+            space_id, [query], phase="query", model=CONFIG.embedding_model
+        )
+        if not query_embeddings.ok():
+            logger.error(f"Failed to get query embedding: {query_embeddings.msg()}")
+            raise MemoServiceException(f"Failed to get query embedding: {query_embeddings.msg()}")
+        
+        query_embedding = query_embeddings.data()[0]
+        # Serialize embedding for sqlite-vec
+        query_embedding_bytes = struct.pack(f"{len(query_embedding)}f", *query_embedding)
+        
+        # 3. Calculate time cutoff (365 days)
+        days_ago = datetime.utcnow() - timedelta(days=365)
+        
+        # 4. Build SQL query with friend_id tag filter and vector similarity
+        # sqlite-vec uses vec_distance_cosine
+        distance_expr = func.vec_distance_cosine(UserEventGist.embedding, query_embedding_bytes)
+        similarity_expr = 1 - distance_expr
+        
+        stmt = (
+            select(
+                UserEventGist,
+                similarity_expr.label("similarity"),
+            )
+            .join(UserEvent, UserEventGist.event_id == UserEvent.id)
+            .where(
+                UserEvent.user_id == user_id_uuid,
+                UserEvent.project_id == space_id,
+                UserEvent.created_at >= days_ago,
+                (1 - distance_expr) > similarity_threshold,
+                UserEventGist.embedding.is_not(None),
+            )
+            # Add friend_id tag filter using json_each
+            .where(text("""
+                EXISTS (
+                    SELECT 1 
+                    FROM json_each(json_extract(user_events.event_data, '$.event_tags')) 
+                    WHERE json_extract(value, '$.tag') = 'friend_id' 
+                    AND json_extract(value, '$.value') = :friend_id
+                )
+            """).bindparams(friend_id=str(friend_id)))
+            .order_by(desc("similarity"))
+            .limit(topk)
+        )
+        
+        with Session() as session:
+            result = session.execute(stmt).all()
+            result_gists = []
+            for row in result:
+                gist: UserEventGist = row[0]
+                similarity: float = row[1]
+                result_gists.append(
+                    UserEventGistData(
+                        id=gist.id,
+                        gist_data=EventGistData(**gist.gist_data),
+                        created_at=gist.created_at,
+                        updated_at=gist.updated_at,
+                        similarity=similarity,
+                    )
+                )
+        
+        logger.debug(f"search_memories_with_tags returned {len(result_gists)} gists for friend {friend_id}")
+        return UserEventGistsData(gists=result_gists, events=[])
+
+    @classmethod
+    async def recall_memory(
+        cls,
+        user_id: str,
+        space_id: str,
+        query: str,
+        friend_id: int,
+        topk_profile: int = 5,
+        topk_event: int = 5,
+        threshold: float = 0.5,
+        timeout: float = 3.0
+    ) -> Dict[str, Any]:
+        """
+        Unified memory recall interface that retrieves relevant profiles and events.
+        
+        Args:
+            user_id: User identifier
+            space_id: Space/project identifier
+            query: Query string to search
+            friend_id: Friend ID for event filtering
+            topk_profile: Max profiles to return
+            topk_event: Max events to return
+            threshold: Similarity threshold for event search
+            timeout: Maximum time (seconds) to wait for both searches
+            
+        Returns:
+            Dictionary with format:
+            {
+                "profiles": [{"topic": ..., "content": ..., "updated_at": ...}, ...],
+                "events": [{"date": ..., "content": ...}, ...]
+            }
+        """
+        logger = logging.getLogger(__name__)
+        
+        profiles_result = []
+        events_result = []
+        
+        async def search_profiles():
+            try:
+                return await cls.search_profiles_semantic(
+                    user_id, space_id, query, topk_profile
+                )
+            except Exception as e:
+                logger.warning(f"Profile search failed: {e}")
+                return UserProfilesData(profiles=[])
+        
+        async def search_events():
+            try:
+                return await cls.search_memories_with_tags(
+                    user_id, space_id, query, friend_id, topk_event, threshold
+                )
+            except Exception as e:
+                logger.warning(f"Event search failed: {e}")
+                return UserEventGistsData(gists=[], events=[])
+        
+        try:
+            # Run both searches in parallel with timeout
+            profiles_data, events_data = await asyncio.wait_for(
+                asyncio.gather(
+                    search_profiles(),
+                    search_events(),
+                    return_exceptions=True
+                ),
+                timeout=timeout
+            )
+            
+            # Handle potential exceptions from gather
+            if isinstance(profiles_data, Exception):
+                logger.warning(f"Profile search exception: {profiles_data}")
+                profiles_data = UserProfilesData(profiles=[])
+            if isinstance(events_data, Exception):
+                logger.warning(f"Event search exception: {events_data}")
+                events_data = UserEventGistsData(gists=[], events=[])
+                
+        except asyncio.TimeoutError:
+            logger.warning(f"recall_memory timed out after {timeout}s")
+            # Return empty results on timeout
+            return {"profiles": [], "events": []}
+        except Exception as e:
+            logger.error(f"recall_memory failed: {e}")
+            raise MemoServiceException(f"Memory recall failed: {e}") from e
+        
+        # Format profiles
+        for profile in profiles_data.profiles:
+            profiles_result.append({
+                "topic": profile.attributes.get("topic", ""),
+                "sub_topic": profile.attributes.get("sub_topic", ""),
+                "content": profile.content,
+                "updated_at": profile.updated_at.isoformat() if hasattr(profile, 'updated_at') and profile.updated_at else None
+            })
+        
+        # Format events
+        for gist in events_data.gists:
+            gist_data = gist.gist_data if isinstance(gist.gist_data, dict) else gist.gist_data.model_dump()
+            events_result.append({
+                "date": gist.created_at.isoformat() if gist.created_at else None,
+                "content": gist_data.get("summary", gist_data.get("content", "")),
+                "similarity": getattr(gist, 'similarity', None)
+            })
+        
+        logger.info(f"recall_memory: {len(profiles_result)} profiles, {len(events_result)} events for query: {query[:30]}...")
+        
+        return {
+            "profiles": profiles_result,
+            "events": events_result
+        }
+
