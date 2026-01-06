@@ -95,6 +95,7 @@ def reload_sdk_config():
         "llm_api_key": llm_api_key,
         "llm_base_url": llm_base_url,
         "best_llm_model": best_llm_model,
+        "language": settings.MEMOBASE_LANGUAGE,
         "enable_event_embedding": settings.MEMOBASE_ENABLE_EVENT_EMBEDDING,
         "embedding_provider": embedding_provider,
         "embedding_api_key": embedding_api_key,

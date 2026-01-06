@@ -91,7 +91,20 @@ async def process_blobs(
         )
 
     intermediate_profile, delta_profile_data = profile_results.data()
-    event_tags = event_results.data()
+    event_tags = event_results.data() or []
+
+    # Inject friend_id from blobs if present
+    # We assume all blobs in a batch (session) belong to the same context/friend
+    friend_tag = None
+    for b in blobs:
+        if b.fields and "friend_id" in b.fields:
+            friend_tag = {"tag": "friend_id", "value": str(b.fields["friend_id"])}
+            break
+            
+    if friend_tag:
+        # Check if already exists (unlikely from LLM but good practice)
+        if not any(t["tag"] == "friend_id" for t in event_tags):
+            event_tags.append(friend_tag)
 
     p = await handle_session_event(
         user_id,

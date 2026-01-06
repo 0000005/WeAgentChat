@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     MEMOBASE_LLM_API_KEY: str = ""  # Required: Set via environment variable
     MEMOBASE_LLM_BASE_URL: str | None = None
     MEMOBASE_BEST_LLM_MODEL: str = "gpt-4o-mini"
+    MEMOBASE_LANGUAGE: str = "zh"
     
     MEMOBASE_ENABLE_EVENT_EMBEDDING: bool = True
     MEMOBASE_EMBEDDING_PROVIDER: str = "openai"
