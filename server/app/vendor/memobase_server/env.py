@@ -286,26 +286,9 @@ class Colors:
     END = "\033[0m"
 
 
-# remove default uvicorn loggers cause we have our own
-for _log in ["uvicorn", "uvicorn.error", "uvicorn.access"]:
-    logging.getLogger(_log).handlers.clear()
-    # logging.getLogger(_log).propagate = True
-
-log_format = os.getenv("LOG_FORMAT", "plain")
-if log_format == "json":
-    configure_logger()
-    logger = structlog.get_logger()
-    LOG = logger.bind(app_name="memobase_server")
-else:
-    LOG = logging.getLogger("memobase_server")
-    LOG.setLevel(logging.INFO)
-
-    formatter = logging.Formatter(
-        f"{Colors.BOLD}{Colors.BLUE}%(name)s |{Colors.END}  %(levelname)s - %(asctime)s  -  %(message)s"
-    )
-    handler = logging.StreamHandler()
-    handler.setFormatter(formatter)
-    LOG.addHandler(handler)
+# 使用主项目的日志配置，不再干扰全局日志设置
+# 注意：不要清除 uvicorn 的 handler，也不要添加独立的 handler
+LOG = logging.getLogger("memobase_server")
 
 
 ENCODER = tiktoken.encoding_for_model("gpt-4o")
@@ -356,7 +339,5 @@ class ProjectLogger:
         )
 
 
-if log_format == "json":
-    TRACE_LOG = ProjectStructLogger(LOG)
-else:
-    TRACE_LOG = ProjectLogger(LOG)
+# 统一使用 ProjectLogger（主项目不使用 structlog JSON 格式）
+TRACE_LOG = ProjectLogger(LOG)
