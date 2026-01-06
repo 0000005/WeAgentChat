@@ -149,6 +149,7 @@ async def flush_buffer_by_ids(
                 BufferZone.created_at.label("buffer_created_at"),
                 GeneralBlob.created_at,
                 GeneralBlob.blob_data,
+                GeneralBlob.additional_fields,
             )
             .join(GeneralBlob, BufferZone.blob_id == GeneralBlob.id)
             .filter(

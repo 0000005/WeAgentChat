@@ -41,46 +41,33 @@ def _schedule_memory_generation(db: Session, session_id: int):
         _memory_generation_queue.append(session_id)
         logger.info(f"[Memory Queue] Session {session_id} added to memory generation queue. Queue size: {len(_memory_generation_queue)}")
     
-    # 提取会话数据用于后台处理
-    messages = (
-        db.query(Message)
-        .filter(
-            Message.session_id == session_id,
-            Message.deleted == False,
-            Message.role.in_(["user", "assistant"])
-        )
-        .order_by(Message.create_time.asc())
-        .all()
-    )
-    
-    session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
-    if not session:
-        return
-    
-    friend = db.query(Friend).filter(Friend.id == session.friend_id).first()
-    
-    # 存储到临时属性用于后台处理
-    openai_messages = [{"role": m.role, "content": m.content} for m in messages]
-    friend_id = session.friend_id
-    friend_name = friend.name if friend else "Unknown"
-    
-    # 使用 asyncio.run_coroutine_threadsafe 或 ensure_future 会更好，但需要事件循环引用
-    # 简单起见，这里我们使用一个更直接的方式：在后台定期扫描queue
+    # 尝试直接调度异步任务（如果当前在主线程/有运行中的 loop）
     try:
-        # 尝试获取当前事件循环
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            # 如果有运行中的循环，直接创建任务
-            asyncio.create_task(_archive_session_async(
-                session_id=session_id,
-                openai_messages=openai_messages,
-                friend_id=friend_id,
-                friend_name=friend_name
-            ))
-            logger.info(f"[Memory Queue] Session {session_id} async task created directly.")
+        loop = asyncio.get_running_loop()
+        # 如果 loop 正在运行，尝试在该 loop 中创建任务
+        # 注意：此处准备数据以传递给异步函数
+        messages = db.query(Message).filter(Message.session_id == session_id, Message.deleted == False).order_by(Message.create_time.asc()).all()
+        session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+        if not session: return
+        friend = db.query(Friend).filter(Friend.id == session.friend_id).first()
+        
+        openai_messages = [{"role": m.role, "content": m.content} for m in messages]
+        
+        # 使用 call_soon_threadsafe 或直接 create_task
+        # 如果在主线程，直接 create_task
+        loop.create_task(_archive_session_async(
+            session_id=session_id,
+            openai_messages=openai_messages,
+            friend_id=session.friend_id,
+            friend_name=friend.name if friend else "Unknown"
+        ))
+        logger.info(f"[Memory Queue] Session {session_id} async task created directly via running loop.")
+        # 从队列中移除，因为已经成功调度
+        if session_id in _memory_generation_queue:
+            _memory_generation_queue.remove(session_id)
     except RuntimeError:
-        # 没有运行中的循环，等待后台worker处理
-        logger.info(f"[Memory Queue] Session {session_id} queued for background processing.")
+        # 没有运行中的循环，保留在队列中等待后台 worker
+        logger.info(f"[Memory Queue] No running loop. Session {session_id} stays in queue for background worker.")
 
 def get_sessions(db: Session, skip: int = 0, limit: int = 100) -> List[ChatSession]:
     """
@@ -826,3 +813,47 @@ def check_and_archive_expired_sessions(db: Session) -> int:
             logger.error(f"[Background Task] Error archiving session {session.id}: {str(e)}")
             
     return count
+
+async def process_memory_queue(db: Session):
+    """
+    处理全局记忆生成队列中的任务。
+    由后台定时任务调用。
+    """
+    global _memory_generation_queue
+    if not _memory_generation_queue:
+        return
+    
+    # 拷贝当前队列并清空原队列
+    batch = list(_memory_generation_queue)
+    _memory_generation_queue.clear()
+    
+    logger.info(f"[Memory Worker] Processing {len(batch)} sessions from queue: {batch}")
+    
+    for session_id in batch:
+        try:
+            # 获取必要数据
+            session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+            if not session:
+                continue
+            
+            friend = db.query(Friend).filter(Friend.id == session.friend_id).first()
+            messages = (
+                db.query(Message)
+                .filter(Message.session_id == session_id, Message.deleted == False)
+                .order_by(Message.create_time.asc())
+                .all()
+            )
+            openai_messages = [{"role": m.role, "content": m.content} for m in messages]
+            
+            # 执行异步归档
+            await _archive_session_async(
+                session_id=session_id,
+                openai_messages=openai_messages,
+                friend_id=session.friend_id,
+                friend_name=friend.name if friend else "Unknown"
+            )
+            logger.info(f"[Memory Worker] Session {session_id} processing completed.")
+        except Exception as e:
+            logger.error(f"[Memory Worker] Error processing session {session_id}: {str(e)}")
+            # 失败后可以选择不再放回，由后续的过期检查兜底，或者放回
+            # 这里我们不放回，因为若 _archive_session_async 报错通常是 SDK 问题，重试也可能失败

@@ -41,22 +41,31 @@ async def lifespan(app: FastAPI):
     
     logger.info("Application startup complete. Logging system is active.")
     
-    # Start Session Archiver Task (Every 1 minute)
+    # Start Session Archiver Task (Every 30 seconds)
     async def run_session_archiver():
         logger.info("Starting session archiver background task...")
+        # 初始延迟，等待系统完全就绪
+        await asyncio.sleep(5)
+        
         while True:
             try:
                 with SessionLocal() as db:
+                     # 1. 检查过期会话并标记（加入队列）
                      count = check_and_archive_expired_sessions(db)
                      if count > 0:
                          logger.info(f"Session archiver: archived {count} expired sessions.")
-                await asyncio.sleep(60)  # 1 minute
+                     
+                     # 2. 消费队列中的记忆生成任务
+                     from app.services.chat_service import process_memory_queue
+                     await process_memory_queue(db)
+                     
+                await asyncio.sleep(30)  # 每 30 秒运行一次，提高灵敏度
             except asyncio.CancelledError:
                 logger.debug("Session archiver task cancelled.")
                 break
             except Exception as e:
                 logger.error(f"Error in session archiver task: {e}")
-                await asyncio.sleep(60)
+                await asyncio.sleep(30)
 
     archiver_task = asyncio.create_task(run_session_archiver())
     

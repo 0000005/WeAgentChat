@@ -108,11 +108,17 @@ def pack_blob_from_db(blob: GeneralBlob, blob_type: BlobType) -> Blob:
     blob_data = blob.blob_data
     match blob_type:
         case BlobType.chat:
-            return ChatBlob(**blob_data, created_at=blob.created_at)
+            return ChatBlob(
+                **blob_data, created_at=blob.created_at, fields=blob.additional_fields
+            )
         case BlobType.doc:
-            return DocBlob(**blob_data, created_at=blob.created_at)
+            return DocBlob(
+                **blob_data, created_at=blob.created_at, fields=blob.additional_fields
+            )
         case BlobType.summary:
-            return SummaryBlob(**blob_data, created_at=blob.created_at)
+            return SummaryBlob(
+                **blob_data, created_at=blob.created_at, fields=blob.additional_fields
+            )
         case _:
             raise ValueError(f"Unsupported Blob Type: {blob_type}")
 
