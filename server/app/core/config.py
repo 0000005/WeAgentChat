@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     MEMOBASE_BEST_LLM_MODEL: str = "gpt-4o-mini"
     
     MEMOBASE_ENABLE_EVENT_EMBEDDING: bool = True
+    MEMOBASE_EMBEDDING_PROVIDER: str = "openai"
     MEMOBASE_EMBEDDING_API_KEY: str | None = None
     MEMOBASE_EMBEDDING_BASE_URL: str | None = None
     MEMOBASE_EMBEDDING_MODEL: str = "text-embedding-3-small"

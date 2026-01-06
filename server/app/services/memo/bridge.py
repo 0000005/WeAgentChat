@@ -61,6 +61,7 @@ def reload_sdk_config():
     llm_base_url = settings.MEMOBASE_LLM_BASE_URL
     best_llm_model = settings.MEMOBASE_BEST_LLM_MODEL
     
+    embedding_provider = settings.MEMOBASE_EMBEDDING_PROVIDER
     embedding_api_key = settings.MEMOBASE_EMBEDDING_API_KEY
     embedding_base_url = settings.MEMOBASE_EMBEDDING_BASE_URL
     embedding_model = settings.MEMOBASE_EMBEDDING_MODEL
@@ -80,6 +81,7 @@ def reload_sdk_config():
             # 1.2 Embedding Config
             embedding_config_db = db.query(EmbeddingSetting).filter(EmbeddingSetting.deleted == False).first()
             if embedding_config_db:
+                if embedding_config_db.embedding_provider: embedding_provider = embedding_config_db.embedding_provider
                 if embedding_config_db.embedding_api_key: embedding_api_key = embedding_config_db.embedding_api_key
                 if embedding_config_db.embedding_base_url: embedding_base_url = embedding_config_db.embedding_base_url
                 if embedding_config_db.embedding_model: embedding_model = embedding_config_db.embedding_model
@@ -94,6 +96,7 @@ def reload_sdk_config():
         "llm_base_url": llm_base_url,
         "best_llm_model": best_llm_model,
         "enable_event_embedding": settings.MEMOBASE_ENABLE_EVENT_EMBEDDING,
+        "embedding_provider": embedding_provider,
         "embedding_api_key": embedding_api_key,
         "embedding_base_url": embedding_base_url,
         "embedding_model": embedding_model,

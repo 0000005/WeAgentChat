@@ -26,6 +26,12 @@ def get_doubao_async_client_instance() -> AsyncArk:
     return _global_doubao_async_client
 
 
+def reset_clients():
+    global _global_openai_async_client, _global_doubao_async_client
+    _global_openai_async_client = None
+    _global_doubao_async_client = None
+
+
 def exclude_special_kwargs(kwargs: dict):
     prompt_id = kwargs.pop("prompt_id", None)
     no_cache = kwargs.pop("no_cache", None)

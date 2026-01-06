@@ -299,7 +299,22 @@ CONFIG = Config.load_config()
 def reinitialize_config(config_dict: dict = None):
     """Reinitialize the global CONFIG object with new parameters."""
     global CONFIG
-    CONFIG = Config.load_config(config_dict)
+    new_config = Config.load_config(config_dict)
+    
+    # Mutate the existing CONFIG object fields to ensure all modules holding a reference to it see the changes
+    for field in dataclasses.fields(Config):
+        setattr(CONFIG, field.name, getattr(new_config, field.name))
+    
+    # Reset cached LLM/Embedding clients to ensure they are recreated with new config
+    try:
+        from .llms.utils import reset_clients as reset_llm_clients
+        from .llms.embeddings.utils import reset_clients as reset_embedding_clients
+        reset_llm_clients()
+        reset_embedding_clients()
+    except ImportError:
+        # Ignore if modules are not yet loaded or have circular issues
+        pass
+        
     return CONFIG
 
 

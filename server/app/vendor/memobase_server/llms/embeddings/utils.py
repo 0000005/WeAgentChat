@@ -45,3 +45,11 @@ def get_ollama_async_client_instance() -> AsyncClient:
         )
     return _global_ollama_async_client
 
+
+def reset_clients():
+    global _global_openai_async_client, _global_jina_async_client, _global_lmstudio_async_client, _global_ollama_async_client
+    _global_openai_async_client = None
+    _global_jina_async_client = None
+    _global_lmstudio_async_client = None
+    _global_ollama_async_client = None
+
