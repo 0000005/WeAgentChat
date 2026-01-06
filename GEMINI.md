@@ -141,6 +141,8 @@ FastAPI backend with a modular service-oriented architecture.
 *   **`data/`**: Storage for `.db` files.
     *   `doudou.db`: Primary application data.
     *   `memobase.db`: Memory/Vector storage.
+*   **`logs/`**: Backend log files.
+    *   `app.log`: Application runtime logs (rotated daily).
 *   **`tests/`**: Pytest suite (e.g., `test_memo_bridge.py`, `test_chat.py`).
 
 ---
@@ -178,6 +180,7 @@ FastAPI backend with a modular service-oriented architecture.
     *   布局（侧边栏、对话列表、聊天窗口的排布）。
     *   交互细节（点击反馈、对话气泡样式等）。
 *   **Unit Testing:** Run tests using `server\venv\Scripts\python -m pytest server/tests`.
+*   **Logging:** Backend logs are output to the console and saved to `server/logs/app.log`, with daily rotation and 30-day retention.
 
 ---
 
