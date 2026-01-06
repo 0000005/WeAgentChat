@@ -103,7 +103,7 @@ def create_session(db: Session, session_in: chat_schemas.ChatSessionCreate) -> C
         )
         .all()
     ]
-    
+
     # 强制归档所有旧会话
     for session_id in existing_session_ids:
         logger.info(f"[Create Session] Force archiving old session {session_id} for friend {session_in.friend_id}")
@@ -272,15 +272,17 @@ def get_sessions_with_stats_by_friend(db: Session, friend_id: int) -> List[dict]
 def get_or_create_session_for_friend(db: Session, friend_id: int) -> ChatSession:
     """
     获取好友最近的会话，如果已超时或不存在则创建新会话。
+    优先返回最新创建的会话（ID最大），而不是最近更新的会话。
     """
     from app.services.settings_service import SettingsService
     timeout = SettingsService.get_setting(db, "session", "passive_timeout", 1800)
-    
-    # 查找受该好友最近的一个非删除会话
+
+    # 查找受该好友最近的一个非删除、未归档会话
+    # 按 ID 倒序（最新创建的在前）以确保获取的是最新会话
     session = (
         db.query(ChatSession)
-        .filter(ChatSession.friend_id == friend_id, ChatSession.deleted == False)
-        .order_by(ChatSession.update_time.desc())
+        .filter(ChatSession.friend_id == friend_id, ChatSession.deleted == False, ChatSession.memory_generated == False)
+        .order_by(ChatSession.id.desc())
         .first()
     )
     
@@ -318,25 +320,27 @@ def archive_session(db: Session, session_id: int):
     """
     将指定会话归档并准备生成记忆（同步版本）。
     - 消息数 < 2 的会话跳过记忆生成，仅标记为已处理。
-    - 仅标记会话为已归档，实际记忆生成由后台任务统一处理。
+    - 标记会话为已归档，实际记忆生成由后台任务统一处理。
+    - 更新 update_time 以防止被误选为活跃会话。
     """
     session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
     if not session:
         logger.warning(f"[Archive] Session {session_id} not found.")
         return
-    
+
     if session.memory_generated:
         logger.info(f"[Archive] Session {session_id} already archived (memory_generated=True). Skipping.")
         return
 
     # 边界检查:消息数 < 2 跳过
     msg_count = db.query(Message).filter(
-        Message.session_id == session_id, 
+        Message.session_id == session_id,
         Message.deleted == False
     ).count()
-    
+
     if msg_count < 2:
         session.memory_generated = True  # 标记为已处理但无需生成记忆
+        session.update_time = datetime.now()  # 更新时间以确保不会误选
         db.commit()
         logger.info(f"[Archive] Session {session_id} skipped (msg_count={msg_count} < 2). Marked as processed.")
         return
@@ -344,6 +348,7 @@ def archive_session(db: Session, session_id: int):
     # 标记为已处理（记忆生成由后台worker异步处理）
     # 注意：这里先标记，后台任务会检测到并生成记忆
     session.memory_generated = True
+    session.update_time = datetime.now()  # 更新时间以确保不会误选
     db.commit()
     logger.info(f"[Archive] Session {session_id} marked as archived. Memory generation will be handled by background worker.")
     
