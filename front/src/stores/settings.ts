@@ -58,7 +58,12 @@ export const useSettingsStore = defineStore('settings', () => {
             const payload = Object.fromEntries(
                 Object.entries(fieldMapping).map(([key, ref]) => [key, ref.value])
             )
-            await SettingsAPI.updateSettingsBulk(groupName, payload)
+            console.log(`[SettingsStore] Saving ${groupName} settings payload:`, payload)
+            const response = await SettingsAPI.updateSettingsBulk(groupName, payload)
+            console.log(`[SettingsStore] Save ${groupName} response:`, response)
+        } catch (error) {
+            console.error(`[SettingsStore] Failed to save ${groupName} settings:`, error)
+            throw error
         } finally {
             isSaving.value = false
         }

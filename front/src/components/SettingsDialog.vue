@@ -94,6 +94,7 @@ onMounted(() => {
 })
 
 const handleSave = async () => {
+    console.log('[SettingsDialog] handleSave triggered')
     try {
         await Promise.all([
             llmStore.saveConfig(),
@@ -103,10 +104,11 @@ const handleSave = async () => {
             settingsStore.saveMemorySettings(),
             memoryStore.saveConfig()
         ])
+        console.log('[SettingsDialog] All settings saved successfully')
         emit('update:open', false)
     } catch (error) {
         // Error handling could be improved with a toast notification
-        console.error('Failed to save settings', error)
+        console.error('[SettingsDialog] Failed to save settings', error)
     }
 }
 
@@ -326,7 +328,7 @@ const originalSetTab = (tab: string) => {
                             <div class="space-y-4 border-t pt-6">
                                 <div class="flex items-center justify-between">
                                     <label class="text-sm font-medium">启用记忆召回</label>
-                                    <Switch :checked="recallEnabled" @update:checked="val => recallEnabled = val" />
+                                    <Switch v-model="recallEnabled" />
                                 </div>
                                 <p class="text-xs text-gray-500">
                                     根据上下文语义自动召回相关的用户画像和事件历史，增强对话的个性化体验。
@@ -339,7 +341,7 @@ const originalSetTab = (tab: string) => {
                                         </div>
                                         <Slider 
                                             :model-value="[similarityThreshold]" 
-                                            @update:model-value="val => similarityThreshold = val[0]"
+                                            @update:model-value="(val: number[] | undefined) => { if (val) similarityThreshold = val[0] }"
                                             :max="1" 
                                             :step="0.05"
                                             class="py-4"
@@ -430,7 +432,7 @@ const originalSetTab = (tab: string) => {
                                         <label class="text-sm font-medium">显示思维链</label>
                                         <p class="text-xs text-gray-500">在消息下方展示 AI 的推理思考过程。</p>
                                     </div>
-                                    <Switch :checked="showThinking" @update:checked="val => showThinking = val" />
+                                    <Switch v-model="showThinking" />
                                 </div>
 
                                 <div class="flex items-center justify-between border-t pt-4">
@@ -438,7 +440,7 @@ const originalSetTab = (tab: string) => {
                                         <label class="text-sm font-medium">显示工具调用</label>
                                         <p class="text-xs text-gray-500">在消息中展示 AI 调用外部工具的详细信息。</p>
                                     </div>
-                                    <Switch :checked="showToolCalls" @update:checked="val => showToolCalls = val" />
+                                    <Switch v-model="showToolCalls" />
                                 </div>
                                 
                                 <div class="flex items-center justify-between border-t pt-4">
@@ -446,7 +448,7 @@ const originalSetTab = (tab: string) => {
                                         <label class="text-sm font-medium">启用深度思考模式 (推理)</label>
                                         <p class="text-xs text-gray-500">如果模型支持，开启后将强制模型进行链式思考后再回答。</p>
                                     </div>
-                                    <Switch :checked="enableThinking" @update:checked="val => enableThinking = val" />
+                                    <Switch v-model="enableThinking" />
                                 </div>
                             </div>
                         </div>
