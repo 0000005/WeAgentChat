@@ -150,6 +150,7 @@ def delete_session(db: Session, session_id: int) -> bool:
 def clear_friend_chat_history(db: Session, friend_id: int):
     """
     清空与指定好友的所有聊天记录，并在清空前尝试归档现有记忆。
+    同时删除 Memobase 中与该好友相关的 events 和 event_gists。
     """
     # 1. 找到该好友所有未归档且未删除的会话
     sessions = db.query(ChatSession).filter(
@@ -179,6 +180,49 @@ def clear_friend_chat_history(db: Session, friend_id: int):
     
     db.commit()
     logger.info(f"[Clear History] All chat history for friend {friend_id} has been cleared/archived.")
+    
+    # 4. 调度 Memobase 记忆删除任务
+    _schedule_memory_deletion(friend_id)
+
+def _schedule_memory_deletion(friend_id: int):
+    """
+    调度删除 Memobase 中与指定好友相关的记忆。
+    """
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(_delete_friend_memories_async(friend_id))
+        logger.info(f"[Memory Deletion] Scheduled deletion for friend {friend_id}")
+    except RuntimeError:
+        # 没有运行中的事件循环，使用线程池执行
+        import concurrent.futures
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        executor.submit(_run_delete_friend_memories_sync, friend_id)
+        logger.info(f"[Memory Deletion] Scheduled deletion (via thread) for friend {friend_id}")
+
+def _run_delete_friend_memories_sync(friend_id: int):
+    """
+    在新的事件循环中执行记忆删除（用于没有运行中 loop 的情况）。
+    """
+    asyncio.run(_delete_friend_memories_async(friend_id))
+
+async def _delete_friend_memories_async(friend_id: int):
+    """
+    异步删除 Memobase 中与指定好友相关的记忆。
+    """
+    from app.services.memo.bridge import MemoService, MemoServiceException
+    from app.services.memo.constants import DEFAULT_USER_ID, DEFAULT_SPACE_ID
+    
+    try:
+        count = await MemoService.delete_friend_memories(
+            user_id=DEFAULT_USER_ID,
+            space_id=DEFAULT_SPACE_ID,
+            friend_id=friend_id
+        )
+        logger.info(f"[Memory Deletion] Successfully deleted {count} events for friend {friend_id}")
+    except MemoServiceException as e:
+        logger.error(f"[Memory Deletion] Failed to delete memories for friend {friend_id}: {e}")
+    except Exception as e:
+        logger.error(f"[Memory Deletion] Unexpected error for friend {friend_id}: {e}")
 
 # --- Message Services ---
 
