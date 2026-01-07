@@ -11,4 +11,5 @@ class Friend(Base):
     is_preset = Column(Boolean, default=False, nullable=False)
     create_time = Column(DateTime, default=func.now(), nullable=False)
     update_time = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
+    pinned_at = Column(DateTime, nullable=True)
     deleted = Column(Boolean, default=False, nullable=False)

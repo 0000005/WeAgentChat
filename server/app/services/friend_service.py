@@ -7,7 +7,14 @@ def get_friend(db: Session, friend_id: int) -> Optional[Friend]:
     return db.query(Friend).filter(Friend.id == friend_id, Friend.deleted == False).first()
 
 def get_friends(db: Session, skip: int = 0, limit: int = 100) -> List[Friend]:
-    return db.query(Friend).filter(Friend.deleted == False).offset(skip).limit(limit).all()
+    return (
+        db.query(Friend)
+        .filter(Friend.deleted == False)
+        .order_by(Friend.pinned_at.desc().nulls_last(), Friend.update_time.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
 
 def create_friend(db: Session, friend: FriendCreate) -> Friend:
     db_friend = Friend(

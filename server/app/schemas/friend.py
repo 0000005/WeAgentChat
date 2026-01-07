@@ -16,11 +16,13 @@ class FriendUpdate(BaseModel):
     description: Optional[str] = Field(None, max_length=255)
     system_prompt: Optional[str] = None
     is_preset: Optional[bool] = None
+    pinned_at: Optional[datetime] = None  # Direct update of pinned_at
 
 class Friend(FriendBase):
     id: int
     create_time: datetime
     update_time: datetime
+    pinned_at: Optional[datetime] = None
     deleted: bool
 
     model_config = ConfigDict(from_attributes=True)

@@ -3,9 +3,9 @@ import { computed, ref, onMounted } from 'vue'
 import { useSessionStore } from '@/stores/session'
 import { useFriendStore } from '@/stores/friend'
 import { storeToRefs } from 'pinia'
-import { 
-  Search, 
-  Plus,
+import {
+  Search,
+  Pin,
   MoreVertical,
   Trash2,
   UserPlus,
@@ -37,7 +37,7 @@ const { friends, isLoading: friendsLoading } = storeToRefs(friendStore)
 const searchQuery = ref('')
 
 // Get friend's last message preview (placeholder for now)
-const getLastMessagePreview = (friend: any): string => {
+const getLastMessagePreview = (_friend: any): string => {
   // In real implementation, this could be cached or fetched
   return '点击开始聊天...'
 }
@@ -49,7 +49,7 @@ const getLastActiveTime = (friend: any): string => {
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
   const yesterday = today - 86400000
   const timestamp = date.getTime()
-  
+
   if (timestamp >= today) {
     return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
   } else if (timestamp >= yesterday) {
@@ -205,12 +205,7 @@ onMounted(async () => {
     <div class="search-header">
       <div class="search-box">
         <Search :size="14" class="search-icon" />
-        <input 
-          v-model="searchQuery"
-          type="text" 
-          placeholder="搜索" 
-          class="search-input"
-        />
+        <input v-model="searchQuery" type="text" placeholder="搜索" class="search-input" />
       </div>
       <button class="add-btn" @click="onAddFriend" title="新增好友">
         <UserPlus :size="18" />
@@ -225,14 +220,9 @@ onMounted(async () => {
       </div>
 
       <!-- Friend Items -->
-      <div
-        v-else
-        v-for="friend in filteredFriends"
-        :key="friend.id"
-        class="friend-item"
-        :class="{ active: friend.id === currentFriendId }"
-        @click="onSelectFriend(friend.id)"
-      >
+      <div v-else v-for="friend in filteredFriends" :key="friend.id" class="friend-item"
+        :class="{ active: friend.id === currentFriendId, pinned: !!friend.pinned_at }"
+        @click="onSelectFriend(friend.id)">
         <!-- Avatar -->
         <div class="friend-avatar">
           <img :src="getFriendAvatar(friend)" :alt="friend.name" />
@@ -241,7 +231,10 @@ onMounted(async () => {
         <!-- Content -->
         <div class="friend-content">
           <div class="friend-header">
-            <span class="friend-name">{{ friend.name }}</span>
+            <div class="friend-name-wrapper">
+              <Pin v-if="friend.pinned_at" :size="12" class="pin-icon" />
+              <span class="friend-name">{{ friend.name }}</span>
+            </div>
             <span class="friend-time">{{ getLastActiveTime(friend) }}</span>
           </div>
           <div class="friend-preview">
@@ -252,26 +245,17 @@ onMounted(async () => {
         <!-- Actions (shown on hover) -->
         <DropdownMenu>
           <DropdownMenuTrigger as-child>
-            <button 
-              class="friend-actions" 
-              @click.stop
-            >
+            <button class="friend-actions" @click.stop>
               <MoreVertical :size="14" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem 
-              @click.stop="openEditFriendDialog(friend.id)" 
-              class="cursor-pointer"
-            >
+            <DropdownMenuItem @click.stop="openEditFriendDialog(friend.id)" class="cursor-pointer">
               <Pencil class="mr-2 h-4 w-4" />
               编辑好友
             </DropdownMenuItem>
-            <DropdownMenuItem 
-              v-if="!friend.is_preset"
-              @click.stop="openDeleteFriendDialog(friend.id)" 
-              class="text-red-600 focus:text-red-600 cursor-pointer"
-            >
+            <DropdownMenuItem v-if="!friend.is_preset" @click.stop="openDeleteFriendDialog(friend.id)"
+              class="text-red-600 focus:text-red-600 cursor-pointer">
               <Trash2 class="mr-2 h-4 w-4" />
               删除好友
             </DropdownMenuItem>
@@ -311,48 +295,31 @@ onMounted(async () => {
             创建一个新的 AI 好友，设置其名称和人格特征。
           </DialogDescription>
         </DialogHeader>
-        
+
         <div class="dialog-form">
           <div class="form-group">
             <label for="friend-name" class="form-label">好友名称 <span class="required">*</span></label>
-            <Input 
-              id="friend-name"
-              v-model="newFriendForm.name"
-              placeholder="请输入好友名称，如：小助手、知心姐姐"
-              class="form-input"
-            />
+            <Input id="friend-name" v-model="newFriendForm.name" placeholder="请输入好友名称，如：小助手、知心姐姐" class="form-input" />
           </div>
-          
+
           <div class="form-group">
             <label for="friend-description" class="form-label">好友描述</label>
-            <Input 
-              id="friend-description"
-              v-model="newFriendForm.description"
-              placeholder="简短描述这个好友的特点"
-              class="form-input"
-            />
+            <Input id="friend-description" v-model="newFriendForm.description" placeholder="简短描述这个好友的特点"
+              class="form-input" />
           </div>
-          
+
           <div class="form-group">
             <label for="friend-system-prompt" class="form-label">系统提示词</label>
-            <Textarea 
-              id="friend-system-prompt"
-              v-model="newFriendForm.system_prompt"
-              placeholder="设置这个好友的人格特征和行为准则，例如：你是一个温暖友善的朋友，喜欢倾听和给出建设性意见..."
-              class="form-textarea"
-              :rows="5"
-            />
+            <Textarea id="friend-system-prompt" v-model="newFriendForm.system_prompt"
+              placeholder="设置这个好友的人格特征和行为准则，例如：你是一个温暖友善的朋友，喜欢倾听和给出建设性意见..." class="form-textarea" :rows="5" />
             <p class="form-hint">系统提示词决定了 AI 好友的人格和回复风格</p>
           </div>
         </div>
-        
+
         <DialogFooter>
           <Button variant="outline" @click="isAddFriendOpen = false" :disabled="isSubmitting">取消</Button>
-          <Button 
-            @click="confirmAddFriend" 
-            :disabled="!newFriendForm.name.trim() || isSubmitting"
-            class="add-confirm-btn"
-          >
+          <Button @click="confirmAddFriend" :disabled="!newFriendForm.name.trim() || isSubmitting"
+            class="add-confirm-btn">
             {{ isSubmitting ? '创建中...' : '创建好友' }}
           </Button>
         </DialogFooter>
@@ -368,48 +335,31 @@ onMounted(async () => {
             修改 AI 好友的名称和人格特征。
           </DialogDescription>
         </DialogHeader>
-        
+
         <div class="dialog-form">
           <div class="form-group">
             <label for="edit-friend-name" class="form-label">好友名称 <span class="required">*</span></label>
-            <Input 
-              id="edit-friend-name"
-              v-model="editFriendForm.name"
-              placeholder="请输入好友名称"
-              class="form-input"
-            />
+            <Input id="edit-friend-name" v-model="editFriendForm.name" placeholder="请输入好友名称" class="form-input" />
           </div>
-          
+
           <div class="form-group">
             <label for="edit-friend-description" class="form-label">好友描述</label>
-            <Input 
-              id="edit-friend-description"
-              v-model="editFriendForm.description"
-              placeholder="简短描述这个好友的特点"
-              class="form-input"
-            />
+            <Input id="edit-friend-description" v-model="editFriendForm.description" placeholder="简短描述这个好友的特点"
+              class="form-input" />
           </div>
-          
+
           <div class="form-group">
             <label for="edit-friend-system-prompt" class="form-label">系统提示词</label>
-            <Textarea 
-              id="edit-friend-system-prompt"
-              v-model="editFriendForm.system_prompt"
-              placeholder="设置这个好友的人格特征和行为准则..."
-              class="form-textarea"
-              :rows="5"
-            />
+            <Textarea id="edit-friend-system-prompt" v-model="editFriendForm.system_prompt"
+              placeholder="设置这个好友的人格特征和行为准则..." class="form-textarea" :rows="5" />
             <p class="form-hint">系统提示词决定了 AI 好友的人格和回复风格</p>
           </div>
         </div>
-        
+
         <DialogFooter>
           <Button variant="outline" @click="isEditFriendOpen = false" :disabled="isSubmitting">取消</Button>
-          <Button 
-            @click="confirmEditFriend" 
-            :disabled="!editFriendForm.name.trim() || isSubmitting"
-            class="add-confirm-btn"
-          >
+          <Button @click="confirmEditFriend" :disabled="!editFriendForm.name.trim() || isSubmitting"
+            class="add-confirm-btn">
             {{ isSubmitting ? '保存中...' : '保存修改' }}
           </Button>
         </DialogFooter>
@@ -511,6 +461,10 @@ onMounted(async () => {
   background: #d9d9d9;
 }
 
+.friend-item.pinned {
+  background: #f1f1f1;
+}
+
 .friend-item.active {
   background: #c9c9c9;
 }
@@ -544,6 +498,19 @@ onMounted(async () => {
   justify-content: space-between;
 }
 
+.friend-name-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.pin-icon {
+  color: #07c160;
+  flex-shrink: 0;
+}
+
 .friend-name {
   font-size: 14px;
   color: #333;
@@ -551,7 +518,6 @@ onMounted(async () => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  flex: 1;
 }
 
 .friend-time {

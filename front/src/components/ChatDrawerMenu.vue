@@ -17,6 +17,7 @@ import {
     DialogFooter,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
 import {
     MessageSquare,
     Brain,
@@ -109,12 +110,12 @@ const menuItems = computed<MenuItem[]>(() => [
         icon: Brain,
         action: () => handleMenuClick('memories')
     },
-    {
+    /* {
         id: 'pin',
         label: '顶置聊天',
         icon: Pin,
         action: () => handleMenuClick('pin')
-    },
+    }, */
     {
         id: 'clear',
         label: '清空聊天记录',
@@ -137,6 +138,21 @@ const handleMenuClick = (menuId: string) => {
         showClearConfirm.value = true
     } else {
         console.log(`Menu clicked: ${menuId}`)
+    }
+}
+
+const isPinned = computed(() => !!currentFriend.value?.pinned_at)
+
+const handleTogglePin = async (checked: boolean) => {
+    if (!sessionStore.currentFriendId) return
+    try {
+        await friendStore.updateFriend(sessionStore.currentFriendId, {
+            pinned_at: checked ? new Date().toISOString() : null
+        })
+        // Refresh list to show new order
+        friendStore.fetchFriends()
+    } catch (err: any) {
+        console.error('Failed to toggle pin', err)
     }
 }
 
@@ -221,6 +237,15 @@ const formatTime = (dateStr?: string) => {
                     <component :is="item.icon" :size="20" class="menu-icon" />
                     <span class="menu-label">{{ item.label }}</span>
                 </button>
+
+                <!-- 置顶聊天开关 -->
+                <div class="menu-item flex justify-between items-center">
+                    <div class="flex items-center gap-4">
+                        <Pin :size="20" class="menu-icon" />
+                        <span class="menu-label">顶置聊天</span>
+                    </div>
+                    <Switch :model-value="isPinned" @update:model-value="handleTogglePin" />
+                </div>
             </div>
 
             <!-- Sessions List View -->

@@ -1,3 +1,5 @@
+import { withApiBase } from './base'
+
 export interface Friend {
   id: number
   name: string
@@ -6,6 +8,7 @@ export interface Friend {
   is_preset?: boolean
   create_time: string
   update_time: string
+  pinned_at?: string | null
   deleted: boolean
 }
 
@@ -21,6 +24,7 @@ export interface FriendUpdate {
   description?: string | null
   system_prompt?: string | null
   is_preset?: boolean | null
+  pinned_at?: string | null
 }
 
 export async function getFriends(skip: number = 0, limit: number = 100): Promise<Friend[]> {
@@ -28,7 +32,7 @@ export async function getFriends(skip: number = 0, limit: number = 100): Promise
     skip: skip.toString(),
     limit: limit.toString(),
   })
-  const response = await fetch(`/api/friends/?${params}`)
+  const response = await fetch(withApiBase(`/api/friends/?${params}`))
   if (!response.ok) {
     throw new Error('Failed to fetch friends')
   }
@@ -36,7 +40,7 @@ export async function getFriends(skip: number = 0, limit: number = 100): Promise
 }
 
 export async function createFriend(friend: FriendCreate): Promise<Friend> {
-  const response = await fetch('/api/friends/', {
+  const response = await fetch(withApiBase('/api/friends/'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -50,7 +54,7 @@ export async function createFriend(friend: FriendCreate): Promise<Friend> {
 }
 
 export async function getFriend(id: number): Promise<Friend> {
-  const response = await fetch(`/api/friends/${id}`)
+  const response = await fetch(withApiBase(`/api/friends/${id}`))
   if (!response.ok) {
     throw new Error('Failed to fetch friend')
   }
@@ -58,7 +62,7 @@ export async function getFriend(id: number): Promise<Friend> {
 }
 
 export async function updateFriend(id: number, friend: FriendUpdate): Promise<Friend> {
-  const response = await fetch(`/api/friends/${id}`, {
+  const response = await fetch(withApiBase(`/api/friends/${id}`), {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
@@ -72,7 +76,7 @@ export async function updateFriend(id: number, friend: FriendUpdate): Promise<Fr
 }
 
 export async function deleteFriend(id: number): Promise<Friend> {
-  const response = await fetch(`/api/friends/${id}`, {
+  const response = await fetch(withApiBase(`/api/friends/${id}`), {
     method: 'DELETE',
   })
   if (!response.ok) {
