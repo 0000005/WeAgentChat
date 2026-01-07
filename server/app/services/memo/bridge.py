@@ -653,3 +653,54 @@ class MemoService:
             "events": events_result
         }
 
+    @classmethod
+    async def delete_friend_memories(
+        cls, user_id: str, space_id: str, friend_id: int
+    ) -> int:
+        """
+        Delete all events and event_gists for a specific friend_id.
+        
+        Args:
+            user_id: User identifier
+            space_id: Space/project identifier
+            friend_id: Friend ID to filter by (from event_tags)
+            
+        Returns:
+            Number of events deleted (gists are cascade deleted)
+        """
+        logger = logging.getLogger(__name__)
+        user_id_uuid = to_uuid(user_id)
+        
+        with Session() as session:
+            # Find all UserEvents with the friend_id tag
+            query = (
+                session.query(UserEvent)
+                .filter(
+                    UserEvent.user_id == user_id_uuid,
+                    UserEvent.project_id == space_id,
+                )
+                .filter(text(
+                    """
+                    EXISTS (
+                        SELECT 1 
+                        FROM json_each(json_extract(user_events.event_data, '$.event_tags')) 
+                        WHERE json_extract(value, '$.tag') = 'friend_id' 
+                        AND json_extract(value, '$.value') = :friend_id
+                    )
+                    """
+                ).params(friend_id=str(friend_id)))
+            )
+            
+            events = query.all()
+            count = len(events)
+            
+            # Delete each event - gists will be cascade deleted
+            for event in events:
+                session.delete(event)
+            
+            session.commit()
+            logger.info(f"[delete_friend_memories] Deleted {count} events for friend {friend_id}")
+            
+            return count
+
+
