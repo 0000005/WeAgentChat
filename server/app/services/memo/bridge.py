@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import struct
 from typing import List, Optional, Dict, Any
 from app.core.config import settings
 from app.db.session import SessionLocal
@@ -26,6 +25,7 @@ from app.vendor.memobase_server.controllers.event import (
 from app.vendor.memobase_server.controllers.context import get_user_context
 from app.vendor.memobase_server.controllers.blob import insert_blob
 from app.vendor.memobase_server.controllers.event_gist import search_user_event_gists, get_user_event_gists
+from app.vendor.memobase_server.controllers.event_gist import serialize_embedding
 from app.vendor.memobase_server.controllers.buffer import flush_buffer, insert_blob_to_buffer
 from app.vendor.memobase_server.controllers.project import (
     get_project_profile_config_string, 
@@ -493,7 +493,6 @@ class MemoService:
     # --- Recall / Search Extensions ---
 
     @classmethod
-    @classmethod
     async def search_memories_with_tags(
         cls,
         user_id: str,
@@ -534,8 +533,7 @@ class MemoService:
             raise MemoServiceException(f"Failed to get query embedding: {query_embeddings.msg()}")
         
         query_embedding = query_embeddings.data()[0]
-        # Serialize embedding for sqlite-vec
-        query_embedding_bytes = struct.pack(f"{len(query_embedding)}f", *query_embedding)
+        query_embedding_bytes = serialize_embedding(query_embedding)
         
         # 3. Calculate time cutoff (365 days)
         days_ago = datetime.utcnow() - timedelta(days=365)
@@ -624,10 +622,11 @@ class MemoService:
         events_result = []
         
         try:
+            events_task = cls.search_memories_with_tags(
+                user_id, space_id, query, friend_id, topk_event, threshold
+            )
             events_data = await asyncio.wait_for(
-                cls.search_memories_with_tags(
-                    user_id, space_id, query, friend_id, topk_event, threshold
-                ),
+                asyncio.gather(events_task),
                 timeout=timeout
             )
         except asyncio.TimeoutError:
@@ -637,6 +636,8 @@ class MemoService:
             logger.error(f"recall_memory failed: {e}")
             raise MemoServiceException(f"Memory recall failed: {e}") from e
         
+        events_data = events_data[0] if events_data else UserEventGistsData(gists=[], events=[])
+
         # Format events
         for gist in events_data.gists:
             gist_data = gist.gist_data if isinstance(gist.gist_data, dict) else gist.gist_data.model_dump()

@@ -197,6 +197,10 @@ def pack_profiles_into_string(profiles: AIUserProfiles) -> str:
 
 
 def meaningless_profile_memo(memo: str) -> bool:
+    if memo is None:
+        LOG.info("Meaningless profile memo: None")
+        return True
+    memo = str(memo)
     maybe_meaningless = difflib.get_close_matches(
         memo.strip().lower(), EXCLUDE_PROFILE_VALUES
     )
@@ -245,6 +249,8 @@ def parse_line_into_subtopic(line: str) -> dict:
     line = line[2:]
     parts = line.split(CONFIG.llm_tab_separator)
     if not len(parts) == 2:
+        return None
+    if parts[1] is None:
         return None
     if meaningless_profile_memo(parts[1].strip()):
         return None

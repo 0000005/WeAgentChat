@@ -11,6 +11,7 @@ from ..models.blob import BlobType, Blob
 from ..connectors import Session, PROJECT_ID, get_redis_client
 from .modal import BLOBS_PROCESS
 from .buffer import flush_buffer_by_ids
+from ..utils import to_uuid
 
 REDIS_LUA_CHECK_AND_DELETE_LOCK = """
 if redis.call("get", KEYS[1]) == ARGV[1] then
@@ -45,6 +46,8 @@ async def flush_buffer_by_ids_in_background(
     if blob_type not in BLOBS_PROCESS:
         return
 
+    buffer_uuid_ids = [to_uuid(bid) for bid in buffer_ids]
+
     # 1. mark buffer as processing
     with Session() as session:
         buffer_blob_data = (
@@ -54,7 +57,7 @@ async def flush_buffer_by_ids_in_background(
                 BufferZone.blob_type == str(blob_type),
                 BufferZone.project_id == project_id,
                 BufferZone.status == BufferStatus.idle,
-                BufferZone.id.in_(buffer_ids),
+                BufferZone.id.in_(buffer_uuid_ids),
             )
             .order_by(BufferZone.created_at)
             .all()
