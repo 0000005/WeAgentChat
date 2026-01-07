@@ -4,7 +4,7 @@
 
 ## 1. 需求全景
 ### 1.1 业务背景
-用户需要能够根据不同场景（如纯净对话 vs 系统调试）自由开启/关闭记忆召回功能，并调整检索的精细度。同时，开发者和高级用户希望能通过前端界面观察到 AI 的思维链和工具调用过程。
+用户需要能够根据不同场景（如纯净对话 vs 系统调试）自由开启/关闭记忆召回功能，并调整检索的精细度。同时，开发者和高级用户希望能通过前端界面观察到 AI 的思维链和工具调用过程。Profile 将直接注入 System Prompt，不再依赖检索参数。
 
 ### 1.2 核心功能点
 - **后端配置项初始化**: 在 `system_settings` 表中预设记忆和聊天的默认配置。
@@ -33,7 +33,7 @@
 ## 4. 核心方案设计
 ### 4.1 后端逻辑 (Logic & Data)
 - **Settings 扩充**:
-    - `memory` 组: `recall_enabled` (bool, true), `search_rounds` (int, 3), `profile_topk` (int, 5), `event_topk` (int, 5), `similarity_threshold` (float, 0.5)。
+    - `memory` 组: `recall_enabled` (bool, true), `search_rounds` (int, 3), `event_topk` (int, 5), `similarity_threshold` (float, 0.5)。
     - `chat` 组: `show_tool_calls` (bool, false), `show_thinking` (bool, false)。
 
 ### 4.2 前端交互 (View & State)
@@ -58,13 +58,13 @@
 - **操作文件**: `server/app/services/settings_service.py`
 - **逻辑描述**: 
     1. 在 `initialize_defaults` 方法的 `defaults` 列表中增加新配置项。
-    2. 确保 `memory` 组包含召回开关、轮数、TopK(P/E)、阈值。
+    2. 确保 `memory` 组包含召回开关、轮数、Event TopK、阈值。
     3. 确保 `chat` 组包含显示工具调用、显示思维链。
 
 ### 步骤 2: 扩展前端 Store 状态
 - **操作文件**: `front/src/stores/settings.ts`
 - **逻辑描述**: 
-    1. 定义 `recallEnabled`, `searchRounds`, `profileTopk`, `eventTopk`, `similarityThreshold` 等响应式变量。
+    1. 定义 `recallEnabled`, `searchRounds`, `eventTopk`, `similarityThreshold` 等响应式变量。
     2. 定义 `showToolCalls`, `showThinking` 响应式变量。
     3. 编写 `fetchMemorySettings` 和 `saveMemorySettings` 调用 `fetchSettings`/`saveSettings`。
     4. 更新 `fetchChatSettings` 和 `saveChatSettings` 映射更多字段。

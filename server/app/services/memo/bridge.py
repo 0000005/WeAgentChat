@@ -11,7 +11,6 @@ from app.vendor.memobase_server.env import reinitialize_config, CONFIG
 from app.vendor.memobase_server.controllers.buffer_background import start_memobase_worker
 from app.vendor.memobase_server.models.database import UserEvent, UserEventGist
 from app.vendor.memobase_server.utils import to_uuid
-from app.vendor.memobase_server.controllers.post_process.profile import filter_profiles_with_chats
 from app.vendor.memobase_server.llms.embeddings import get_embedding
 from sqlalchemy import text, desc, select, func
 from datetime import datetime, timedelta
@@ -494,55 +493,6 @@ class MemoService:
     # --- Recall / Search Extensions ---
 
     @classmethod
-    async def search_profiles_semantic(
-        cls, 
-        user_id: str, 
-        space_id: str, 
-        query: str, 
-        topk: int = 5
-    ) -> UserProfilesData:
-        """
-        Search profiles semantically using LLM to pick most relevant profiles.
-        
-        Args:
-            user_id: User identifier
-            space_id: Space/project identifier
-            query: Query string to search for relevant profiles
-            topk: Maximum number of profiles to return
-            
-        Returns:
-            UserProfilesData with filtered profiles
-        """
-        logger = logging.getLogger(__name__)
-        
-        # 1. Get all profiles
-        all_profiles = await cls.get_user_profiles(user_id, space_id)
-        if not all_profiles.profiles:
-            logger.debug(f"No profiles found for user {user_id} in space {space_id}")
-            return UserProfilesData(profiles=[])
-        
-        # 2. Wrap query as OpenAICompatibleMessage for filter_profiles_with_chats
-        messages = [{"role": "user", "content": query}]
-        
-        # 3. Call filter_profiles_with_chats to get top relevant profiles
-        result_promise = await filter_profiles_with_chats(
-            user_id=user_id,
-            project_id=space_id,
-            profiles=all_profiles,
-            chats=messages,
-            max_filter_num=topk
-        )
-        
-        if not result_promise.ok():
-            logger.warning(f"Profile semantic search failed: {result_promise.msg()}")
-            return UserProfilesData(profiles=[])
-        
-        filter_result = result_promise.data()
-        filtered_profiles = filter_result.get("profiles", [])
-        
-        logger.debug(f"Profile semantic search returned {len(filtered_profiles)} results for query: {query[:50]}...")
-        return UserProfilesData(profiles=filtered_profiles)
-
     @classmethod
     async def search_memories_with_tags(
         cls,
@@ -647,20 +597,18 @@ class MemoService:
         space_id: str,
         query: str,
         friend_id: int,
-        topk_profile: int = 5,
         topk_event: int = 5,
         threshold: float = 0.5,
         timeout: float = 3.0
     ) -> Dict[str, Any]:
         """
-        Unified memory recall interface that retrieves relevant profiles and events.
+        Unified memory recall interface that retrieves relevant events only.
         
         Args:
             user_id: User identifier
             space_id: Space/project identifier
             query: Query string to search
             friend_id: Friend ID for event filtering
-            topk_profile: Max profiles to return
             topk_event: Max events to return
             threshold: Similarity threshold for event search
             timeout: Maximum time (seconds) to wait for both searches
@@ -668,68 +616,26 @@ class MemoService:
         Returns:
             Dictionary with format:
             {
-                "profiles": [{"topic": ..., "content": ..., "updated_at": ...}, ...],
                 "events": [{"date": ..., "content": ...}, ...]
             }
         """
         logger = logging.getLogger(__name__)
         
-        profiles_result = []
         events_result = []
         
-        async def search_profiles():
-            try:
-                return await cls.search_profiles_semantic(
-                    user_id, space_id, query, topk_profile
-                )
-            except Exception as e:
-                logger.warning(f"Profile search failed: {e}")
-                return UserProfilesData(profiles=[])
-        
-        async def search_events():
-            try:
-                return await cls.search_memories_with_tags(
-                    user_id, space_id, query, friend_id, topk_event, threshold
-                )
-            except Exception as e:
-                logger.warning(f"Event search failed: {e}")
-                return UserEventGistsData(gists=[], events=[])
-        
         try:
-            # Run both searches in parallel with timeout
-            profiles_data, events_data = await asyncio.wait_for(
-                asyncio.gather(
-                    search_profiles(),
-                    search_events(),
-                    return_exceptions=True
+            events_data = await asyncio.wait_for(
+                cls.search_memories_with_tags(
+                    user_id, space_id, query, friend_id, topk_event, threshold
                 ),
                 timeout=timeout
             )
-            
-            # Handle potential exceptions from gather
-            if isinstance(profiles_data, Exception):
-                logger.warning(f"Profile search exception: {profiles_data}")
-                profiles_data = UserProfilesData(profiles=[])
-            if isinstance(events_data, Exception):
-                logger.warning(f"Event search exception: {events_data}")
-                events_data = UserEventGistsData(gists=[], events=[])
-                
         except asyncio.TimeoutError:
             logger.warning(f"recall_memory timed out after {timeout}s")
-            # Return empty results on timeout
-            return {"profiles": [], "events": []}
+            return {"events": []}
         except Exception as e:
             logger.error(f"recall_memory failed: {e}")
             raise MemoServiceException(f"Memory recall failed: {e}") from e
-        
-        # Format profiles
-        for profile in profiles_data.profiles:
-            profiles_result.append({
-                "topic": profile.attributes.get("topic", ""),
-                "sub_topic": profile.attributes.get("sub_topic", ""),
-                "content": profile.content,
-                "updated_at": profile.updated_at.isoformat() if hasattr(profile, 'updated_at') and profile.updated_at else None
-            })
         
         # Format events
         for gist in events_data.gists:
@@ -740,10 +646,9 @@ class MemoService:
                 "similarity": getattr(gist, 'similarity', None)
             })
         
-        logger.info(f"recall_memory: {len(profiles_result)} profiles, {len(events_result)} events for query: {query[:30]}...")
+        logger.info(f"recall_memory: {len(events_result)} events for query: {query[:30]}...")
         
         return {
-            "profiles": profiles_result,
             "events": events_result
         }
 

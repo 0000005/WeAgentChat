@@ -4,10 +4,10 @@
 
 ## 1. 需求全景
 ### 1.1 业务背景
-记忆召回不应是用户的黑盒操作。通过在聊天流中嵌入召回过程，用户可以感知到 AI 是如何利用过往记忆来生成回复的，增强交互的透明度和温度。
+记忆召回应有可见性，但 Profile 体量有限可直接注入 System Prompt。通过在聊天流中嵌入 Event 召回过程，用户可以感知到 AI 是如何利用过往事件记忆来生成回复的，增强交互的透明度和温度。
 
 ### 1.2 核心功能点
-- **功能 A: 后端流集成**: 在 `send_message_stream` 中引入 `RecallService`，动态调整 LLM 上下文。
+- **功能 A: 后端流集成**: 在 `send_message_stream` 中注入 Profile 并引入 `RecallService`，动态调整 LLM 上下文。
 - **功能 B: 召回过程透传**: 根据系统设置，将回忆 Agent 的思维链和工具调用通过 SSE 事件推送至前端。
 - **功能 C: 前端组件适配**: 升级聊天气泡，利用 `ai-elements-vue` 展示工具调用和思维过程。
 
@@ -32,7 +32,7 @@
 ### 4.1 后端逻辑 (Logic & Data)
 - **送往主 Agent 的上下文**:
     - 原始内容: [User Message]
-    - 增强后: [模拟的 Assistant Tool Call] -> [模拟的 Tool Result] -> [User Message]
+    - 增强后: [System Prompt: Profiles] -> [模拟的 Assistant Tool Call] -> [模拟的 Tool Result] -> [User Message]
 - **SSE 事件流顺序与命名规范**:
     1. `start` - 流开始（现有）
     2. **新增事件** `tool_call` - 推送召回工具调用信息（如果开启「显示工具调用」）：
@@ -72,7 +72,7 @@
     1. 在 `send_message_stream` 开始处读取 `memory` 和 `chat` 相关设置。
     2. 如果开启召回，获取当前会话的完整聊天记录（Messages），调用 `RecallService.perform_recall(db, user_id, space_id, messages, friend_id)` 获取召回数据和回忆 Agent 的足迹。
     3. 如果设置允许展示，将回忆 Agent 的 `thinking` 或 `tool_calls` 通过 `yield` 发送。
-    4. 将召回结果作为 Prefix 消息注入到 `agent_messages` 中供给主 Agent。
+    4. 将 Profile 直接注入 System Prompt，并将召回结果作为 Prefix 消息注入到 `agent_messages` 中供给主 Agent。
 
 ### 步骤 2: 前端 Store 适配
 - **操作文件**: `front/src/stores/session.ts`
@@ -120,7 +120,7 @@
          </Tool>
        </div>
        ```
-    3. 针对 `recall_memory` 工具，可以自定义 `ToolResult` 的展示格式（如分 Profiles/Events 两栏显示）。
+    3. 针对 `recall_memory` 工具，可以自定义 `ToolResult` 的展示格式（仅 Events）。
     4. 确保工具调用区域在聊天气泡内有明显的视觉区分（颜色、边框等）。
 
 ## 7. 验收标准
