@@ -4,7 +4,7 @@ import {
   MessageCircle,
   Users,
   Settings,
-  MoreHorizontal,
+  Menu,
   User
 } from 'lucide-vue-next'
 import {
@@ -64,7 +64,7 @@ const navItems = [
       <Popover v-model:open="isPopoverOpen">
         <PopoverTrigger as-child>
           <button class="nav-btn" title="更多">
-            <MoreHorizontal :size="22" :stroke-width="1.5" />
+            <Menu :size="22" :stroke-width="1.5" />
           </button>
         </PopoverTrigger>
         <PopoverContent side="right" align="end" :side-offset="12" class="w-32 p-1 bg-[#3c3c3c] border-none shadow-xl">
