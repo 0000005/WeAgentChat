@@ -1,3 +1,5 @@
+import { withApiBase } from './base'
+
 export interface LLMConfig {
   id: number
   base_url: string | null
@@ -15,7 +17,7 @@ export interface LLMConfigUpdate {
 }
 
 export async function getLlmConfig(): Promise<LLMConfig> {
-  const response = await fetch('/api/llm/config')
+  const response = await fetch(withApiBase('/api/llm/config'))
   if (!response.ok) {
     throw new Error('Failed to fetch LLM config')
   }
@@ -23,7 +25,7 @@ export async function getLlmConfig(): Promise<LLMConfig> {
 }
 
 export async function updateLlmConfig(config: LLMConfigUpdate): Promise<LLMConfig> {
-  const response = await fetch('/api/llm/config', {
+  const response = await fetch(withApiBase('/api/llm/config'), {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
@@ -44,7 +46,7 @@ export interface LLMTestResult {
 }
 
 export async function testLlmConfig(config: LLMConfigUpdate): Promise<LLMTestResult> {
-  const response = await fetch('/api/llm/config/test', {
+  const response = await fetch(withApiBase('/api/llm/config/test'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

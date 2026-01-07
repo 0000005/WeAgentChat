@@ -1,13 +1,20 @@
 import os
 from pydantic_settings import BaseSettings
 
+
+def _resolve_data_dir(base_dir: str) -> str:
+    override = os.getenv("DOUDOUCHAT_DATA_DIR") or os.getenv("DATA_DIR")
+    if override:
+        return os.path.abspath(os.path.expandvars(override))
+    return os.path.join(base_dir, "data")
+
 class Settings(BaseSettings):
     PROJECT_NAME: str = "DouDouChat Server"
     API_STR: str = "/api"
 
     # Database
     BASE_DIR: str = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    DATA_DIR: str = os.path.join(BASE_DIR, "data")
+    DATA_DIR: str = _resolve_data_dir(BASE_DIR)
     SQLALCHEMY_DATABASE_URI: str = f"sqlite:///{os.path.join(DATA_DIR, 'doudou.db')}"
 
     # Memobase SDK Configuration

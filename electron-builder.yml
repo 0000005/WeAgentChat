@@ -1,0 +1,16 @@
+appId: com.doudou.chat
+productName: DouDouChat
+files:
+  - electron/**/*
+  - front/dist/**/*
+  - package.json
+directories:
+  buildResources: electron/icons
+  output: dist-electron
+asar: true
+extraResources:
+  - from: build/backend
+    to: backend
+win:
+  target:
+    - nsis

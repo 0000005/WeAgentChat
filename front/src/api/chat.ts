@@ -1,3 +1,5 @@
+import { withApiBase } from './base'
+
 export interface ChatSession {
   id: number
   title: string | null
@@ -42,7 +44,7 @@ export async function getSessions(skip: number = 0, limit: number = 100): Promis
     skip: skip.toString(),
     limit: limit.toString(),
   })
-  const response = await fetch(`/api/chat/sessions?${params}`)
+  const response = await fetch(withApiBase(`/api/chat/sessions?${params}`))
   if (!response.ok) {
     throw new Error('Failed to fetch sessions')
   }
@@ -50,7 +52,7 @@ export async function getSessions(skip: number = 0, limit: number = 100): Promis
 }
 
 export async function createSession(session: ChatSessionCreate): Promise<ChatSession> {
-  const response = await fetch('/api/chat/sessions', {
+  const response = await fetch(withApiBase('/api/chat/sessions'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -64,7 +66,7 @@ export async function createSession(session: ChatSessionCreate): Promise<ChatSes
 }
 
 export async function updateSession(id: number, session: ChatSessionUpdate): Promise<ChatSession> {
-  const response = await fetch(`/api/chat/sessions/${id}`, {
+  const response = await fetch(withApiBase(`/api/chat/sessions/${id}`), {
     method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',
@@ -78,7 +80,7 @@ export async function updateSession(id: number, session: ChatSessionUpdate): Pro
 }
 
 export async function deleteSession(id: number): Promise<void> {
-  const response = await fetch(`/api/chat/sessions/${id}`, {
+  const response = await fetch(withApiBase(`/api/chat/sessions/${id}`), {
     method: 'DELETE',
   })
   if (!response.ok) {
@@ -91,7 +93,7 @@ export async function getMessages(sessionId: number, skip: number = 0, limit: nu
     skip: skip.toString(),
     limit: limit.toString(),
   })
-  const response = await fetch(`/api/chat/sessions/${sessionId}/messages?${params}`)
+  const response = await fetch(withApiBase(`/api/chat/sessions/${sessionId}/messages?${params}`))
   if (!response.ok) {
     throw new Error('Failed to fetch messages')
   }
@@ -106,7 +108,7 @@ export async function* sendMessageStream(sessionId: number, message: MessageCrea
 
   console.log(`[SSE-FE ${new Date().toLocaleTimeString()}] Starting fetch for session ${sessionId}`)
 
-  const response = await fetch(`/api/chat/sessions/${sessionId}/messages`, {
+  const response = await fetch(withApiBase(`/api/chat/sessions/${sessionId}/messages`), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -179,7 +181,7 @@ export async function* sendMessageStream(sessionId: number, message: MessageCrea
 }
 
 export async function sendMessage(sessionId: number, message: MessageCreate): Promise<Message> {
-  const response = await fetch(`/api/chat/sessions/${sessionId}/messages`, {
+  const response = await fetch(withApiBase(`/api/chat/sessions/${sessionId}/messages`), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -199,7 +201,7 @@ export async function getFriendMessages(friendId: number, skip: number = 0, limi
     skip: skip.toString(),
     limit: limit.toString(),
   })
-  const response = await fetch(`/api/chat/friends/${friendId}/messages?${params}`)
+  const response = await fetch(withApiBase(`/api/chat/friends/${friendId}/messages?${params}`))
   if (!response.ok) {
     throw new Error('Failed to fetch friend messages')
   }
@@ -207,7 +209,7 @@ export async function getFriendMessages(friendId: number, skip: number = 0, limi
 }
 
 export async function getFriendSessions(friendId: number): Promise<ChatSession[]> {
-  const response = await fetch(`/api/chat/friends/${friendId}/sessions`)
+  const response = await fetch(withApiBase(`/api/chat/friends/${friendId}/sessions`))
   if (!response.ok) {
     throw new Error('Failed to fetch friend sessions')
   }
@@ -222,7 +224,7 @@ export async function* sendMessageToFriendStream(friendId: number, message: Mess
 
   console.log(`[SSE-FE ${new Date().toLocaleTimeString()}] Starting fetch for friend ${friendId}`)
 
-  const response = await fetch(`/api/chat/friends/${friendId}/messages`, {
+  const response = await fetch(withApiBase(`/api/chat/friends/${friendId}/messages`), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -292,7 +294,7 @@ export async function* sendMessageToFriendStream(friendId: number, message: Mess
   }
 }
 export async function clearFriendMessages(friendId: number): Promise<void> {
-  const response = await fetch(`/api/chat/friends/${friendId}/messages`, {
+  const response = await fetch(withApiBase(`/api/chat/friends/${friendId}/messages`), {
     method: 'DELETE',
   })
   if (!response.ok) {

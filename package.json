@@ -1,0 +1,17 @@
+{
+  "name": "doudou-chat-desktop",
+  "private": true,
+  "main": "electron/main.js",
+  "scripts": {
+    "electron:dev": "electron .",
+    "electron:build": "pnpm -C front build && electron-builder",
+    "electron:pack": "pnpm -C front build && electron-builder --dir"
+  },
+  "dependencies": {
+    "tree-kill": "^1.2.2"
+  },
+  "devDependencies": {
+    "electron": "^32.0.0",
+    "electron-builder": "^24.13.3"
+  }
+}

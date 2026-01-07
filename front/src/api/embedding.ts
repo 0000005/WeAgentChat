@@ -1,3 +1,5 @@
+import { withApiBase } from './base'
+
 export interface EmbeddingSetting {
     id: number
     embedding_provider: string | null
@@ -30,7 +32,7 @@ export interface EmbeddingSettingUpdate {
 }
 
 export async function getEmbeddingSettings(skip: number = 0, limit: number = 100): Promise<EmbeddingSetting[]> {
-    const response = await fetch(`/api/embedding-settings/?skip=${skip}&limit=${limit}`)
+    const response = await fetch(withApiBase(`/api/embedding-settings/?skip=${skip}&limit=${limit}`))
     if (!response.ok) {
         throw new Error('Failed to fetch embedding settings')
     }
@@ -38,7 +40,7 @@ export async function getEmbeddingSettings(skip: number = 0, limit: number = 100
 }
 
 export async function createEmbeddingSetting(data: EmbeddingSettingCreate): Promise<EmbeddingSetting> {
-    const response = await fetch('/api/embedding-settings/', {
+    const response = await fetch(withApiBase('/api/embedding-settings/'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
@@ -50,7 +52,7 @@ export async function createEmbeddingSetting(data: EmbeddingSettingCreate): Prom
 }
 
 export async function updateEmbeddingSetting(id: number, data: EmbeddingSettingUpdate): Promise<EmbeddingSetting> {
-    const response = await fetch(`/api/embedding-settings/${id}`, {
+    const response = await fetch(withApiBase(`/api/embedding-settings/${id}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
@@ -69,7 +71,7 @@ export interface EmbeddingTestResult {
 }
 
 export async function testEmbeddingConfig(config: EmbeddingSettingCreate): Promise<EmbeddingTestResult> {
-    const response = await fetch('/api/embedding-settings/test', {
+    const response = await fetch(withApiBase('/api/embedding-settings/test'), {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',

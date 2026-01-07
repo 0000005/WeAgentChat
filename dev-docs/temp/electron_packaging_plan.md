@@ -91,3 +91,38 @@ DouDouChat/
 1.  **环境准备**: 在项目根目录安装 electron 开发依赖。
 2.  **后端调整**: 修改 `server/app/core/config.py` 以支持动态数据目录。
 3.  **POC (概念验证)**: 编写一个简单的 Electron 脚本，尝试启动现有的 Python 源码（使用系统 Python），验证通信链路。
+
+## 7. 本次任务进度更新
+### 7.1 已完成事项
+*   **后端数据目录可配置**: `server/app/core/config.py` 支持 `DOUDOUCHAT_DATA_DIR` 环境变量覆盖默认数据目录。
+*   **后端 CLI 入口**: 新增 `server/app/cli.py`，支持 `--port` 与 `--data-dir` 启动参数，便于 Electron 调用。
+*   **前端 API 基地址适配**: 新增 `front/src/api/base.ts` 与 `front/src/env.d.ts`，统一从 Electron 注入变量/环境变量解析 API Base URL。
+*   **前端 API 接口改造**: `front/src/api/*.ts` 已改为使用 `withApiBase()` 进行请求。
+*   **Electron 主进程/预加载**: 新增 `electron/main.js`、`electron/preload.js`，完成端口寻找、后端启动、健康检查、窗口加载与进程回收。
+*   **启动 Splash**: 新增 `electron/splash.html`，避免启动白屏。
+*   **打包配置**: 新增 `electron-builder.yml` 与根目录 `package.json` (Electron 依赖与脚本)。
+
+### 7.2 待完成事项
+*   **PyInstaller spec**: 需要编写 `server.spec` 并处理 `sqlite-vec` 的 `binaries` 打包。
+*   **前端路由模式**: 如需 `file://` 打包运行，需确认 Vue Router 是否切换 `Hash` 模式。
+*   **CI/自动化**: 可选增加 `beforePack` 钩子自动编译前端与后端。
+
+## 8. 打包与使用说明
+### 8.1 开发模式
+1.  启动后端: `cd server` 后运行 `venv\Scripts\python -m uvicorn app.main:app --reload`
+2.  启动前端: `cd front` 后运行 `pnpm dev`
+3.  启动 Electron: 在项目根目录运行 `pnpm electron:dev`
+
+### 8.2 生产打包
+1.  先用 PyInstaller 生成后端（产物目录需放到 `build/backend`）
+2.  在项目根目录运行 `pnpm electron:build`
+3.  打包产物输出到 `dist-electron/`
+
+### 8.3 重要说明
+*   生产环境下 Electron 会用 `process.resourcesPath/backend` 启动后端。
+*   Electron 通过 `--data-dir` 参数将数据目录指向 `app.getPath('userData')`，避免写入只读安装目录。
+
+### 8.4 一键打包脚本
+*   使用 `scripts/package-electron.bat` 可完成后端打包、前端构建与 Electron 打包。
+*   该脚本会自动检测并安装 `pyinstaller`，以及检测 `pnpm` 和依赖目录。
+*   默认后端输出 EXE 名称为 `wechatagent.exe`（通过 `--name` 参数指定）。

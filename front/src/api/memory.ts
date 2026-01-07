@@ -1,3 +1,5 @@
+import { withApiBase } from './base'
+
 export interface ProfileAttributes {
     topic: string
     [key: string]: any
@@ -38,7 +40,7 @@ export interface UserEventGistsData {
 // --- API Functions ---
 
 export async function getMemoryConfig(): Promise<ProfileConfig> {
-    const response = await fetch('/api/memory/config')
+    const response = await fetch(withApiBase('/api/memory/config'))
     if (!response.ok) {
         throw new Error('Failed to fetch memory config')
     }
@@ -46,7 +48,7 @@ export async function getMemoryConfig(): Promise<ProfileConfig> {
 }
 
 export async function updateMemoryConfig(config: string): Promise<any> {
-    const response = await fetch('/api/memory/config', {
+    const response = await fetch(withApiBase('/api/memory/config'), {
         method: 'PUT',
         headers: {
             'Content-Type': 'application/json',
@@ -60,7 +62,7 @@ export async function updateMemoryConfig(config: string): Promise<any> {
 }
 
 export async function getProfiles(): Promise<{ profiles: Profile[] }> {
-    const response = await fetch('/api/memory/profiles')
+    const response = await fetch(withApiBase('/api/memory/profiles'))
     if (!response.ok) {
         throw new Error('Failed to fetch profiles')
     }
@@ -68,7 +70,7 @@ export async function getProfiles(): Promise<{ profiles: Profile[] }> {
 }
 
 export async function addProfile(content: string, attributes: ProfileAttributes): Promise<{ ids: string[] }> {
-    const response = await fetch('/api/memory/profiles', {
+    const response = await fetch(withApiBase('/api/memory/profiles'), {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -82,7 +84,7 @@ export async function addProfile(content: string, attributes: ProfileAttributes)
 }
 
 export async function updateProfile(id: string, content: string, attributes?: ProfileAttributes): Promise<any> {
-    const response = await fetch(`/api/memory/profiles/${id}`, {
+    const response = await fetch(withApiBase(`/api/memory/profiles/${id}`), {
         method: 'PUT',
         headers: {
             'Content-Type': 'application/json',
@@ -96,7 +98,7 @@ export async function updateProfile(id: string, content: string, attributes?: Pr
 }
 
 export async function deleteProfile(id: string): Promise<any> {
-    const response = await fetch(`/api/memory/profiles/${id}`, {
+    const response = await fetch(withApiBase(`/api/memory/profiles/${id}`), {
         method: 'DELETE',
     })
     if (!response.ok) {
@@ -106,7 +108,7 @@ export async function deleteProfile(id: string): Promise<any> {
 }
 
 export async function deleteProfiles(ids: string[]): Promise<any> {
-    const response = await fetch('/api/memory/profiles', {
+    const response = await fetch(withApiBase('/api/memory/profiles'), {
         method: 'DELETE',
         headers: {
             'Content-Type': 'application/json',
@@ -120,7 +122,7 @@ export async function deleteProfiles(ids: string[]): Promise<any> {
 }
 
 export async function getFriendEventGists(friendId: number, limit: number = 50): Promise<UserEventGistsData> {
-    const response = await fetch(`/api/memory/events_gists?friend_id=${friendId}&limit=${limit}`)
+    const response = await fetch(withApiBase(`/api/memory/events_gists?friend_id=${friendId}&limit=${limit}`))
     if (!response.ok) {
         throw new Error('Failed to fetch friend event gists')
     }
