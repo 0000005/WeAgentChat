@@ -1,5 +1,7 @@
 import asyncio
 import time
+import json
+import logging
 from ..prompts.utils import convert_response_to_json
 from ..utils import get_encoded_tokens
 from ..env import CONFIG, LOG
@@ -12,8 +14,10 @@ from ..telemetry import telemetry_manager, CounterMetricName, HistogramMetricNam
 from .openai_model_llm import openai_complete
 from .doubao_cache_llm import doubao_cache_complete
 
-FACTORIES = {"openai": openai_complete, "doubao_cache": doubao_cache_complete}
+FACTORIES = {"openai": openai_complete, "doubao_cache": doubao_cache_complete}  
 assert CONFIG.llm_style in FACTORIES, f"Unsupported LLM style: {CONFIG.llm_style}"
+
+prompt_logger = logging.getLogger("prompt_trace")
 
 
 # TODO: add TPM/Rate limiter
@@ -30,6 +34,17 @@ async def llm_complete(
     if json_mode:
         kwargs["response_format"] = {"type": "json_object"}
     try:
+        prompt_logger.info(json.dumps({
+            "type": "memobase_llm_prompt",
+            "source": "memobase.llm_complete",
+            "model": use_model,
+            "prompt_id": kwargs.get("prompt_id"),
+            "json_mode": json_mode,
+            "system_prompt": system_prompt,
+            "prompt": prompt,
+            "history_messages": history_messages,
+        }, ensure_ascii=False, default=str))
+
         start_time = time.time()
         results = await FACTORIES[CONFIG.llm_style](
             use_model,

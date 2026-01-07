@@ -14,6 +14,7 @@ from app.services.settings_service import SettingsService
 
 
 logger = logging.getLogger(__name__)
+prompt_logger = logging.getLogger("prompt_trace")
 
 
 class RecallService:
@@ -150,6 +151,18 @@ class RecallService:
         if not agent_messages:
             return {"injected_messages": [], "footprints": []}
 
+        prompt_logger.info(json.dumps({
+            "type": "memory_recall_prompt",
+            "source": "RecallService.perform_recall",
+            "friend_id": friend_id,
+            "model": llm_config.model_name,
+            "instructions": instructions,
+            "messages": agent_messages,
+            "search_rounds": search_rounds,
+            "event_topk": event_topk,
+            "similarity_threshold": threshold,
+        }, ensure_ascii=False, default=str))
+
         result = await Runner.run(agent, agent_messages)
 
         tool_outputs: List[Dict[str, Any]] = []
@@ -217,4 +230,3 @@ class RecallService:
             "injected_messages": [tool_call_item, tool_result_item],
             "footprints": footprints
         }
-

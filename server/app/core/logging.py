@@ -13,6 +13,7 @@ def get_logging_config():
         os.makedirs(log_dir)
         
     log_file = os.path.join(log_dir, "app.log")
+    prompt_log_file = os.path.join(log_dir, "prompt.log")
 
     return {
         "version": 1,
@@ -37,6 +38,15 @@ def get_logging_config():
                 "backupCount": 30,
                 "encoding": "utf-8",
             },
+            "prompt_file": {
+                "class": "logging.handlers.TimedRotatingFileHandler",
+                "formatter": "standard",
+                "filename": prompt_log_file,
+                "when": "midnight",
+                "interval": 1,
+                "backupCount": 30,
+                "encoding": "utf-8",
+            },
         },
         "loggers": {
             "app": {
@@ -46,6 +56,11 @@ def get_logging_config():
             },
             "memobase_server": {
                 "handlers": ["console", "file"],
+                "level": "INFO",
+                "propagate": False,
+            },
+            "prompt_trace": {
+                "handlers": ["prompt_file"],
                 "level": "INFO",
                 "propagate": False,
             },
@@ -74,7 +89,7 @@ def refresh_app_logging():
     # 2. 强力复活被 Uvicorn 禁用的 Logger (针对已经 import 的模块)
     # 这部分虽然看起来不优雅，但却是处理 Uvicorn disable_existing_loggers=True 最彻底的办法
     logger_manager = logging.Logger.manager
-    target_prefixes = ["app.", "app", "memobase_server"]
+    target_prefixes = ["app.", "app", "memobase_server", "prompt_trace"]
     
     for name, logger_obj in logger_manager.loggerDict.items():
         if isinstance(logger_obj, logging.Logger):

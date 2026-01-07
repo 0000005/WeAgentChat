@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import re
+import json
 import time
 import logging
 import asyncio
@@ -17,6 +18,7 @@ from app.services.memo.constants import DEFAULT_USER_ID, DEFAULT_SPACE_ID
 
 # Initialize logger for this module
 logger = logging.getLogger(__name__)
+prompt_logger = logging.getLogger("prompt_trace")
 
 # SSE Debug logger
 sse_logger = logging.getLogger("sse_debug")
@@ -531,7 +533,18 @@ async def send_message(db: Session, session_id: int, message_in: chat_schemas.Me
         agent_messages.append({"role": m.role, "content": m.content})
     
     # Add current user message to context
-    agent_messages.append({"role": "user", "content": message_in.content})
+    agent_messages.append({"role": "user", "content": message_in.content})      
+
+    prompt_logger.info(json.dumps({
+        "type": "chat_prompt",
+        "source": "send_message",
+        "session_id": session_id,
+        "friend_id": db_session.friend_id,
+        "friend_name": friend.name if friend else "AI",
+        "model": llm_config.model_name,
+        "instructions": system_prompt,
+        "messages": agent_messages,
+    }, ensure_ascii=False, default=str))
 
     # 4. Call LLM via openai-agents
     client = AsyncOpenAI(
@@ -688,7 +701,22 @@ async def send_message_stream(db: Session, session_id: int, message_in: chat_sch
     if injected_recall_messages:
         agent_messages.extend(injected_recall_messages)
         
-    agent_messages.append({"role": "user", "content": message_in.content})
+    agent_messages.append({"role": "user", "content": message_in.content})      
+
+    prompt_logger.info(json.dumps({
+        "type": "chat_prompt",
+        "source": "send_message_stream",
+        "session_id": session_id,
+        "friend_id": db_session.friend_id,
+        "friend_name": friend_name,
+        "model": llm_config.model_name,
+        "instructions": final_instructions,
+        "messages": agent_messages,
+        "enable_thinking": message_in.enable_thinking,
+        "show_thinking": show_thinking,
+        "show_tools": show_tools,
+        "recall_enabled": enable_recall,
+    }, ensure_ascii=False, default=str))
 
     # Yield Start Event
     # Create AI Message placeholder to get ID
