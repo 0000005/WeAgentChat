@@ -26,3 +26,4 @@ server/data/*.db
 
 # log
 *.log
+server/logs/app.log.*
