@@ -4,6 +4,7 @@ import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 
 # 1. 初始日志设置 (尽可能早地配置)
 from app.core.logging import setup_logging, refresh_app_logging
@@ -20,6 +21,15 @@ logger = logging.getLogger(__name__)
 
 # 定义应用实例
 app = FastAPI(title=settings.PROJECT_NAME)
+
+# 添加 CORS 中间件 - 允许任意跨域
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # 允许所有来源
+    allow_credentials=True,
+    allow_methods=["*"],  # 允许所有 HTTP 方法
+    allow_headers=["*"],  # 允许所有请求头
+)
 
 # 在 API 定义后刷新一次，确保 Logger 被激活
 refresh_app_logging()
