@@ -11,6 +11,10 @@ dist-ssr/
 *.local
 .pnpm-debug.log*
 
+# Electron build outputs
+dist-electron/
+build/
+
 # OS
 .DS_Store
 Thumbs.db
