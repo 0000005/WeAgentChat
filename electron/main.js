@@ -11,10 +11,30 @@ let mainWindow = null
 let tray = null
 let isQuitting = false
 let ipcReady = false
+let isBootstrapping = false
 
 const DEV_SERVER_URL = process.env.DOU_DOUCHAT_DEV_SERVER_URL || 'http://localhost:5173'
 const HEALTH_PATH = '/api/health'
 const BACKEND_START_TIMEOUT_MS = 45000
+
+const gotSingleInstanceLock = app.requestSingleInstanceLock()
+if (!gotSingleInstanceLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.show()
+      mainWindow.focus()
+      return
+    }
+    app.whenReady().then(() => {
+      if (!isBootstrapping && !mainWindow) {
+        bootstrap()
+      }
+    })
+  })
+}
 
 function resolveTrayIconPath() {
   if (app.isPackaged) {
@@ -352,6 +372,8 @@ function registerIpcHandlers() {
 }
 
 async function bootstrap() {
+  if (isBootstrapping) return
+  isBootstrapping = true
   const splash = createSplashWindow()
 
   try {
@@ -367,6 +389,8 @@ async function bootstrap() {
   } catch (error) {
     dialog.showErrorBox('Startup Failed', error instanceof Error ? error.message : 'Unknown error')
     app.quit()
+  } finally {
+    isBootstrapping = false
   }
 }
 
