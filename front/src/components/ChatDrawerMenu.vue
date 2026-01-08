@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useSessionStore } from '@/stores/session'
 import { useFriendStore } from '@/stores/friend'
@@ -206,7 +206,7 @@ const formatTime = (dateStr?: string) => {
 
 <template>
     <Sheet :open="open" @update:open="handleClose">
-        <SheetContent side="right" class="w-[360px] sm:w-[360px] p-0 flex flex-col">
+        <SheetContent side="right" class="drawer-content w-[360px] sm:w-[360px] p-0 flex flex-col">
             <!-- Header: 动态切换 -->
             <SheetHeader class="drawer-header" :class="{ 'header-white': viewState !== 'menu' }">
                 <template v-if="viewState === 'menu'">
@@ -367,9 +367,14 @@ const formatTime = (dateStr?: string) => {
 /* 抽屉内容容器 */
 :deep([data-radix-vue-dialog-content]) {
     max-width: 360px !important;
+    -webkit-app-region: no-drag;
 }
 
 /* Header 样式 */
+.drawer-content {
+    -webkit-app-region: no-drag;
+}
+
 .drawer-header {
     display: flex;
     flex-direction: row;
@@ -379,6 +384,7 @@ const formatTime = (dateStr?: string) => {
     border-bottom: 1px solid #e5e5e5;
     background: #f5f5f5;
     transition: background 0.3s;
+    -webkit-app-region: no-drag;
 }
 
 .header-white {
@@ -397,6 +403,7 @@ const formatTime = (dateStr?: string) => {
     align-items: center;
     gap: 8px;
     width: 100%;
+    -webkit-app-region: no-drag;
 }
 
 .back-btn {
@@ -410,6 +417,7 @@ const formatTime = (dateStr?: string) => {
     border: none;
     padding: 0;
     margin-right: 8px;
+    -webkit-app-region: no-drag;
 }
 
 .header-title {
@@ -428,6 +436,7 @@ const formatTime = (dateStr?: string) => {
 
 .friend-avatar img {
     width: 100%;
+    -webkit-app-region: no-drag;
     height: 100%;
     object-fit: cover;
 }
@@ -458,6 +467,7 @@ const formatTime = (dateStr?: string) => {
 
 .session-item {
     width: 100%;
+    -webkit-app-region: no-drag;
     padding: 12px 16px;
     border: none;
     background: transparent;
@@ -595,6 +605,7 @@ const formatTime = (dateStr?: string) => {
 
 .menu-item {
     width: 100%;
+    -webkit-app-region: no-drag;
     display: flex;
     align-items: center;
     gap: 16px;
@@ -651,3 +662,4 @@ const formatTime = (dateStr?: string) => {
     padding: 0 !important;
 }
 </style>
+

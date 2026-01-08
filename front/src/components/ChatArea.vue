@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
 import { useSessionStore } from '@/stores/session'
 import { useFriendStore } from '@/stores/friend'
 import { Menu, MoreHorizontal, Brain, MessageSquarePlus } from 'lucide-vue-next'
@@ -46,6 +46,9 @@ const { messages, input, status, isThinkingMode, toggleThinkingMode, handleSubmi
 const sessionStore = useSessionStore()
 const friendStore = useFriendStore()
 const settingsStore = useSettingsStore()
+const isElectron = Boolean(window.doudouchat?.windowControls)
+const isMaximized = ref(false)
+let unsubscribeWindowState: (() => void) | null = null
 
 // System settings for display
 const { showThinking: sysShowThinking, showToolCalls: sysShowToolCalls } = storeToRefs(settingsStore)
@@ -149,6 +152,53 @@ const handleOpenDrawer = () => {
   drawerOpen.value = true
 }
 
+const updateWindowState = (state: { isMaximized: boolean }) => {
+  isMaximized.value = state.isMaximized
+}
+
+const handleMinimize = () => {
+  if (!isElectron) return
+  window.doudouchat?.windowControls?.minimize()
+}
+
+const handleToggleMaximize = () => {
+  if (!isElectron) return
+  window.doudouchat?.windowControls?.toggleMaximize()
+}
+
+const handleCloseWindow = () => {
+  if (!isElectron) return
+  window.doudouchat?.windowControls?.close()
+}
+
+const handleHeaderContextMenu = (event: MouseEvent) => {
+  if (!isElectron) return
+  const target = event.target as HTMLElement | null
+  if (target?.closest('button')) return
+  event.preventDefault()
+  window.doudouchat?.windowControls?.showSystemMenu({
+    x: event.screenX,
+    y: event.screenY,
+  })
+}
+
+onMounted(async () => {
+  if (!isElectron) return
+  const controls = window.doudouchat?.windowControls
+  if (!controls) return
+  try {
+    const state = await controls.getState()
+    updateWindowState(state)
+  } catch {
+    // ignore state sync errors
+  }
+  unsubscribeWindowState = controls.onState(updateWindowState)
+})
+
+onBeforeUnmount(() => {
+  if (unsubscribeWindowState) unsubscribeWindowState()
+})
+
 const formatToolArgs = (args: any) => {
   if (!args) return ''
   if (typeof args === 'string') {
@@ -165,14 +215,39 @@ const formatToolArgs = (args: any) => {
 <template>
   <div class="wechat-chat-area">
     <!-- Header -->
-    <header class="chat-header">
+    <header class="chat-header" @contextmenu="handleHeaderContextMenu">
       <button v-if="isSidebarCollapsed" @click="emit('toggle-sidebar')" class="mobile-menu-btn">
         <Menu :size="20" />
       </button>
-      <h2 class="chat-title">{{ currentFriendName }}</h2>
-      <button class="more-btn" @click="handleOpenDrawer">
-        <MoreHorizontal :size="20" />
-      </button>
+      <div class="header-drag-area" @dblclick="handleToggleMaximize">
+        <h2 class="chat-title">{{ currentFriendName }}</h2>
+      </div>
+      <div class="header-actions">
+        <button class="more-btn" @click="handleOpenDrawer">
+          <MoreHorizontal :size="20" />
+        </button>
+        <div v-if="isElectron" class="window-controls">
+          <button class="window-btn" title="最小化" @click="handleMinimize">
+            <svg class="window-icon" viewBox="0 0 10 10" aria-hidden="true">
+              <rect x="1" y="5" width="8" height="1.2" />
+            </svg>
+          </button>
+          <button class="window-btn" title="最大化/还原" @click="handleToggleMaximize">
+            <svg v-if="!isMaximized" class="window-icon" viewBox="0 0 10 10" aria-hidden="true">
+              <rect x="1.5" y="1.5" width="7" height="7" fill="none" stroke="currentColor" stroke-width="1" />
+            </svg>
+            <svg v-else class="window-icon" viewBox="0 0 10 10" aria-hidden="true">
+              <rect x="2" y="3" width="6" height="6" fill="none" stroke="currentColor" stroke-width="1" />
+              <rect x="1" y="1" width="6" height="6" fill="none" stroke="currentColor" stroke-width="1" />
+            </svg>
+          </button>
+          <button class="window-btn close" title="关闭" @click="handleCloseWindow">
+            <svg class="window-icon" viewBox="0 0 10 10" aria-hidden="true">
+              <path d="M2 2 L8 8 M8 2 L2 8" stroke="currentColor" stroke-width="1.2" fill="none" />
+            </svg>
+          </button>
+        </div>
+      </div>
     </header>
 
     <!-- Messages Area -->
@@ -319,6 +394,7 @@ const formatToolArgs = (args: any) => {
   padding: 0 16px;
   background: #f5f5f5;
   border-bottom: 1px solid #e5e5e5;
+  user-select: none;
 }
 
 .mobile-menu-btn {
@@ -328,6 +404,7 @@ const formatToolArgs = (args: any) => {
   color: #666;
   cursor: pointer;
   border-radius: 4px;
+  -webkit-app-region: no-drag;
 }
 
 .mobile-menu-btn:hover {
@@ -338,8 +415,22 @@ const formatToolArgs = (args: any) => {
   font-size: 16px;
   font-weight: 500;
   color: #333;
-  flex: 1;
   text-align: center;
+}
+
+.header-drag-area {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  -webkit-app-region: drag;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  -webkit-app-region: no-drag;
 }
 
 .more-btn {
@@ -349,10 +440,44 @@ const formatToolArgs = (args: any) => {
   color: #666;
   cursor: pointer;
   border-radius: 4px;
+  -webkit-app-region: no-drag;
 }
 
 .more-btn:hover {
   background: #e5e5e5;
+}
+
+.window-controls {
+  display: flex;
+  align-items: center;
+  margin-left: 6px;
+  -webkit-app-region: no-drag;
+}
+
+.window-btn {
+  width: 38px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: #555;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.window-btn:hover {
+  background: #e5e5e5;
+}
+
+.window-btn.close:hover {
+  background: #e81123;
+  color: #fff;
+}
+
+.window-icon {
+  width: 12px;
+  height: 12px;
 }
 
 /* Empty State */

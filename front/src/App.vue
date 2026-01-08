@@ -1,4 +1,4 @@
-<script setup>
+﻿<script setup>
 import { ref, onMounted } from 'vue'
 import IconSidebar from './components/IconSidebar.vue'
 import Sidebar from './components/Sidebar.vue'
@@ -29,49 +29,59 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="wechat-app">
-    <!-- Icon Sidebar (always visible on desktop) -->
-    <div class="icon-sidebar-container">
-      <IconSidebar :active-tab="activeTab" @update:activeTab="activeTab = $event" @open-settings="isSettingsOpen = true"
-        @open-profile="isProfileOpen = true" />
-    </div>
+  <div class="wechat-shell">
+    <div class="wechat-app">
+      <!-- Icon Sidebar (always visible on desktop) -->
+      <div class="icon-sidebar-container">
+        <IconSidebar :active-tab="activeTab" @update:activeTab="activeTab = $event" @open-settings="isSettingsOpen = true"
+          @open-profile="isProfileOpen = true" />
+      </div>
 
-    <!-- Conversation List Sidebar -->
-    <div class="sidebar-container" :class="{ collapsed: !isSidebarOpen }">
-      <Sidebar />
-    </div>
-
-    <!-- Mobile Sidebar Overlay (Only on small screens) -->
-    <div v-if="isSidebarOpen" class="mobile-overlay md:hidden" @click="isSidebarOpen = false">
-      <div class="mobile-sidebar" @click.stop>
-        <IconSidebar :active-tab="activeTab" @update:activeTab="activeTab = $event"
-          @open-settings="isSettingsOpen = true" @open-profile="isProfileOpen = true" />
+      <!-- Conversation List Sidebar -->
+      <div class="sidebar-container" :class="{ collapsed: !isSidebarOpen }">
         <Sidebar />
       </div>
+
+      <!-- Mobile Sidebar Overlay (Only on small screens) -->
+      <div v-if="isSidebarOpen" class="mobile-overlay md:hidden" @click="isSidebarOpen = false">
+        <div class="mobile-sidebar" @click.stop>
+          <IconSidebar :active-tab="activeTab" @update:activeTab="activeTab = $event"
+            @open-settings="isSettingsOpen = true" @open-profile="isProfileOpen = true" />
+          <Sidebar />
+        </div>
+      </div>
+
+      <!-- Main Chat Area -->
+      <main class="chat-container">
+        <ChatArea :is-sidebar-collapsed="!isSidebarOpen" @toggle-sidebar="toggleSidebar" />
+      </main>
+
+      <!-- Settings Dialog -->
+      <SettingsDialog v-model:open="isSettingsOpen" />
+
+      <!-- Profile Dialog -->
+      <ProfileDialog v-model:open="isProfileOpen" />
     </div>
-
-    <!-- Main Chat Area -->
-    <main class="chat-container">
-      <ChatArea :is-sidebar-collapsed="!isSidebarOpen" @toggle-sidebar="toggleSidebar" />
-    </main>
-
-    <!-- Settings Dialog -->
-    <SettingsDialog v-model:open="isSettingsOpen" />
-
-    <!-- Profile Dialog -->
-    <ProfileDialog v-model:open="isProfileOpen" />
   </div>
 </template>
 
 <style>
 /* Reset and base styles */
-.wechat-app {
+.wechat-shell {
   display: flex;
+  flex-direction: column;
   height: 100vh;
   width: 100vw;
   overflow: hidden;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background: #f5f5f5;
+}
+
+.wechat-app {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* Icon Sidebar */

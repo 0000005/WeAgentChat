@@ -1,4 +1,4 @@
-﻿const { app, BrowserWindow, dialog } = require('electron')
+﻿const { app, BrowserWindow, dialog, Tray, Menu, ipcMain, nativeImage } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const net = require('net')
@@ -7,10 +7,57 @@ const { spawn } = require('child_process')
 const treeKill = require('tree-kill')
 
 let backendProcess = null
+let mainWindow = null
+let tray = null
+let isQuitting = false
+let ipcReady = false
 
 const DEV_SERVER_URL = process.env.DOU_DOUCHAT_DEV_SERVER_URL || 'http://localhost:5173'
 const HEALTH_PATH = '/api/health'
 const BACKEND_START_TIMEOUT_MS = 45000
+
+function resolveTrayIconPath() {
+  if (app.isPackaged) {
+    return path.join(app.getAppPath(), 'electron', 'assets', 'tray.jpg')
+  }
+  return path.join(__dirname, 'assets', 'tray.jpg')
+}
+
+function createTray() {
+  if (tray) return tray
+  const iconPath = resolveTrayIconPath()
+  const trayIcon = nativeImage.createFromPath(iconPath)
+  tray = new Tray(trayIcon)
+  tray.setToolTip('DouDouChat')
+
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: '显示主界面',
+      click: () => {
+        if (!mainWindow) return
+        mainWindow.show()
+        mainWindow.focus()
+      },
+    },
+    { type: 'separator' },
+    {
+      label: '退出',
+      click: () => {
+        isQuitting = true
+        app.quit()
+      },
+    },
+  ])
+
+  tray.setContextMenu(contextMenu)
+  tray.on('click', () => {
+    if (!mainWindow) return
+    mainWindow.show()
+    mainWindow.focus()
+  })
+
+  return tray
+}
 
 function createSplashWindow() {
   const splash = new BrowserWindow({
@@ -27,13 +74,15 @@ function createSplashWindow() {
 }
 
 function createMainWindow() {
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1280,
     height: 820,
     minWidth: 980,
     minHeight: 640,
     show: false,
     backgroundColor: '#e9edf0',
+    frame: false,
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -47,6 +96,26 @@ function createMainWindow() {
   } else {
     mainWindow.loadURL(DEV_SERVER_URL)
   }
+
+  mainWindow.on('close', (event) => {
+    if (isQuitting) return
+    event.preventDefault()
+    mainWindow.hide()
+  })
+
+  mainWindow.on('show', () => {
+    mainWindow.setSkipTaskbar(false)
+  })
+
+  mainWindow.on('hide', () => {
+    mainWindow.setSkipTaskbar(true)
+  })
+
+  mainWindow.on('maximize', () => sendWindowState(mainWindow))
+  mainWindow.on('unmaximize', () => sendWindowState(mainWindow))
+  mainWindow.on('closed', () => {
+    mainWindow = null
+  })
 
   return mainWindow
 }
@@ -182,6 +251,81 @@ function stopBackend() {
   }
 }
 
+function sendWindowState(win) {
+  if (!win || win.isDestroyed()) return
+  win.webContents.send('window:state', {
+    isMaximized: win.isMaximized(),
+    isMinimized: win.isMinimized(),
+  })
+}
+
+function registerIpcHandlers() {
+  if (ipcReady) return
+  ipcReady = true
+
+  ipcMain.on('window:minimize', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    win?.minimize()
+  })
+
+  ipcMain.on('window:toggle-maximize', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win) return
+    if (win.isMaximized()) {
+      win.unmaximize()
+    } else {
+      win.maximize()
+    }
+    sendWindowState(win)
+  })
+
+  ipcMain.on('window:close', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win) return
+    win.hide()
+  })
+
+  ipcMain.handle('window:get-state', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win) {
+      return { isMaximized: false, isMinimized: false }
+    }
+    return { isMaximized: win.isMaximized(), isMinimized: win.isMinimized() }
+  })
+
+  ipcMain.on('window:show-system-menu', (event, position) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win) return
+    const isMaximized = win.isMaximized()
+    const menu = Menu.buildFromTemplate([
+      {
+        label: '还原',
+        enabled: isMaximized,
+        click: () => win.unmaximize(),
+      },
+      {
+        label: '最小化',
+        click: () => win.minimize(),
+      },
+      {
+        label: '最大化',
+        enabled: !isMaximized,
+        click: () => win.maximize(),
+      },
+      { type: 'separator' },
+      {
+        label: '关闭',
+        click: () => win.hide(),
+      },
+    ])
+    menu.popup({
+      window: win,
+      x: position?.x,
+      y: position?.y,
+    })
+  })
+}
+
 async function bootstrap() {
   const splash = createSplashWindow()
 
@@ -190,6 +334,7 @@ async function bootstrap() {
     await waitForBackend(port)
 
     const mainWindow = createMainWindow()
+    createTray()
     mainWindow.once('ready-to-show', () => {
       splash.close()
       mainWindow.show()
@@ -200,14 +345,19 @@ async function bootstrap() {
   }
 }
 
-app.whenReady().then(bootstrap)
+app.whenReady().then(() => {
+  registerIpcHandlers()
+  bootstrap()
+})
 
-app.on('before-quit', stopBackend)
-app.on('window-all-closed', () => {
+app.on('before-quit', () => {
+  isQuitting = true
   stopBackend()
-  if (process.platform !== 'darwin') {
-    app.quit()
-  }
+})
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin' && !isQuitting) return
+  stopBackend()
+  if (process.platform !== 'darwin') app.quit()
 })
 
 app.on('activate', () => {
@@ -215,3 +365,14 @@ app.on('activate', () => {
     bootstrap()
   }
 })
+
+
+
+
+
+
+
+
+
+
+
