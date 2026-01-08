@@ -1,11 +1,13 @@
 {
   "name": "doudou-chat-desktop",
+  "version": "0.1.0",
   "private": true,
   "main": "electron/main.js",
   "scripts": {
     "electron:dev": "electron .",
-    "electron:build": "pnpm -C front build && electron-builder",
-    "electron:pack": "pnpm -C front build && electron-builder --dir"
+    "sync:version": "node scripts/sync-version.cjs",
+    "electron:build": "pnpm run sync:version && pnpm -C front build && electron-builder",
+    "electron:pack": "pnpm run sync:version && pnpm -C front build && electron-builder --dir"
   },
   "dependencies": {
     "tree-kill": "^1.2.2"

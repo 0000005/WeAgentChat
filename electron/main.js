@@ -1,4 +1,4 @@
-﻿const { app, BrowserWindow, dialog, Tray, Menu, ipcMain, nativeImage } = require('electron')
+﻿const { app, BrowserWindow, dialog, Tray, Menu, ipcMain, nativeImage, shell } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const net = require('net')
@@ -117,7 +117,32 @@ function createMainWindow() {
     mainWindow = null
   })
 
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (shouldOpenExternal(url)) {
+      shell.openExternal(url)
+      return { action: 'deny' }
+    }
+    return { action: 'allow' }
+  })
+
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (shouldOpenExternal(url)) {
+      event.preventDefault()
+      shell.openExternal(url)
+    }
+  })
+
   return mainWindow
+}
+
+function shouldOpenExternal(url) {
+  if (!url) return false
+  if (url.startsWith('file://')) return false
+  if (url.startsWith(DEV_SERVER_URL)) return false
+  if (url.startsWith('http://127.0.0.1') || url.startsWith('http://localhost')) {
+    return false
+  }
+  return true
 }
 
 function findAvailablePort() {
@@ -365,6 +390,7 @@ app.on('activate', () => {
     bootstrap()
   }
 })
+
 
 
 

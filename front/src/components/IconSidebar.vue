@@ -1,16 +1,25 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import packageJson from '../../package.json'
 import {
   MessageCircle,
   Settings,
   Menu,
-  User
+  User,
+  Info
 } from 'lucide-vue-next'
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 
 defineProps<{
   activeTab: 'chat'
@@ -23,6 +32,11 @@ const emit = defineEmits<{
 }>()
 
 const isPopoverOpen = ref(false)
+const isAboutOpen = ref(false)
+const appVersion = packageJson.version
+const githubUrl = 'https://github.com/0000005/WeChatAgent'
+const releaseUrl = `${githubUrl}/releases`
+const authorName = 'JerryYin'
 
 const handleOpenProfile = () => {
   isPopoverOpen.value = false
@@ -32,6 +46,11 @@ const handleOpenProfile = () => {
 const handleOpenSettings = () => {
   isPopoverOpen.value = false
   emit('open-settings')
+}
+
+const handleOpenAbout = () => {
+  isPopoverOpen.value = false
+  isAboutOpen.value = true
 }
 
 const navItems = [
@@ -79,11 +98,56 @@ const navItems = [
               <Settings :size="16" />
               <span>设置</span>
             </button>
+            <button
+              class="flex items-center gap-2 px-3 py-2 text-sm text-gray-200 hover:bg-[#4a4a4a] rounded-md transition-colors"
+              @click="handleOpenAbout">
+              <Info :size="16" />
+              <span>关于</span>
+            </button>
           </div>
         </PopoverContent>
       </Popover>
     </div>
   </aside>
+
+  <Dialog v-model:open="isAboutOpen">
+    <DialogContent class="sm:max-w-[420px] p-0 overflow-hidden bg-[#f7f7f7] border-none shadow-2xl">
+      <DialogHeader class="px-5 py-4 bg-white border-b">
+        <DialogTitle class="text-base font-medium text-center">关于 WeAgentChat</DialogTitle>
+        <DialogDescription class="sr-only">版本信息与项目地址</DialogDescription>
+      </DialogHeader>
+      <div class="px-5 py-4 space-y-3 text-sm text-gray-700">
+        <div class="flex items-center justify-between">
+          <span class="text-gray-500">软件版本</span>
+          <span class="font-medium text-gray-900">v{{ appVersion }}</span>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-gray-500">版本更新</span>
+          <a
+            class="text-[#07c160] hover:underline"
+            :href="releaseUrl"
+            target="_blank"
+            rel="noreferrer">
+            查看更新
+          </a>
+        </div>
+        <div class="space-y-1">
+          <div class="text-gray-500">GitHub 地址（求 Star）</div>
+          <a
+            class="text-[#07c160] break-all hover:underline"
+            :href="githubUrl"
+            target="_blank"
+            rel="noreferrer">
+            {{ githubUrl }}
+          </a>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-gray-500">作者</span>
+          <span class="text-gray-900">{{ authorName }}</span>
+        </div>
+      </div>
+    </DialogContent>
+  </Dialog>
 </template>
 
 <style scoped>
