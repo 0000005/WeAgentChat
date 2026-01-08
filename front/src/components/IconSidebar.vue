@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import packageJson from '../../package.json'
 import {
   MessageCircle,
+  LayoutGrid,
   Settings,
   Menu,
   User,
@@ -22,7 +23,7 @@ import {
 } from '@/components/ui/dialog'
 
 defineProps<{
-  activeTab: 'chat'
+  activeTab: 'chat' | 'gallery'
 }>()
 
 const emit = defineEmits<{
@@ -55,6 +56,7 @@ const handleOpenAbout = () => {
 
 const navItems = [
   { id: 'chat', icon: MessageCircle, label: '聊天' },
+  { id: 'gallery', icon: LayoutGrid, label: '好友库' },
 ]
 </script>
 

@@ -10,6 +10,7 @@ import {
   Trash2,
   UserPlus,
   Pencil,
+  LayoutGrid,
 } from 'lucide-vue-next'
 import {
   DropdownMenu,
@@ -28,6 +29,10 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+
+const emit = defineEmits<{
+  (e: 'open-gallery'): void
+}>()
 
 const sessionStore = useSessionStore()
 const friendStore = useFriendStore()
@@ -207,9 +212,23 @@ onMounted(async () => {
         <Search :size="14" class="search-icon" />
         <input v-model="searchQuery" type="text" placeholder="搜索" class="search-input" />
       </div>
-      <button class="add-btn" @click="onAddFriend" title="新增好友">
-        <UserPlus :size="18" />
-      </button>
+      <DropdownMenu>
+        <DropdownMenuTrigger as-child>
+          <button class="add-btn" title="新增">
+            <UserPlus :size="18" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem @click="onAddFriend" class="cursor-pointer">
+            <Pencil class="mr-2 h-4 w-4" />
+            手动创建
+          </DropdownMenuItem>
+          <DropdownMenuItem @click="emit('open-gallery')" class="cursor-pointer">
+            <LayoutGrid class="mr-2 h-4 w-4" />
+            好友库
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
 
     <!-- Friend List -->

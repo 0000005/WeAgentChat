@@ -1,23 +1,41 @@
-﻿<script setup>
+﻿<script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import IconSidebar from './components/IconSidebar.vue'
 import Sidebar from './components/Sidebar.vue'
 import ChatArea from './components/ChatArea.vue'
+import FriendGallery from './components/FriendGallery.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
 import ProfileDialog from './components/ProfileDialog.vue'
 import { useSettingsStore } from '@/stores/settings'
 
 const isSidebarOpen = ref(true)
-const activeTab = ref('chat')
+const activeTab = ref<'chat' | 'gallery'>('chat')
 const isSettingsOpen = ref(false)
 const isProfileOpen = ref(false)
 const settingsStore = useSettingsStore()
+
+const updateActiveTab = (tab: 'chat' | 'gallery') => {
+  const nextTab = tab === 'gallery' ? 'gallery' : 'chat'
+  activeTab.value = nextTab
+  if (nextTab === 'gallery') {
+    isSidebarOpen.value = false
+    return
+  }
+  if (window.innerWidth >= 768) {
+    isSidebarOpen.value = true
+  }
+}
+
+const handleOpenGallery = () => {
+  updateActiveTab('gallery')
+}
 
 const toggleSidebar = () => {
   isSidebarOpen.value = !isSidebarOpen.value
 }
 
 onMounted(async () => {
+  activeTab.value = 'chat'
   // If screen width is less than 768px (md breakpoint), start with sidebar closed
   if (window.innerWidth < 768) {
     isSidebarOpen.value = false
@@ -33,27 +51,28 @@ onMounted(async () => {
     <div class="wechat-app">
       <!-- Icon Sidebar (always visible on desktop) -->
       <div class="icon-sidebar-container">
-        <IconSidebar :active-tab="activeTab" @update:activeTab="activeTab = $event" @open-settings="isSettingsOpen = true"
+        <IconSidebar :active-tab="activeTab" @update:activeTab="updateActiveTab($event)" @open-settings="isSettingsOpen = true"
           @open-profile="isProfileOpen = true" />
       </div>
 
       <!-- Conversation List Sidebar -->
-      <div class="sidebar-container" :class="{ collapsed: !isSidebarOpen }">
-        <Sidebar />
+      <div v-if="activeTab !== 'gallery'" class="sidebar-container" :class="{ collapsed: !isSidebarOpen }">
+        <Sidebar @open-gallery="handleOpenGallery" />
       </div>
 
       <!-- Mobile Sidebar Overlay (Only on small screens) -->
-      <div v-if="isSidebarOpen" class="mobile-overlay md:hidden" @click="isSidebarOpen = false">
+      <div v-if="isSidebarOpen && activeTab !== 'gallery'" class="mobile-overlay md:hidden" @click="isSidebarOpen = false">
         <div class="mobile-sidebar" @click.stop>
-          <IconSidebar :active-tab="activeTab" @update:activeTab="activeTab = $event"
+          <IconSidebar :active-tab="activeTab" @update:activeTab="updateActiveTab($event)"
             @open-settings="isSettingsOpen = true" @open-profile="isProfileOpen = true" />
-          <Sidebar />
+          <Sidebar @open-gallery="handleOpenGallery" />
         </div>
       </div>
 
       <!-- Main Chat Area -->
       <main class="chat-container">
-        <ChatArea :is-sidebar-collapsed="!isSidebarOpen" @toggle-sidebar="toggleSidebar" />
+        <FriendGallery v-if="activeTab === 'gallery'" @back-chat="updateActiveTab('chat')" />
+        <ChatArea v-else :is-sidebar-collapsed="!isSidebarOpen" @toggle-sidebar="toggleSidebar" />
       </main>
 
       <!-- Settings Dialog -->
@@ -147,3 +166,4 @@ onMounted(async () => {
   }
 }
 </style>
+
