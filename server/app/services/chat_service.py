@@ -15,6 +15,7 @@ from app.services.recall_service import RecallService
 from app.services.settings_service import SettingsService
 from app.services.memo.bridge import MemoService
 from app.services.memo.constants import DEFAULT_USER_ID, DEFAULT_SPACE_ID
+from app.prompt import get_prompt
 
 # Initialize logger for this module
 logger = logging.getLogger(__name__)
@@ -500,7 +501,9 @@ async def send_message(db: Session, session_id: int, message_in: chat_schemas.Me
         return None
 
     friend = db.query(Friend).filter(Friend.id == db_session.friend_id).first()
-    system_prompt = friend.system_prompt if friend else "你是一名通用问答型 AI 助手。"
+    system_prompt = friend.system_prompt if friend else get_prompt(
+        "chat/default_system_prompt.txt"
+    ).strip()
 
     llm_config = db.query(LLMConfig).filter(LLMConfig.deleted == False).order_by(LLMConfig.id.desc()).first()
     if not llm_config:
@@ -603,7 +606,9 @@ async def send_message_stream(db: Session, session_id: int, message_in: chat_sch
         return
 
     friend = db.query(Friend).filter(Friend.id == db_session.friend_id).first()
-    system_prompt = friend.system_prompt if friend else "你是一名通用问答型 AI 助手。"
+    system_prompt = friend.system_prompt if friend else get_prompt(
+        "chat/default_system_prompt.txt"
+    ).strip()
     friend_name = friend.name if friend else "AI"
 
     llm_config = db.query(LLMConfig).filter(LLMConfig.deleted == False).order_by(LLMConfig.id.desc()).first()

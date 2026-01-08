@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.api import deps
 from app.schemas.embedding import EmbeddingSetting, EmbeddingSettingCreate, EmbeddingSettingUpdate
 from app.services.embedding_service import embedding_service
+from app.prompt import get_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -123,9 +124,11 @@ def test_embedding_config(config_in: EmbeddingSettingCreate) -> dict:
             base_url=config_in.embedding_base_url if config_in.embedding_base_url else None
         )
         
+        test_input = get_prompt("tests/embedding_test_input.txt").strip()
+
         response = client.embeddings.create(
             model=config_in.embedding_model or "text-embedding-ada-002",
-            input="This is a test message for embedding.",
+            input=test_input,
         )
         
         embedding_dim = len(response.data[0].embedding) if response.data else 0

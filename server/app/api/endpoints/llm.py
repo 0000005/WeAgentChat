@@ -6,6 +6,7 @@ import logging
 from app.api import deps
 from app.schemas.llm import LLMConfig, LLMConfigUpdate
 from app.services.llm_service import llm_service
+from app.prompt import get_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -64,9 +65,11 @@ def test_llm_config(config_in: LLMConfigUpdate) -> dict:
             base_url=config_in.base_url if config_in.base_url else None
         )
         
+        test_message = get_prompt("tests/llm_test_user_message.txt").strip()
+
         response = client.chat.completions.create(
             model=config_in.model_name or "gpt-3.5-turbo",
-            messages=[{"role": "user", "content": "Hi, this is a test message. Please respond with 'OK'."}],
+            messages=[{"role": "user", "content": test_message}],
             max_tokens=10
         )
         

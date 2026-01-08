@@ -1,0 +1,1 @@
+﻿Hi, this is a test message. Please respond with 'OK'.

@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.models.llm import LLMConfig
 from app.services.memo.bridge import MemoService
 from app.services.settings_service import SettingsService
+from app.prompt import get_prompt
 
 
 logger = logging.getLogger(__name__)
@@ -112,9 +113,11 @@ class RecallService:
         event_topk = SettingsService.get_setting(db, "memory", "event_topk", 5)
         threshold = SettingsService.get_setting(db, "memory", "similarity_threshold", 0.5)
 
+        tool_description = get_prompt("recall/recall_tool_description.txt").strip()
+
         @function_tool(
             name_override="recall_memory",
-            description_override="召回与问题最相关的历史事件。",
+            description_override=tool_description,
         )
         async def tool_recall(query: str) -> Dict[str, Any]:
             return await MemoService.recall_memory(
@@ -133,12 +136,9 @@ class RecallService:
         set_default_openai_client(client, use_for_tracing=False)
         set_default_openai_api("chat_completions")
 
-        instructions = (
-            "你是一名记忆专家。你的任务是根据用户的提问，调用 recall_memory 工具召回相关的过往事件（Events）。"
-            "你可以根据第一轮搜到的信息进行追问或深入搜索，直到找到最相关的记忆。"
-            f"你最多可以调用工具 {search_rounds} 次，找到相关记忆后立即结束。"
-            "最后只需结束通话，无需直接回答用户提问。"
-        )
+        instructions = get_prompt("recall/recall_instructions.txt").format(
+            search_rounds=search_rounds
+        ).strip()
 
         agent = Agent(
             name="RecallAgent",
