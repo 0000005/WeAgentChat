@@ -17,6 +17,9 @@ const DEV_SERVER_URL = process.env.DOU_DOUCHAT_DEV_SERVER_URL || 'http://localho
 const HEALTH_PATH = '/api/health'
 const BACKEND_START_TIMEOUT_MS = 45000
 
+// Ensure Windows shell / shortcuts bind to our app identity for correct icon & notifications
+app.setAppUserModelId('com.doudou.chat')
+
 const gotSingleInstanceLock = app.requestSingleInstanceLock()
 if (!gotSingleInstanceLock) {
   app.quit()
@@ -36,11 +39,15 @@ if (!gotSingleInstanceLock) {
   })
 }
 
+function resolveAppIconPath(filename = 'icon.ico') {
+  const baseDir = app.isPackaged
+    ? path.join(app.getAppPath(), 'electron')
+    : __dirname
+  return path.join(baseDir, 'icons', filename)
+}
+
 function resolveTrayIconPath() {
-  if (app.isPackaged) {
-    return path.join(app.getAppPath(), 'electron', 'assets', 'tray.jpg')
-  }
-  return path.join(__dirname, 'assets', 'tray.jpg')
+  return resolveAppIconPath('icon.ico')
 }
 
 function createTray() {
@@ -94,6 +101,7 @@ function createSplashWindow() {
 }
 
 function createMainWindow() {
+  const windowIcon = resolveAppIconPath('icon.ico')
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 820,
@@ -101,6 +109,7 @@ function createMainWindow() {
     minHeight: 640,
     show: false,
     backgroundColor: '#e9edf0',
+    icon: windowIcon,
     frame: false,
     autoHideMenuBar: true,
     webPreferences: {

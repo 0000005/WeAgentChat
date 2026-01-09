@@ -12,5 +12,16 @@ extraResources:
   - from: build/backend
     to: backend
 win:
+  icon: icon.ico
   target:
     - nsis
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  installerIcon: icon.ico
+  uninstallerIcon: icon.ico
+  installerHeaderIcon: icon.ico
+  uninstallDisplayName: WeAgentChat
+  createDesktopShortcut: always
+  shortcutName: WeAgentChat
