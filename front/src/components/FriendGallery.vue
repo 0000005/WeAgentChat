@@ -16,6 +16,10 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
 import { getFriendTemplates, type FriendTemplate } from '@/api/friend-template'
+import { useFriendStore } from '@/stores/friend'
+import { useSessionStore } from '@/stores/session'
+import { useToast } from '@/composables/useToast'
+import { Loader2 } from 'lucide-vue-next'
 
 const emit = defineEmits<{
   (e: 'back-chat'): void
@@ -30,6 +34,11 @@ const activeTemplate = ref<FriendTemplate | null>(null)
 const tagOptions = ref<string[]>([])
 const tagsSeeded = ref(false)
 const isNoticeOpen = ref(false)
+const isCloning = ref(false)
+
+const friendStore = useFriendStore()
+const sessionStore = useSessionStore()
+const toast = useToast()
 
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -67,8 +76,35 @@ const openDetail = (template: FriendTemplate) => {
   isDetailOpen.value = true
 }
 
-const handleAddFriend = () => {
-  isNoticeOpen.value = true
+const handleAddFriend = async () => {
+  if (!activeTemplate.value || isCloning.value) return
+
+  // 检查是否已添加过同名好友（防止重复添加同一模板）
+  const existingFriend = friendStore.friends.find(
+    f => f.name === activeTemplate.value!.name
+  )
+  if (existingFriend) {
+    toast.info(`好友「${existingFriend.name}」已存在，已为你跳转`)
+    isDetailOpen.value = false
+    await sessionStore.selectFriend(existingFriend.id)
+    emit('back-chat')
+    return
+  }
+
+  isCloning.value = true
+  try {
+    const newFriend = await friendStore.cloneFromTemplate(activeTemplate.value.id)
+    isDetailOpen.value = false
+    toast.success(`好友「${newFriend.name}」添加成功`)
+    // 选中新好友并跳转
+    await sessionStore.selectFriend(newFriend.id)
+    emit('back-chat')
+  } catch (error) {
+    console.error('Failed to add friend:', error)
+    toast.error('添加好友失败，请稍后重试')
+  } finally {
+    isCloning.value = false
+  }
 }
 
 const getAvatar = (template: FriendTemplate) => {
@@ -217,7 +253,10 @@ onMounted(() => {
           </div>
 
           <div class="sheet-footer">
-            <Button class="add-friend-btn" @click="handleAddFriend">添加好友</Button>
+            <Button class="add-friend-btn" :disabled="isCloning" @click="handleAddFriend">
+              <Loader2 v-if="isCloning" class="mr-2 h-4 w-4 animate-spin" />
+              {{ isCloning ? '正在添加...' : '添加好友' }}
+            </Button>
           </div>
         </div>
       </DialogContent>

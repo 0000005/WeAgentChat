@@ -6,6 +6,7 @@ import ChatArea from './components/ChatArea.vue'
 import FriendGallery from './components/FriendGallery.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
 import ProfileDialog from './components/ProfileDialog.vue'
+import ToastContainer from './components/ToastContainer.vue'
 import { useSettingsStore } from '@/stores/settings'
 
 const isSidebarOpen = ref(true)
@@ -51,7 +52,7 @@ onMounted(async () => {
     <div class="wechat-app">
       <!-- Icon Sidebar (always visible on desktop) -->
       <div class="icon-sidebar-container">
-        <IconSidebar :active-tab="activeTab" @update:activeTab="updateActiveTab($event)" @open-settings="isSettingsOpen = true"
+        <IconSidebar :active-tab="activeTab" @update:activeTab="updateActiveTab($event as 'chat' | 'gallery')" @open-settings="isSettingsOpen = true"
           @open-profile="isProfileOpen = true" />
       </div>
 
@@ -63,7 +64,7 @@ onMounted(async () => {
       <!-- Mobile Sidebar Overlay (Only on small screens) -->
       <div v-if="isSidebarOpen && activeTab !== 'gallery'" class="mobile-overlay md:hidden" @click="isSidebarOpen = false">
         <div class="mobile-sidebar" @click.stop>
-          <IconSidebar :active-tab="activeTab" @update:activeTab="updateActiveTab($event)"
+          <IconSidebar :active-tab="activeTab" @update:activeTab="updateActiveTab($event as 'chat' | 'gallery')"
             @open-settings="isSettingsOpen = true" @open-profile="isProfileOpen = true" />
           <Sidebar @open-gallery="handleOpenGallery" />
         </div>
@@ -80,6 +81,9 @@ onMounted(async () => {
 
       <!-- Profile Dialog -->
       <ProfileDialog v-model:open="isProfileOpen" />
+
+      <!-- Global Toast Container -->
+      <ToastContainer />
     </div>
   </div>
 </template>

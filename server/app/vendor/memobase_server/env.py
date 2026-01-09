@@ -291,7 +291,13 @@ class Colors:
 LOG = logging.getLogger("memobase_server")
 
 
-ENCODER = tiktoken.encoding_for_model("gpt-4o")
+try:
+    ENCODER = tiktoken.encoding_for_model("gpt-4o")
+except Exception as e:
+    # Some bundled environments may miss the newest tiktoken encoding assets;
+    # fall back to a compatible tokenizer so the server can still start.
+    LOG.warning(f"Failed to load gpt-4o encoder ({e}); falling back to cl100k_base")
+    ENCODER = tiktoken.get_encoding("cl100k_base")
 
 CONFIG = Config.load_config()
 

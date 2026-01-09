@@ -1,3 +1,4 @@
+import { Friend } from './friend'
 import { withApiBase } from './base'
 
 export interface FriendTemplate {
@@ -30,6 +31,18 @@ export async function getFriendTemplates(query: FriendTemplateQuery = {}): Promi
   const response = await fetch(url)
   if (!response.ok) {
     throw new Error('Failed to fetch friend templates')
+  }
+  return response.json()
+}
+
+export async function cloneFriendTemplate(id: number): Promise<Friend> {
+  const url = withApiBase(`/api/friend-templates/${id}/clone`)
+  const response = await fetch(url, {
+    method: 'POST',
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Failed to clone friend' }))
+    throw new Error(error.detail || 'Failed to clone friend')
   }
   return response.json()
 }

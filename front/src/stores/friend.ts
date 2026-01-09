@@ -9,6 +9,7 @@ import {
     updateFriend as apiUpdateFriend,
     deleteFriend as apiDeleteFriend
 } from '@/api/friend'
+import { cloneFriendTemplate as apiCloneFriendTemplate } from '@/api/friend-template'
 
 export const useFriendStore = defineStore('friend', () => {
     const friends = ref<Friend[]>([])
@@ -75,6 +76,20 @@ export const useFriendStore = defineStore('friend', () => {
         }
     }
 
+    const cloneFromTemplate = async (templateId: number) => {
+        isLoading.value = true
+        try {
+            const newFriend = await apiCloneFriendTemplate(templateId)
+            friends.value.push(newFriend)
+            return newFriend
+        } catch (e) {
+            console.error('Failed to clone friend from template', e)
+            throw e
+        } finally {
+            isLoading.value = false
+        }
+    }
+
     const getFriend = (id: number) => {
         return friends.value.find(p => p.id === id)
     }
@@ -90,6 +105,7 @@ export const useFriendStore = defineStore('friend', () => {
         addFriend,
         updateFriend,
         deleteFriend,
-        getFriend
+        getFriend,
+        cloneFromTemplate
     }
 })
