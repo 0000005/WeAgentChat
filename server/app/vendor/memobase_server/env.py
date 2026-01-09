@@ -297,7 +297,25 @@ except Exception as e:
     # Some bundled environments may miss the newest tiktoken encoding assets;
     # fall back to a compatible tokenizer so the server can still start.
     LOG.warning(f"Failed to load gpt-4o encoder ({e}); falling back to cl100k_base")
-    ENCODER = tiktoken.get_encoding("cl100k_base")
+    try:
+        ENCODER = tiktoken.get_encoding("cl100k_base")
+    except Exception as e2:
+        # If even cl100k assets are unavailable (e.g., offline + no cached files),
+        # fall back to a minimal encoder to keep the service running.
+        LOG.warning(f"Failed to load cl100k_base encoder ({e2}); using DummyEncoder")
+
+        class DummyEncoder:
+            def encode(self, text: str):
+                # Simple UTF-8 byte list as tokens; good enough for length estimates.
+                return list(text.encode("utf-8"))
+
+            def decode(self, tokens):
+                try:
+                    return bytes(tokens).decode("utf-8")
+                except Exception:
+                    return ""
+
+        ENCODER = DummyEncoder()
 
 CONFIG = Config.load_config()
 

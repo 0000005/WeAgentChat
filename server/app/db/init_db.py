@@ -10,7 +10,12 @@ from app.vendor.memobase_server.models.database import Project as MemoProject
 # Configure logging
 logger = logging.getLogger(__name__)
 
-def run_migrations(alembic_cfg_path: str, db_url: str = None, tag: str = "main"):
+def run_migrations(
+    alembic_cfg_path: str,
+    db_url: str = None,
+    tag: str = "main",
+    base_dir: str | None = None,
+):
     """Generic function to run alembic migrations."""
     logger.info(f"Running Alembic migrations for [{tag}]...")
     try:
@@ -19,9 +24,24 @@ def run_migrations(alembic_cfg_path: str, db_url: str = None, tag: str = "main")
             return
 
         alembic_cfg = Config(alembic_cfg_path)
+        script_location = alembic_cfg.get_main_option("script_location")
+        if script_location and not os.path.isabs(script_location):
+            candidates = []
+            cfg_dir = os.path.dirname(alembic_cfg_path)
+            candidates.append(os.path.abspath(os.path.join(cfg_dir, script_location)))
+            if base_dir:
+                candidates.append(os.path.abspath(os.path.join(base_dir, script_location)))
+
+            absolute_script_location = next((path for path in candidates if os.path.exists(path)), None)
+            if absolute_script_location:
+                alembic_cfg.set_main_option("script_location", absolute_script_location)
+            else:
+                logger.warning(
+                    f"script_location '{script_location}' not found for [{tag}]. Tried: {candidates}"
+                )
         if db_url:
             alembic_cfg.set_main_option("sqlalchemy.url", db_url)
-        
+
         command.upgrade(alembic_cfg, "head")
         logger.info(f"Alembic migrations for [{tag}] applied successfully.")
     except Exception as e:
@@ -55,11 +75,21 @@ def init_db():
 
     # --- 2. Run Main Alembic Migrations ---
     main_alembic_cfg = os.path.join(base_dir, "alembic.ini")
-    run_migrations(main_alembic_cfg, settings.SQLALCHEMY_DATABASE_URI, tag="main")
+    run_migrations(
+        main_alembic_cfg,
+        settings.SQLALCHEMY_DATABASE_URI,
+        tag="main",
+        base_dir=base_dir,
+    )
 
     # --- 3. Run Memobase SDK migrations ---
     memo_alembic_cfg = os.path.join(base_dir, "app", "vendor", "memobase_server", "alembic.ini")
-    run_migrations(memo_alembic_cfg, settings.MEMOBASE_DB_URL, tag="memobase")
+    run_migrations(
+        memo_alembic_cfg,
+        settings.MEMOBASE_DB_URL,
+        tag="memobase",
+        base_dir=base_dir,
+    )
 
     # --- 4. Initialize Memobase Static Data ---
     logger.info("Initializing Memobase static data...")

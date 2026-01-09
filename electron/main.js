@@ -182,6 +182,30 @@ function resolveBackendExecutable(backendDir) {
     return explicit
   }
 
+  const tryFindExe = (dir) => {
+    const candidates = [
+      'wechatagent.exe',
+      'WeAgentChat-server.exe',
+      'WeAgentChat-backend.exe',
+      'server.exe',
+      'backend.exe',
+    ]
+
+    for (const name of candidates) {
+      const candidate = path.join(dir, name)
+      if (fs.existsSync(candidate)) return candidate
+    }
+
+    const files = fs.readdirSync(dir)
+    const exe = files.find((file) => file.toLowerCase().endsWith('.exe'))
+    if (exe) return path.join(dir, exe)
+
+    return null
+  }
+
+  const directExe = tryFindExe(backendDir)
+  if (directExe) return directExe
+
   const candidates = [
     'wechatagent.exe',
     'WeAgentChat-server.exe',
@@ -190,15 +214,13 @@ function resolveBackendExecutable(backendDir) {
     'backend.exe',
   ]
 
-  for (const name of candidates) {
-    const candidate = path.join(backendDir, name)
-    if (fs.existsSync(candidate)) return candidate
-  }
-
   if (fs.existsSync(backendDir)) {
-    const files = fs.readdirSync(backendDir)
-    const exe = files.find((file) => file.toLowerCase().endsWith('.exe'))
-    if (exe) return path.join(backendDir, exe)
+    const entries = fs.readdirSync(backendDir, { withFileTypes: true })
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+      const nestedExe = tryFindExe(path.join(backendDir, entry.name))
+      if (nestedExe) return nestedExe
+    }
   }
 
   return null

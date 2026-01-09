@@ -22,7 +22,7 @@ if errorlevel 1 (
 )
 
 echo [3/6] Checking PyInstaller...
-python -m pyinstaller --version >nul 2>nul
+pyinstaller --version >nul 2>nul
 if errorlevel 1 (
   echo PyInstaller not found. Installing...
   python -m pip install pyinstaller
@@ -37,12 +37,14 @@ if exist "%BACKEND_DIST%" rmdir /s /q "%BACKEND_DIST%"
 if exist "%BACKEND_WORK%" rmdir /s /q "%BACKEND_WORK%"
 
 if exist "%PROJECT_ROOT%\server.spec" (
-  python -m pyinstaller "%PROJECT_ROOT%\server.spec" --distpath "%BACKEND_DIST%" --workpath "%BACKEND_WORK%"
+  pyinstaller "%PROJECT_ROOT%\server.spec" --distpath "%BACKEND_DIST%" --workpath "%BACKEND_WORK%"
 ) else if exist "%PROJECT_ROOT%\server\server.spec" (
-  python -m pyinstaller "%PROJECT_ROOT%\server\server.spec" --distpath "%BACKEND_DIST%" --workpath "%BACKEND_WORK%"
+  pyinstaller "%PROJECT_ROOT%\server\server.spec" --distpath "%BACKEND_DIST%" --workpath "%BACKEND_WORK%"
 ) else (
-  python -m pyinstaller "%PROJECT_ROOT%\server\app\cli.py" ^
+  pyinstaller "%PROJECT_ROOT%\server\app\cli.py" ^
     --name "%BACKEND_EXE_NAME%" ^
+    --collect-data tiktoken ^
+    --collect-data tiktoken_ext ^
     --noconfirm ^
     --clean ^
     --onedir ^
