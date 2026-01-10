@@ -108,7 +108,7 @@ const AVATAAARS_URL = 'https://getavataaars.com/'
 
       <div class="p-6 flex flex-col items-center gap-6">
         <!-- Cropper Area / Preview -->
-        <div class="w-[300px] h-[300px] bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center border-2 border-dashed border-gray-200 relative group">
+        <div class="w-[300px] h-[300px] bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center border-2 border-dashed border-gray-200">
           <Cropper
             v-if="selectedImage"
             ref="cropperRef"
@@ -123,13 +123,6 @@ const AVATAAARS_URL = 'https://getavataaars.com/'
             <ImageIcon class="w-12 h-12 mx-auto mb-2 opacity-50" />
             <p class="text-sm">支持 JPG, PNG, WEBP</p>
             <p class="text-xs mt-1">建议尺寸 200x200 以上</p>
-          </div>
-
-          <!-- Overlay trigger when has image -->
-          <div v-if="selectedImage" class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-             <Button variant="secondary" size="sm" @click="triggerFileSelect">
-               更换图片
-             </Button>
           </div>
         </div>
 
@@ -147,6 +140,10 @@ const AVATAAARS_URL = 'https://getavataaars.com/'
           <Button v-if="!selectedImage" variant="outline" @click="triggerFileSelect">
             <Upload class="w-4 h-4 mr-2" />
             选择本地图片
+          </Button>
+          <Button v-if="selectedImage" variant="outline" @click="triggerFileSelect">
+            <Upload class="w-4 h-4 mr-2" />
+            更换图片
           </Button>
            <a v-if="!selectedImage" :href="AVATAAARS_URL" target="_blank" class="no-underline">
              <Button variant="ghost" class="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50">
