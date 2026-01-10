@@ -6,11 +6,12 @@ from pathlib import Path
 from uuid import uuid4
 from PIL import Image
 
+from app.core.config import settings
+
 router = APIRouter()
 
-# Define paths relative to the project root (where the app runs)
-# Assuming execution from server/ directory
-UPLOAD_DIR = Path("data/uploads/avatars")
+# Define paths relative to the data directory (persistent across updates)
+UPLOAD_DIR = Path(settings.DATA_DIR) / "uploads" / "avatars"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB

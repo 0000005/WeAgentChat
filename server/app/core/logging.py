@@ -8,9 +8,16 @@ def get_logging_config():
     """
     定义统一的日志配置字典
     """
-    log_dir = os.path.join(os.getcwd(), "logs")
+    # 优先从环境变量获取数据目录，确保与 config.py 逻辑一致，避免直接导入 settings 导致循环
+    data_dir_override = os.getenv("WeAgentChat_DATA_DIR") or os.getenv("DATA_DIR")
+    if data_dir_override:
+        log_dir = os.path.join(os.path.abspath(os.path.expandvars(data_dir_override)), "logs")
+    else:
+        # 开发环境默认
+        log_dir = os.path.join(os.getcwd(), "logs")
+        
     if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
+        os.makedirs(log_dir, exist_ok=True)
         
     log_file = os.path.join(log_dir, "app.log")
     prompt_log_file = os.path.join(log_dir, "prompt.log")

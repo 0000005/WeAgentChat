@@ -34,10 +34,11 @@ app.add_middleware(
 )
 
 # 挂载静态文件目录
-os.makedirs("data/uploads", exist_ok=True)
+uploads_dir = os.path.join(settings.DATA_DIR, "uploads")
+os.makedirs(uploads_dir, exist_ok=True)
 os.makedirs("static/avatars/presets", exist_ok=True)
 
-app.mount("/uploads", StaticFiles(directory="data/uploads"), name="uploads")
+app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # 在 API 定义后刷新一次，确保 Logger 被激活

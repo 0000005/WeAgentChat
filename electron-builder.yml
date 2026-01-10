@@ -19,6 +19,7 @@ nsis:
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false
   installerIcon: icon.ico
   uninstallerIcon: icon.ico
   installerHeaderIcon: icon.ico
