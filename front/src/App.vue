@@ -48,8 +48,11 @@ onMounted(async () => {
     isSidebarOpen.value = false
   }
 
-  // Load chat settings from backend (including enable_thinking)
-  await settingsStore.fetchChatSettings()
+  // Load chat and user settings from backend
+  await Promise.all([
+    settingsStore.fetchChatSettings(),
+    settingsStore.fetchUserSettings()
+  ])
 
   // Check if system is configured
   try {

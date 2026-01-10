@@ -11,6 +11,7 @@ import {
 import { MessageContent, MessageResponse } from '@/components/ai-elements/message'
 import { useSettingsStore } from '@/stores/settings'
 import { storeToRefs } from 'pinia'
+import { getStaticUrl } from '@/api/base'
 import {
   PromptInput,
   PromptInputTextarea,
@@ -109,14 +110,26 @@ const formatSessionTime = (timestamp: number): string => {
   }
 }
 
+// Fallback avatars
+const DEFAULT_USER_AVATAR = 'https://api.dicebear.com/7.x/avataaars/svg?seed=user123'
+const DEFAULT_ASSISTANT_AVATAR = 'https://api.dicebear.com/7.x/bottts/svg?seed=doudou'
+
 // Get avatar for user/assistant
-const getUserAvatar = () => 'https://api.dicebear.com/7.x/avataaars/svg?seed=user123'
+const getUserAvatar = () => {
+  return getStaticUrl(settingsStore.userAvatar) || DEFAULT_USER_AVATAR
+}
+
 const getAssistantAvatar = () => {
   // Use friend's avatar if available
   if (sessionStore.currentFriendId) {
-    return `https://api.dicebear.com/7.x/bottts/svg?seed=${sessionStore.currentFriendId}`
+    const friend = friendStore.getFriend(sessionStore.currentFriendId)
+    if (friend?.avatar) {
+      return getStaticUrl(friend.avatar) || DEFAULT_ASSISTANT_AVATAR
+    }
+    // Fallback to a seeded avatar for this specific friend
+    return `https://api.dicebear.com/7.x/shapes/svg?seed=${sessionStore.currentFriendId}`
   }
-  return 'https://api.dicebear.com/7.x/bottts/svg?seed=doudou'
+  return DEFAULT_ASSISTANT_AVATAR
 }
 
 // Toast Feedback Logic

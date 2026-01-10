@@ -30,6 +30,7 @@ import {
     Loader2
 } from 'lucide-vue-next'
 import { getFriendEventGists, type UserEventGist } from '@/api/memory'
+import { getStaticUrl } from '@/api/base'
 
 interface MenuItem {
     id: string
@@ -89,7 +90,11 @@ const currentFriend = computed(() => {
 
 const currentFriendAvatar = computed(() => {
     if (!currentFriend.value) return ''
-    return `https://api.dicebear.com/7.x/bottts/svg?seed=${currentFriend.value.id}`
+    if (currentFriend.value.avatar) {
+        return getStaticUrl(currentFriend.value.avatar) || ''
+    }
+    // Generate a unique avatar based on friend id if no custom avatar
+    return `https://api.dicebear.com/7.x/shapes/svg?seed=${currentFriend.value.id}`
 })
 
 const currentFriendName = computed(() => {
