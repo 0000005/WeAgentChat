@@ -25,6 +25,9 @@ export const useSettingsStore = defineStore('settings', () => {
     const eventTopk = ref<number>(5)
     const similarityThreshold = ref<number>(0.5)
 
+    // ===== User 配置 =====
+    const userAvatar = ref<string>('')
+
     // ===== Loading 状态 =====
     const isLoading = ref(false)
     const isSaving = ref(false)
@@ -111,9 +114,6 @@ export const useSettingsStore = defineStore('settings', () => {
             similarity_threshold: similarityThreshold
         })
 
-    /**
-     * 保存 memory 配置到后端
-     */
     const saveMemorySettings = () =>
         saveSettings('memory', {
             recall_enabled: recallEnabled,
@@ -121,6 +121,20 @@ export const useSettingsStore = defineStore('settings', () => {
             event_topk: eventTopk,
             similarity_threshold: similarityThreshold
         })
+
+    /**
+     * 从后端获取 user 分组的配置
+     */
+    const fetchUserSettings = () =>
+        fetchSettings('user', { avatar: userAvatar })
+
+    /**
+     * 保存 user 配置到后端
+     */
+    const saveUserSettings = (avatar?: string) => {
+        if (avatar !== undefined) userAvatar.value = avatar
+        return saveSettings('user', { avatar: userAvatar })
+    }
 
     /**
      * 将秒数转换为分钟显示
@@ -146,6 +160,7 @@ export const useSettingsStore = defineStore('settings', () => {
         searchRounds,
         eventTopk,
         similarityThreshold,
+        userAvatar,
         isLoading,
         isSaving,
         // Actions
@@ -157,5 +172,7 @@ export const useSettingsStore = defineStore('settings', () => {
         saveChatSettings,
         fetchMemorySettings,
         saveMemorySettings,
+        fetchUserSettings,
+        saveUserSettings,
     }
 })

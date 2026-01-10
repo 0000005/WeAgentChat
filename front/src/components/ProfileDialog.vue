@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
 import {
     Dialog,
     DialogContent,
@@ -19,7 +19,10 @@ import {
 } from '@/components/ui/select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useMemoryStore } from '@/stores/memory'
-import { Plus, Trash2, Edit2, Check, X, Loader2 } from 'lucide-vue-next'
+import { Plus, Trash2, Edit2, Check, X, Loader2, Camera } from 'lucide-vue-next'
+import AvatarUploader from '@/components/common/AvatarUploader.vue'
+import { useSettingsStore } from '@/stores/settings'
+import { getStaticUrl } from '@/api/base'
 
 const props = defineProps<{
     open: boolean
@@ -34,6 +37,17 @@ const isAdding = ref(false)
 const newEntry = ref({ content: '', topic: '' })
 const editingId = ref<string | null>(null)
 const editingContent = ref('')
+const isAvatarUploaderOpen = ref(false)
+const settingsStore = useSettingsStore()
+
+const userAvatar = computed({
+    get: () => settingsStore.userAvatar,
+    set: (val) => settingsStore.saveUserSettings(val)
+}) 
+
+const userAvatarDisplayUrl = computed(() => 
+    getStaticUrl(settingsStore.userAvatar) || 'https://api.dicebear.com/7.x/avataaars/svg?seed=user'
+)
 
 onMounted(async () => {
     if (props.open) {
@@ -50,6 +64,7 @@ watch(() => props.open, async (val) => {
 const initialize = async () => {
     await memoryStore.fetchConfig()
     await memoryStore.fetchProfiles()
+    await settingsStore.fetchUserSettings()
     if (memoryStore.profileConfig.topics.length > 0) {
         newEntry.value.topic = memoryStore.profileConfig.topics[0].topic
     }
@@ -106,6 +121,19 @@ const vFocus = {
             <DialogHeader class="p-4 bg-white border-b shrink-0">
                 <DialogTitle class="text-lg font-medium text-center">个人资料</DialogTitle>
             </DialogHeader>
+            
+            <!-- Avatar Section -->
+            <div class="flex flex-col items-center py-6 bg-white border-b shrink-0">
+                <div class="relative group cursor-pointer" @click="isAvatarUploaderOpen = true">
+                    <img :src="userAvatarDisplayUrl" 
+                         class="w-24 h-24 rounded-lg object-cover border border-gray-200 shadow-sm bg-gray-50" />
+                    <div class="absolute inset-0 bg-black/40 rounded-lg opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity backdrop-blur-[1px]">
+                        <Camera class="text-white w-8 h-8" stroke-width="1.5" />
+                    </div>
+                </div>
+                <div class="mt-3 text-xs text-gray-500">点击更换头像</div>
+            </div>
+
 
             <ScrollArea class="flex-1 p-4">
                 <div class="space-y-6">
@@ -214,6 +242,14 @@ const vFocus = {
             </DialogFooter>
         </DialogContent>
     </Dialog>
+    
+    <AvatarUploader 
+        v-if="isAvatarUploaderOpen"
+        :initial-image="userAvatar || undefined"
+        title="设置个人头像"
+        @update:image="(url) => userAvatar = url"
+        @close="isAvatarUploaderOpen = false"
+    />
 </template>
 
 <style scoped>

@@ -9,6 +9,7 @@ class Friend(Base):
     description = Column(String(255), nullable=True)
     system_prompt = Column(Text, nullable=True)
     is_preset = Column(Boolean, default=False, nullable=False)
+    avatar = Column(String(255), nullable=True)
     create_time = Column(DateTime, default=func.now(), nullable=False)
     update_time = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
     pinned_at = Column(DateTime, nullable=True)

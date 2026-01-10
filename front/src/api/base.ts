@@ -24,3 +24,19 @@ export function getApiBaseUrl(): string {
 export function withApiBase(path: string): string {
   return new URL(path, getApiBaseUrl()).toString()
 }
+
+/**
+ * Convert a relative static/upload path to a full URL.
+ * Handles both development (different ports) and production scenarios.
+ * e.g. "/uploads/avatars/abc.png" -> "http://127.0.0.1:8000/uploads/avatars/abc.png"
+ */
+export function getStaticUrl(relativePath: string | null | undefined): string | undefined {
+  if (!relativePath) return undefined
+  // If already absolute URL, return as-is
+  if (relativePath.startsWith('http://') || relativePath.startsWith('https://')) {
+    return relativePath
+  }
+  // Prepend backend base URL
+  const base = getApiBaseUrl()
+  return `${base}${relativePath.startsWith('/') ? '' : '/'}${relativePath}`
+}

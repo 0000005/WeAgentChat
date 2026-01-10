@@ -5,8 +5,9 @@ from typing import Optional
 class FriendBase(BaseModel):
     name: str = Field(..., max_length=64, description="好友名称")
     description: Optional[str] = Field(None, max_length=255, description="好友描述")
-    system_prompt: Optional[str] = Field(None, description="系统提示词")
+    system_prompt: Optional[str] = None
     is_preset: bool = Field(False, description="是否为系统预设")
+    avatar: Optional[str] = Field(None, description="头像URL")
 
 class FriendCreate(FriendBase):
     pass
@@ -16,6 +17,7 @@ class FriendUpdate(BaseModel):
     description: Optional[str] = Field(None, max_length=255)
     system_prompt: Optional[str] = None
     is_preset: Optional[bool] = None
+    avatar: Optional[str] = Field(None, description="头像URL")
     pinned_at: Optional[datetime] = None  # Direct update of pinned_at
 
 class Friend(FriendBase):

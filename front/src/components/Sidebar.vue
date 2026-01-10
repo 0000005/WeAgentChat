@@ -12,7 +12,10 @@ import {
   Pencil,
   LayoutGrid,
   Sparkles,
+  Camera,
 } from 'lucide-vue-next'
+import AvatarUploader from '@/components/common/AvatarUploader.vue'
+import { getStaticUrl } from '@/api/base'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -68,7 +71,10 @@ const getLastActiveTime = (friend: any): string => {
 
 // Get friend's avatar
 const getFriendAvatar = (friend: any): string => {
-  // Generate a unique avatar based on friend id
+  if (friend.avatar) {
+    return getStaticUrl(friend.avatar) || ''
+  }
+  // Generate a unique avatar based on friend id if no custom avatar
   return `https://api.dicebear.com/7.x/shapes/svg?seed=${friend.id}`
 }
 
@@ -91,6 +97,7 @@ const newFriendForm = ref({
   name: '',
   description: '',
   system_prompt: '',
+  avatar: '',
 })
 
 const resetAddFriendForm = () => {
@@ -98,6 +105,7 @@ const resetAddFriendForm = () => {
     name: '',
     description: '',
     system_prompt: '',
+    avatar: '',
   }
 }
 
@@ -117,6 +125,7 @@ const confirmAddFriend = async () => {
       description: newFriendForm.value.description.trim() || undefined,
       system_prompt: newFriendForm.value.system_prompt.trim() || undefined,
       is_preset: false,
+      avatar: newFriendForm.value.avatar || undefined
     })
     isAddFriendOpen.value = false
     // Select the newly created friend
@@ -160,6 +169,7 @@ const editFriendForm = ref({
   name: '',
   description: '',
   system_prompt: '',
+  avatar: '',
 })
 
 const openEditFriendDialog = (id: number) => {
@@ -170,6 +180,7 @@ const openEditFriendDialog = (id: number) => {
       name: friend.name,
       description: friend.description || '',
       system_prompt: friend.system_prompt || '',
+      avatar: friend.avatar || '',
     }
     isEditFriendOpen.value = true
   }
@@ -185,6 +196,7 @@ const confirmEditFriend = async () => {
       name: editFriendForm.value.name.trim(),
       description: editFriendForm.value.description.trim() || null,
       system_prompt: editFriendForm.value.system_prompt.trim() || null,
+      avatar: editFriendForm.value.avatar || null,
     })
     isEditFriendOpen.value = false
     friendToEdit.value = null
@@ -206,6 +218,25 @@ onMounted(async () => {
     sessionStore.selectFriend(friends.value[0].id)
   }
 })
+
+
+// Avatar Upload Logic
+const isAvatarUploaderOpen = ref(false)
+const uploadingFor = ref<'new' | 'edit'>('new')
+
+const openAvatarUploader = (mode: 'new' | 'edit') => {
+  uploadingFor.value = mode
+  isAvatarUploaderOpen.value = true
+}
+
+const handleAvatarUploaded = (url: string) => {
+  if (uploadingFor.value === 'new') {
+    newFriendForm.value.avatar = url
+  } else {
+    editFriendForm.value.avatar = url
+  }
+}
+
 </script>
 
 <template>
@@ -323,6 +354,20 @@ onMounted(async () => {
           </DialogDescription>
         </DialogHeader>
 
+        <!-- Avatar Upload Section -->
+        <div class="flex flex-col items-center py-4 shrink-0">
+            <div class="relative group cursor-pointer" @click="openAvatarUploader('new')">
+                <div class="w-20 h-20 rounded-lg border border-gray-200 shadow-sm bg-gray-50 flex items-center justify-center overflow-hidden">
+                    <img v-if="newFriendForm.avatar" :src="getStaticUrl(newFriendForm.avatar)" class="w-full h-full object-cover" />
+                    <UserPlus v-else class="text-gray-300 w-8 h-8" />
+                </div>
+                <div class="absolute inset-0 bg-black/40 rounded-lg opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity backdrop-blur-[1px]">
+                    <Camera class="text-white w-6 h-6" stroke-width="1.5" />
+                </div>
+            </div>
+            <div class="mt-2 text-xs text-gray-500">点击设置头像</div>
+        </div>
+
         <div class="dialog-form">
           <div class="form-group">
             <label for="friend-name" class="form-label">好友名称 <span class="required">*</span></label>
@@ -366,6 +411,20 @@ onMounted(async () => {
           </DialogDescription>
         </DialogHeader>
 
+        <!-- Avatar Upload Section -->
+        <div class="flex flex-col items-center py-4 shrink-0">
+            <div class="relative group cursor-pointer" @click="openAvatarUploader('edit')">
+                <div class="w-20 h-20 rounded-lg border border-gray-200 shadow-sm bg-gray-50 flex items-center justify-center overflow-hidden">
+                    <img v-if="editFriendForm.avatar" :src="getStaticUrl(editFriendForm.avatar)" class="w-full h-full object-cover" />
+                    <UserPlus v-else class="text-gray-300 w-8 h-8" />
+                </div>
+                <div class="absolute inset-0 bg-black/40 rounded-lg opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity backdrop-blur-[1px]">
+                    <Camera class="text-white w-6 h-6" stroke-width="1.5" />
+                </div>
+            </div>
+            <div class="mt-2 text-xs text-gray-500">点击更换头像</div>
+        </div>
+
         <div class="dialog-form">
           <div class="form-group">
             <label for="edit-friend-name" class="form-label">好友名称 <span class="required">*</span></label>
@@ -396,6 +455,15 @@ onMounted(async () => {
       </DialogContent>
     </Dialog>
   </aside>
+
+  <!-- Avatar Uploader -->
+  <AvatarUploader 
+      v-if="isAvatarUploaderOpen"
+      :title="uploadingFor === 'new' ? '设置好友头像' : '更换好友头像'"
+      :initial-image="uploadingFor === 'new' ? (newFriendForm.avatar ? getStaticUrl(newFriendForm.avatar) : undefined) : (editFriendForm.avatar ? getStaticUrl(editFriendForm.avatar) : undefined)"
+      @update:image="handleAvatarUploaded"
+      @close="isAvatarUploaderOpen = false"
+  />
 </template>
 
 <style scoped>

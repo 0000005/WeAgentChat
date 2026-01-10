@@ -5,6 +5,7 @@ export interface Friend {
   name: string
   description?: string | null
   system_prompt?: string | null
+  avatar?: string | null
   is_preset?: boolean
   create_time: string
   update_time: string
@@ -16,6 +17,7 @@ export interface FriendCreate {
   name: string
   description?: string | null
   system_prompt?: string | null
+  avatar?: string | null
   is_preset?: boolean
 }
 
@@ -23,6 +25,7 @@ export interface FriendUpdate {
   name?: string | null
   description?: string | null
   system_prompt?: string | null
+  avatar?: string | null
   is_preset?: boolean | null
   pinned_at?: string | null
 }

@@ -21,6 +21,8 @@ import {
 import { useToast } from '@/composables/useToast'
 import { useSessionStore } from '@/stores/session'
 import { useFriendStore } from '@/stores/friend'
+import AvatarUploader from '@/components/common/AvatarUploader.vue'
+import { Camera } from 'lucide-vue-next'
 
 defineProps<{
   open: boolean
@@ -39,6 +41,8 @@ const isGenerating = ref(false)
 const isSaving = ref(false)
 const isEditingPrompt = ref(false)
 const generatedPersona = ref<PersonaGenerateResponse | null>(null)
+const avatarUrl = ref<string | null>(null)
+const isAvatarUploaderOpen = ref(false)
 
 const canGoToPreview = computed(() => description.value.trim().length > 5)
 
@@ -70,6 +74,7 @@ const handleConfirm = async () => {
       description: generatedPersona.value.description,
       system_prompt: generatedPersona.value.system_prompt,
       initial_message: generatedPersona.value.initial_message,
+      avatar: avatarUrl.value
     })
 
     // 强制同步 Store
@@ -172,9 +177,15 @@ const handleClose = () => {
           <div class="border rounded-xl p-5 bg-gradient-to-br from-green-50/50 to-white space-y-5 border-green-100/50 shadow-sm">
             <div class="flex items-center gap-4">
               <div
-                class="w-14 h-14 rounded-2xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center text-white font-bold text-2xl shadow-md shadow-green-200"
+                class="w-14 h-14 rounded-2xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center text-white font-bold text-2xl shadow-md shadow-green-200 cursor-pointer relative group overflow-hidden"
+                @click="isAvatarUploaderOpen = true"
               >
-                {{ generatedPersona.name.charAt(0) }}
+                <img v-if="avatarUrl" :src="avatarUrl" class="w-full h-full object-cover" />
+                <span v-else>{{ generatedPersona.name.charAt(0) }}</span>
+                
+                <div class="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                    <Camera class="text-white w-5 h-5" />
+                </div>
               </div>
               <div class="min-w-0">
                 <h3 class="font-bold text-lg text-gray-900 truncate">{{ generatedPersona.name }}</h3>
@@ -255,6 +266,13 @@ const handleClose = () => {
       </DialogFooter>
     </DialogContent>
   </Dialog>
+  
+  <AvatarUploader
+    v-if="isAvatarUploaderOpen"
+    :title="`为 ${generatedPersona?.name || '伙伴'} 设置头像`"
+    @update:image="(url) => avatarUrl = url"
+    @close="isAvatarUploaderOpen = false"
+  />
 </template>
 
 <style scoped>

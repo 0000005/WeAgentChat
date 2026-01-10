@@ -50,6 +50,7 @@ def create_friend_from_template(db: Session, template_id: int) -> Optional[Frien
         description=template.description,
         system_prompt=template.system_prompt,
         is_preset=False,
+        avatar=template.avatar,
     )
     db.add(db_friend)
     db.commit()
@@ -63,6 +64,7 @@ def create_friend_from_payload(db: Session, payload: FriendTemplateCreateFriend)
         description=payload.description,
         system_prompt=payload.system_prompt,
         is_preset=False,
+        avatar=payload.avatar,
     )
     db.add(db_friend)
     db.commit()

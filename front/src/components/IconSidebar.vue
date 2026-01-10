@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { useSettingsStore } from '@/stores/settings'
+import { getStaticUrl } from '@/api/base'
 import packageJson from '../../package.json'
 import {
   MessageCircle,
@@ -34,6 +36,18 @@ const emit = defineEmits<{
 
 const isPopoverOpen = ref(false)
 const isAboutOpen = ref(false)
+const settingsStore = useSettingsStore()
+
+const DEFAULT_AVATAR = 'https://api.dicebear.com/7.x/avataaars/svg?seed=doudou'
+
+const userAvatarUrl = computed(() => 
+  getStaticUrl(settingsStore.userAvatar) || DEFAULT_AVATAR
+)
+
+onMounted(() => {
+  settingsStore.fetchUserSettings()
+})
+
 const appVersion = packageJson.version
 const githubUrl = 'https://github.com/0000005/WeChatAgent'
 const releaseUrl = `${githubUrl}/releases`
@@ -65,7 +79,7 @@ const navItems = [
     <!-- User Avatar -->
     <div class="avatar-section">
       <div class="avatar cursor-pointer" @click="emit('open-profile')">
-        <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=doudou" alt="User Avatar" class="avatar-img" />
+        <img :src="userAvatarUrl" alt="User Avatar" class="avatar-img" />
       </div>
     </div>
 

@@ -5,6 +5,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+import os
 
 # 1. 初始日志设置 (尽可能早地配置)
 from app.core.logging import setup_logging, refresh_app_logging
@@ -30,6 +32,13 @@ app.add_middleware(
     allow_methods=["*"],  # 允许所有 HTTP 方法
     allow_headers=["*"],  # 允许所有请求头
 )
+
+# 挂载静态文件目录
+os.makedirs("data/uploads", exist_ok=True)
+os.makedirs("static/avatars/presets", exist_ok=True)
+
+app.mount("/uploads", StaticFiles(directory="data/uploads"), name="uploads")
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # 在 API 定义后刷新一次，确保 Logger 被激活
 refresh_app_logging()
