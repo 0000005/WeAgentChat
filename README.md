@@ -85,7 +85,7 @@ WeAgentChat 不一样。
     </td>
     <td align="center" width="33%">
       <h3>⏱️ 被动式会话流</h3>
-      <p>告别"New Chat"按钮<br>30分钟无活动自动归档<br>再次对话，自然延续</p>
+      <p>告告别"New Chat"按钮<br>30分钟无活动自动归档<br>再次对话，自然延续</p>
     </td>
     <td align="center" width="33%">
       <h3>💬 微信风格体验</h3>
@@ -96,6 +96,7 @@ WeAgentChat 不一样。
 
 ---
 
+
 ## �️ 界面预览
 
 > 📸 *截图即将上线...*
@@ -103,63 +104,115 @@ WeAgentChat 不一样。
 ---
 
 
+## 🔬 技术核心：双轨记忆系统是如何工作的？
+
+WeAgentChat 独立于市面上的“套壳浏览器”，其核心资产在于 **双轨长期记忆 (Dual-Track Memory)** 架构：
+
+```mermaid
+graph TD
+    A[用户输入消息] --> B{是否存在活跃会话?}
+    B -- 否 / 已超时 --> C[创建新会话 & 触发旧会话归档]
+    B -- 是 --> D[进入对话主流程]
+    
+    subgraph "记忆处理 (后台异步)"
+    C --> E[对话摘要提取]
+    E --> F1[更新全局画像 Track 1]
+    E --> F2[存入事件卡片 Track 2]
+    end
+    
+    D --> G{开启记忆召回?}
+    G -- 是 --> H1[拉取全局画像 Profile]
+    G -- 是 --> H2[召回相关事件 Event Card]
+    H1 & H2 --> I[拼入 Prompt 上下文]
+    G -- 否 --> J[常规 Prompt]
+    
+    I & J --> K[LLM 智能合成回答]
+    K --> L[显示回复 & 维持聊天感]
+```
+
+| 轨道 | 类型 | 存储内容 | 作用 |
+| :--- | :--- | :--- | :--- |
+| **Track 1: Profile** | 全局画像 | 你的性格指标、职业背景、社交习惯 | 决定 AI 对你的“语气”和“整体认知” |
+| **Track 2: Events** | 事件 RAG | “3个月前的失眠”、“上周一提起的会议” | 在对话中提供“不经意的关心” |
+
+- **本地向量索引**：使用 `sqlite-vec` 在你本地机器上构建微型向量库，确保隐私永不出户。
+- **主动召回引擎**：在每次生成回复前，一个专门的 Recall Agent 会嗅探历史，寻找最能引起共鸣的记忆碎片。
+
+---
+
 
 ## 🛠️ 快速开始
 
-### 环境要求
+### 🚀 桌面客户端（推荐）
 
+这是最简单、最快捷的起步方式，适合普通用户和快速体验：
+
+1. **前往下载**：在 [Releases](https://github.com/your-repo/releases) 页面下载最新的安装包。
+2. **安装应用**：
+   - **Windows**: 下载 `.exe` 文件并运行。
+3. **配置 API**：启动后，在“设置”中填入你的 LLM API Key（支持 OpenAI 兼容接口，推荐使用 DeepSeek）。
+
+---
+
+### 💻 开发者模式
+
+如果你想参与贡献或在本地运行源码，请按以下步骤操作：
+
+#### 环境要求
 - **Node.js** 18+
 - **Python** 3.10+
-- **pnpm** (推荐) 或 npm
+- **pnpm** (推荐)
 
-### 后端设置
+#### 一键启动
+在项目根目录运行：
+```powershell
+.\startAll.bat
+```
+该脚本将同时启动后端 API 和前端开发服务器。
+
+#### 手动启动
+<details>
+<summary>点击展开手动启动步骤</summary>
+**后端设置**
 
 ```bash
-# 1. 进入后端目录
 cd server
-
-# 2. 创建虚拟环境并安装依赖
 python -m venv venv
-venv\Scripts\activate  # Windows
-# source venv/bin/activate  # macOS/Linux
+venv\Scripts\activate
 pip install -r requirements.txt
-
-# 3. 启动服务
 python -m uvicorn app.main:app --reload
 ```
 
-### 前端设置
-
+**前端设置**
 ```bash
-# 1. 进入前端目录
 cd front
-
-# 2. 安装依赖
 pnpm install
-
-# 3. 运行开发服务器
 pnpm dev
 ```
 
-### 桌面端 (Electron)
+**桌面端 (Electron)**
 
 ```bash
-# 在项目根目录
+pnpm install
 pnpm electron:dev
 ```
+</details>
 
-访问 `http://localhost:5173` 即可开始体验！
+访问 `http://localhost:5173` 即可开始调试！
 
 ---
+
 
 ## 🗺️ 路线图
 
 - [x] 核心聊天功能 & 微信风格 UI
 - [x] 双轨记忆系统实现
 - [x] 被动式会话管理
-- [ ] 记忆可视化 & 管理界面
-- [ ] 移动端适配 (PWA)
-- [ ] Docker 一键部署
+- [x] 记忆可视化 & 管理界面
+- [x] 好友库 (Friend Library)
+- [ ] AI 群聊功能
+- [ ] AI 朋友圈 (Moments)
+- [ ] 日程管理 (Schedule Management)
 
 ---
 
