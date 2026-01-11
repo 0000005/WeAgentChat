@@ -409,6 +409,7 @@ async function bootstrap() {
 
   try {
     const port = await startBackend()
+    // 稍微激进一点的等待，每 500ms 检查一次后端是否就绪
     await waitForBackend(port)
 
     const mainWindow = createMainWindow()
