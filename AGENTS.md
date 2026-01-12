@@ -202,7 +202,7 @@ Electron wrapper for packaging the app as a standalone desktop application.
     *   `pnpm electron:build` - Build production installer
     *   `pnpm electron:pack` - Package without installer (for testing)
 *   **`electron-builder.yml`**: Packaging configuration.
-    *   App ID: `com.doudou.chat`
+    *   App ID: `com.weagent.chat`
     *   Output: `dist-electron/`
     *   Backend bundled as `extraResources`
 
