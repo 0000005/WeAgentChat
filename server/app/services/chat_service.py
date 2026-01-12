@@ -702,7 +702,13 @@ async def send_message_stream(db: Session, session_id: int, message_in: chat_sch
             )
             injected_recall_messages = recall_result.get("injected_messages", [])
             footprints = recall_result.get("footprints", [])
-            
+            if not any(fp.get("type") in ("tool_call", "tool_result") for fp in footprints):
+                logger.info(
+                    "[Recall] 回忆服务未触发工具调用, session_id=%s, friend_id=%s",
+                    session_id,
+                    db_session.friend_id,
+                )
+
             # Yield footprints early if configured
             for fp in footprints:
                 if fp["type"] == "thinking" and show_thinking and message_in.enable_thinking:

@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, reactive } from 'vue'
 import {
     getMemoryConfig,
     updateMemoryConfig,
@@ -13,52 +13,94 @@ import {
 } from '@/api/memory'
 import yaml from 'js-yaml'
 
+/**
+ * Topic configuration for UI display.
+ * Maps to Memobase UserProfileTopic structure.
+ */
 export interface TopicConfig {
     topic: string
     description?: string
-    [key: string]: any
+    sub_topics?: Array<{ name: string; description?: string }>
 }
 
-export interface MemoryConfigData {
-    topics: TopicConfig[]
+/**
+ * Memory config data structure.
+ * Uses overwrite_user_profiles to match Memobase ProfileConfig format.
+ */
+export interface MemobaseProfileConfig {
+    overwrite_user_profiles?: TopicConfig[]
+    additional_user_profiles?: TopicConfig[]
+    language?: 'en' | 'zh'
 }
+
+// Default topics that match Memobase's zh_user_profile_topics.py
+const DEFAULT_TOPICS: TopicConfig[] = [
+    { topic: '基本信息', description: '用户姓名、年龄、性别、国籍等基础信息', sub_topics: [] },
+    { topic: '兴趣爱好', description: '书籍、电影、音乐、美食、运动等', sub_topics: [] },
+    { topic: '生活方式', description: '饮食偏好、运动习惯、健康状况等', sub_topics: [] },
+    { topic: '心理特征', description: '性格特点、价值观、信仰、目标等', sub_topics: [] },
+]
 
 export const useMemoryStore = defineStore('memory', () => {
-    const profileConfig = ref<MemoryConfigData>({ topics: [] })
+    // Internal state: uses Memobase's expected format
+    const _config = ref<MemobaseProfileConfig>({ overwrite_user_profiles: [] })
     const profiles = ref<Profile[]>([])
     const isLoading = ref(false)
+
+    /**
+     * Reactive accessor for topics - provides compatibility with UI components.
+     * This is the array that UI components should use for v-model binding.
+     */
+    const profileConfig = reactive({
+        get topics(): TopicConfig[] {
+            return _config.value.overwrite_user_profiles || []
+        },
+        set topics(val: TopicConfig[]) {
+            _config.value.overwrite_user_profiles = val
+        }
+    })
 
     const fetchConfig = async () => {
         try {
             const res = await getMemoryConfig()
             if (res.profile_config) {
-                profileConfig.value = yaml.load(res.profile_config) as MemoryConfigData
+                const parsed = yaml.load(res.profile_config) as MemobaseProfileConfig
+                // Handle both old format (topics) and new format (overwrite_user_profiles)
+                if (parsed.overwrite_user_profiles) {
+                    _config.value = parsed
+                } else if ((parsed as any).topics) {
+                    // Migration from old format
+                    _config.value = {
+                        overwrite_user_profiles: (parsed as any).topics.map((t: TopicConfig) => ({
+                            ...t,
+                            sub_topics: t.sub_topics || []
+                        }))
+                    }
+                } else {
+                    _config.value = { overwrite_user_profiles: [...DEFAULT_TOPICS] }
+                }
             } else {
                 // Fallback to defaults if empty
-                profileConfig.value = {
-                    topics: [
-                        { topic: '基本特征', description: '姓名、年龄、职业等基础信息' },
-                        { topic: '性格习惯', description: '性格特点、日常习惯等' },
-                        { topic: '兴趣爱好', description: '喜欢的事物、常去的地点等' }
-                    ]
-                }
+                _config.value = { overwrite_user_profiles: [...DEFAULT_TOPICS] }
             }
         } catch (error) {
             console.error('Failed to fetch memory config:', error)
             // Fallback
-            profileConfig.value = {
-                topics: [
-                    { topic: '基本特征', description: '姓名、年龄、职业等基础信息' },
-                    { topic: '性格习惯', description: '性格特点、日常习惯等' },
-                    { topic: '兴趣爱好', description: '喜欢的事物、常去的地点等' }
-                ]
-            }
+            _config.value = { overwrite_user_profiles: [...DEFAULT_TOPICS] }
         }
     }
 
     const saveConfig = async () => {
         try {
-            const yamlStr = yaml.dump(profileConfig.value)
+            // Ensure all topics have sub_topics field
+            const configToSave: MemobaseProfileConfig = {
+                overwrite_user_profiles: (_config.value.overwrite_user_profiles || []).map(t => ({
+                    topic: t.topic,
+                    description: t.description,
+                    sub_topics: t.sub_topics || []
+                }))
+            }
+            const yamlStr = yaml.dump(configToSave)
             await updateMemoryConfig(yamlStr)
         } catch (error) {
             console.error('Failed to save memory config:', error)
@@ -117,51 +159,25 @@ export const useMemoryStore = defineStore('memory', () => {
         const groups: Record<string, Profile[]> = {}
 
         // Initialize groups with topics from config
-        profileConfig.value.topics.forEach(t => {
+        // Note: profileConfig is reactive, access .topics directly (not .value.topics)
+        profileConfig.topics.forEach((t: TopicConfig) => {
             groups[t.topic] = []
         })
 
-        // Standard mapping from Memobase keys to our default Chinese topics
-        const topicMapping: Record<string, string> = {
-            'basic_info': '基本特征',
-            'contact_info': '基本特征',
-            'education': '基本特征',
-            'work': '基本特征',
-            'demographics': '基本特征',
-
-            'psychological': '性格习惯',
-            'personality': '性格习惯',
-
-            'interest': '兴趣爱好',
-            'life_event': '兴趣爱好' // Or create a new category if needed
-        }
-
         // Add profiles to groups
         profiles.value.forEach(p => {
-            let topic = p.attributes.topic || '其他'
+            const topic = p.attributes.topic || '其他'
 
-            // 1. Try direct match
-            if (!groups[topic]) {
-                // 2. Try mapping
-                const mapped = topicMapping[topic]
-                if (mapped && groups[mapped]) {
-                    topic = mapped
-                }
-            }
-
-            // 3. If still not found, check if we should add it to a fallback or just ignore
-            // For now, if we match a group, push it.
-            if (groups[topic]) {
+            // Direct match: if the topic is already configured, add to it
+            if (groups[topic] !== undefined) {
                 groups[topic].push(p)
             } else {
-                // Determine if we should create a temporary group or put in "Others"
-                // Ideally, we shouldn't hide data. 
-                // However, the current UI iterates over `profileConfig.topics` exclusively.
-                // So adding to `groups` with a new key won't help unless we update config or UI.
-                // Let's try to put into the first available group if absolutely necessary, 
-                // OR (better) just let them fall into "other" if "other" exists, 
-                // but since "other" isn't in default config, they remain hidden.
-                // LIMITATION: Profiles with topics not in config and not in mapping will be hidden.
+                // Dynamic group: create a new group for topics not in config
+                // This ensures we don't hide any profile data
+                if (!groups[topic]) {
+                    groups[topic] = []
+                }
+                groups[topic].push(p)
             }
         })
 
