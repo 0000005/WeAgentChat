@@ -24,6 +24,7 @@ front/node_modules/
 front/dist/
 server/venv/
 server/__pycache__/
+.shared/ui-ux-pro-max/scripts/__pycache__
 server/data/*.db
 *.pyc
 
