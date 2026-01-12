@@ -65,7 +65,7 @@ class ChatModalResponse(BaseModel):
 
 class ProfileAttributes(BaseModel):
     topic: str = Field(..., description="The topic of the profile")
-    sub_topic: str = Field(..., description="The sub-topic of the profile")
+    sub_topic: Optional[str] = Field(None, description="The sub-topic of the profile")
 
 
 class ProfileData(BaseModel):
