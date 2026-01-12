@@ -7,6 +7,7 @@ import {
     addProfile,
     updateProfile,
     deleteProfile,
+    deleteProfiles,
     type Profile,
     type ProfileAttributes
 } from '@/api/memory'
@@ -101,6 +102,17 @@ export const useMemoryStore = defineStore('memory', () => {
         }
     }
 
+    const removeProfiles = async (ids: string[]) => {
+        if (ids.length === 0) return
+        try {
+            await deleteProfiles(ids)
+            // Do not refresh here, let the caller decide
+        } catch (error) {
+            console.error('Failed to delete profiles:', error)
+            throw error
+        }
+    }
+
     const groupedProfiles = computed(() => {
         const groups: Record<string, Profile[]> = {}
 
@@ -165,6 +177,7 @@ export const useMemoryStore = defineStore('memory', () => {
         fetchProfiles,
         upsertProfile,
         removeProfile,
+        removeProfiles,
         groupedProfiles
     }
 })
