@@ -34,14 +34,17 @@ WeAgentChat 的核心特色之一是其丰富的 AI 好友库（Persona Library�
 
 ## 4. 技术实现路线 (Implementation Roadmap)
 
-1.  **资产准备 (Assets Generation)**：
-    -   **文字生成**：调用 `PersonaGeneratorService` 获取剧本。
+1.  **数据解析**：直接读取 `dev-docs/temp/preset_friends_list.csv` 中的结构化数据，提取角色姓名、标签、简介。
+2.  **Persona 文字生成**：
+    -   使用 `server/scripts/batch_generate_personas.py`。
+    -   实现断点缓存逻辑，将生成的文本实时保存至 `temp/generated_personas_text.json`。
+    -   循环调用 `PersonaGeneratorService.generate_persona` 生成 Prompt 和招呼语。
     -   **生图生图**：调用外部服务生成 126 张头像。
-2.  **本地化存储 (Physical Storage)**：
+3.  **本地化存储 (Physical Storage)**：
     -   将生成的图片保存至 `server/static/avatars/presets/`。
     -   命名规范：使用英文 ID 或拼音，例如 `kongfuzi.webp`。
     -   **这一步产生的所有图片将作为源码的一部分提交到 Git 仓库，并打包入 Electron 安装包。**
-3.  **路径定义 (Path Strategy)**：
+4.  **路径定义 (Path Strategy)**：
     -   在 SQL 中使用相对于静态根目录的路径，例如：`/static/avatars/presets/kongfuzi.webp`。
     -   确保 FastAPI 的 `StaticFiles` 挂载点在打包模式下依然指向正确的本地资源目录。
 4.  **SQL 持续导出**：
