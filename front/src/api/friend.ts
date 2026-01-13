@@ -12,6 +12,9 @@ export interface Friend {
   pinned_at?: string | null
   deleted: boolean
   script_expression: boolean
+  last_message?: string | null
+  last_message_role?: string | null
+  last_message_time?: string | null
 }
 
 export interface FriendCreate {

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import * as ChatAPI from '@/api/chat'
+import { useFriendStore } from './friend'
 
 export interface ToolCall {
     name: string
@@ -20,6 +21,8 @@ export interface Message {
 }
 
 export const useSessionStore = defineStore('session', () => {
+    const friendStore = useFriendStore()
+
     // Current selected friend ID (WeChat-style: contact list)
     const currentFriendId = ref<number | null>(null)
 
@@ -141,6 +144,9 @@ export const useSessionStore = defineStore('session', () => {
         }
         messagesMap.value[friendId].push(userMsg)
 
+        // Update friend list preview immediately for user message
+        friendStore.updateLastMessage(friendId, content, 'user')
+
         // 2. Add placeholder assistant message
         const assistantMsgId = Date.now() + 1
         const assistantMsg = ref<Message>({
@@ -204,6 +210,8 @@ export const useSessionStore = defineStore('session', () => {
                     isStreaming.value = false
                     // 异步刷新会话列表统计
                     fetchFriendSessions(friendId)
+                    // Update friend list preview for assistant message
+                    friendStore.updateLastMessage(friendId, assistantMsg.value.content, 'assistant')
                 }
             }
 

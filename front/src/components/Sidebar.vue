@@ -43,15 +43,23 @@ const { friends, isLoading: friendsLoading } = storeToRefs(friendStore)
 
 const searchQuery = ref('')
 
-// Get friend's last message preview (placeholder for now)
-const getLastMessagePreview = (_friend: any): string => {
-  // In real implementation, this could be cached or fetched
-  return '点击开始聊天...'
+// Get friend's last message preview
+const getLastMessagePreview = (friend: any): string => {
+  if (friend.last_message) {
+    const prefix = friend.last_message_role === 'user' ? '[我]' : ''
+    // Limit length to 30 characters
+    const content = friend.last_message.length > 30 
+      ? friend.last_message.substring(0, 30) + '...' 
+      : friend.last_message
+    return `${prefix}${content}`
+  }
+  return friend.description || '点击开始聊天...'
 }
 
-// Get friend's last active time (placeholder for now)
+// Get friend's last active time
 const getLastActiveTime = (friend: any): string => {
-  const date = new Date(friend.update_time)
+  const timeStr = friend.last_message_time || friend.update_time
+  const date = new Date(timeStr)
   const now = new Date()
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
   const yesterday = today - 86400000
@@ -78,7 +86,7 @@ const getFriendAvatar = (friend: any): string => {
 const filteredFriends = computed(() => {
   if (!searchQuery.value) return friends.value
   const query = searchQuery.value.toLowerCase()
-  return friends.value.filter(f => f.name.toLowerCase().includes(query))
+  return friends.value.filter((f: any) => f.name.toLowerCase().includes(query))
 })
 
 const onSelectFriend = (friendId: number) => {
@@ -199,7 +207,7 @@ onMounted(async () => {
             <span class="friend-time">{{ getLastActiveTime(friend) }}</span>
           </div>
           <div class="friend-preview">
-            {{ friend.description || getLastMessagePreview(friend) }}
+            {{ getLastMessagePreview(friend) }}
           </div>
         </div>
 

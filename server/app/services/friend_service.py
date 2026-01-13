@@ -1,4 +1,5 @@
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from typing import List, Optional
 from datetime import datetime
 from app.models.friend import Friend
@@ -9,14 +10,43 @@ def get_friend(db: Session, friend_id: int) -> Optional[Friend]:
     return db.query(Friend).filter(Friend.id == friend_id, Friend.deleted == False).first()
 
 def get_friends(db: Session, skip: int = 0, limit: int = 100) -> List[Friend]:
-    return (
-        db.query(Friend)
+    # 子查询：获取每个好友的最新消息ID（通过 ChatSession 连接）
+    latest_message_subquery = (
+        db.query(
+            ChatSession.friend_id,
+            func.max(Message.id).label("max_id")
+        )
+        .join(Message, ChatSession.id == Message.session_id)
+        .filter(Message.deleted == False, ChatSession.deleted == False)
+        .group_by(ChatSession.friend_id)
+        .subquery()
+    )
+
+    # 主查询：连接好友和最新消息
+    query = (
+        db.query(Friend, Message.content, Message.role, Message.create_time)
+        .outerjoin(latest_message_subquery, Friend.id == latest_message_subquery.c.friend_id)
+        .outerjoin(Message, Message.id == latest_message_subquery.c.max_id)
         .filter(Friend.deleted == False)
-        .order_by(Friend.pinned_at.desc().nulls_last(), Friend.update_time.desc())
+        # 排序：置顶优先，其次按最后消息时间，最后按更新时间
+        .order_by(
+            Friend.pinned_at.desc().nulls_last(), 
+            Message.create_time.desc().nulls_last(), 
+            Friend.update_time.desc()
+        )
         .offset(skip)
         .limit(limit)
-        .all()
     )
+
+    results = []
+    for friend, content, role, msg_time in query.all():
+        # 将消息内容绑定到 friend 对象（临时属性，以便 Pydantic 转换）
+        friend.last_message = content
+        friend.last_message_role = role
+        friend.last_message_time = msg_time
+        results.append(friend)
+    
+    return results
 
 def create_friend(db: Session, friend: FriendCreate) -> Friend:
     db_friend = Friend(

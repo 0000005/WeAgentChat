@@ -28,5 +28,8 @@ class Friend(FriendBase):
     update_time: datetime
     pinned_at: Optional[datetime] = None
     deleted: bool
+    last_message: Optional[str] = None
+    last_message_role: Optional[str] = None
+    last_message_time: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)

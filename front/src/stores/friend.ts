@@ -90,6 +90,34 @@ export const useFriendStore = defineStore('friend', () => {
         }
     }
 
+    const updateLastMessage = (friendId: number, content: string, role: string, time?: string) => {
+        const index = friends.value.findIndex(f => f.id === friendId)
+        if (index !== -1) {
+            const friend = friends.value[index]
+            friend.last_message = content
+            friend.last_message_role = role
+            friend.last_message_time = time || new Date().toISOString()
+
+            // Re-sort based on pinned status and last message time
+            friends.value.sort((a, b) => {
+                // Pins first
+                if (a.pinned_at && !b.pinned_at) return -1
+                if (!a.pinned_at && b.pinned_at) return 1
+                if (a.pinned_at && b.pinned_at) {
+                    // Both pinned, sort by pinned_at time if available, otherwise by update_time
+                    const timeA = new Date(a.pinned_at || a.update_time).getTime()
+                    const timeB = new Date(b.pinned_at || b.update_time).getTime()
+                    if (timeB !== timeA) return timeB - timeA
+                }
+
+                // Then last message time
+                const timeA = new Date(a.last_message_time || a.update_time).getTime()
+                const timeB = new Date(b.last_message_time || b.update_time).getTime()
+                return timeB - timeA
+            })
+        }
+    }
+
     const getFriend = (id: number) => {
         return friends.value.find(p => p.id === id)
     }
@@ -106,6 +134,7 @@ export const useFriendStore = defineStore('friend', () => {
         updateFriend,
         deleteFriend,
         getFriend,
-        cloneFromTemplate
+        cloneFromTemplate,
+        updateLastMessage
     }
 })
