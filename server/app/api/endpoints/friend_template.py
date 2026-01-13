@@ -32,6 +32,14 @@ def read_friend_templates(
     )
 
 
+
+@router.get("/tags", response_model=List[str])
+def read_friend_template_tags(
+    db: Session = Depends(deps.get_db),
+):
+    return friend_template_service.get_all_tags(db)
+
+
 @router.post("/{template_id}/clone", response_model=friend_schemas.Friend)
 def clone_friend_template(
     *,

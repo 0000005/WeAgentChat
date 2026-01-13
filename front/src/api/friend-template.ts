@@ -84,6 +84,16 @@ export async function generatePersona(payload: PersonaGenerateRequest): Promise<
   return response.json()
 }
 
+export async function getFriendTemplateTags(): Promise<string[]> {
+  const url = withApiBase('/api/friend-templates/tags')
+  const response = await fetch(url)
+  if (!response.ok) {
+    throw new Error('Failed to fetch friend template tags')
+  }
+  return response.json()
+}
+
+
 export async function* generatePersonaStream(
   payload: PersonaGenerateRequest,
   options: { signal?: AbortSignal } = {}

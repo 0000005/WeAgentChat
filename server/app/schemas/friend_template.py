@@ -21,10 +21,15 @@ class FriendTemplateBase(BaseModel):
         if isinstance(value, list):
             return value
         if isinstance(value, str) and value.strip():
-            try:
-                return json.loads(value)
-            except json.JSONDecodeError:
-                return [value]
+            # Try JSON first
+            if value.startswith("["):
+                try:
+                    return json.loads(value)
+                except json.JSONDecodeError:
+                    pass
+            # Split by comma (handles both "tag1,tag2" and "tag1, tag2")
+            tags = [t.strip() for t in value.split(",") if t.strip()]
+            return tags
         return None
 
 

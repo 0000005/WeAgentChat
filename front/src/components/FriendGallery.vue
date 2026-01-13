@@ -15,7 +15,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
-import { getFriendTemplates, type FriendTemplate } from '@/api/friend-template'
+import { getFriendTemplates, getFriendTemplateTags, type FriendTemplate } from '@/api/friend-template'
 import { useFriendStore } from '@/stores/friend'
 import { useSessionStore } from '@/stores/session'
 import { useToast } from '@/composables/useToast'
@@ -75,12 +75,20 @@ const fetchTemplates = async () => {
     templates.value = data
 
     if (!tagsSeeded.value) {
-      const tagSet = new Set<string>()
-      data.forEach((item) => {
-        item.tags?.forEach((tag) => tagSet.add(tag))
-      })
-      tagOptions.value = Array.from(tagSet).sort((a, b) => a.localeCompare(b, 'zh-CN'))
-      tagsSeeded.value = true
+      try {
+        const allTags = await getFriendTemplateTags()
+        tagOptions.value = allTags
+        tagsSeeded.value = true
+      } catch (err) {
+        console.error('Failed to load tags', err)
+        // Fallback to local extraction if endpoint fails
+        const tagSet = new Set<string>()
+        data.forEach((item) => {
+          item.tags?.forEach((tag) => tagSet.add(tag))
+        })
+        tagOptions.value = Array.from(tagSet).sort((a, b) => a.localeCompare(b, 'zh-CN'))
+        tagsSeeded.value = true
+      }
     }
   } catch (error) {
     console.error('Failed to load friend templates', error)
@@ -227,35 +235,37 @@ onMounted(() => {
           <DialogTitle>好友详情</DialogTitle>
         </DialogHeader>
         <div v-if="activeTemplate" class="sheet-body">
-          <div class="sheet-hero">
-            <div class="hero-avatar">
-              <img :src="getAvatar(activeTemplate)" :alt="activeTemplate.name" />
-            </div>
-            <div class="hero-info">
-              <h2>{{ activeTemplate.name }}</h2>
-              <div class="hero-tags">
-                <span v-for="tag in activeTemplate.tags || []" :key="tag" class="tag-pill">
-                  {{ tag }}
-                </span>
+          <div class="sheet-content-scroll">
+            <div class="sheet-hero">
+              <div class="hero-avatar">
+                <img :src="getAvatar(activeTemplate)" :alt="activeTemplate.name" />
+              </div>
+              <div class="hero-info">
+                <h2>{{ activeTemplate.name }}</h2>
+                <div class="hero-tags">
+                  <span v-for="tag in activeTemplate.tags || []" :key="tag" class="tag-pill">
+                    {{ tag }}
+                  </span>
+                </div>
               </div>
             </div>
-          </div>
 
-          <div class="sheet-section">
-            <div class="section-title">简介</div>
-            <MessageResponse :content="activeTemplate.description" class="sheet-markdown" />
-          </div>
+            <div class="sheet-section">
+              <div class="section-title">简介</div>
+              <MessageResponse :content="activeTemplate.description" class="sheet-markdown" />
+            </div>
 
-          <div class="sheet-section">
-            <Collapsible>
-              <CollapsibleTrigger class="prompt-trigger">
-                <span>人格设定</span>
-                <ChevronDown :size="16" />
-              </CollapsibleTrigger>
-              <CollapsibleContent class="prompt-content">
-                <MessageResponse :content="activeTemplate.system_prompt" class="sheet-markdown" />
-              </CollapsibleContent>
-            </Collapsible>
+            <div class="sheet-section">
+              <Collapsible>
+                <CollapsibleTrigger class="prompt-trigger">
+                  <span>人格设定</span>
+                  <ChevronDown :size="16" />
+                </CollapsibleTrigger>
+                <CollapsibleContent class="prompt-content">
+                  <MessageResponse :content="activeTemplate.system_prompt" class="sheet-markdown" />
+                </CollapsibleContent>
+              </Collapsible>
+            </div>
           </div>
 
           <div class="sheet-footer">
@@ -452,6 +462,7 @@ onMounted(() => {
   text-overflow: ellipsis;
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
 }
 
@@ -572,16 +583,42 @@ onMounted(() => {
 
 .gallery-dialog {
   max-width: min(560px, 92vw);
+  max-height: 90vh;
   background: #f9f9f9;
   border-radius: 16px;
-  padding: 20px;
+  padding: 0 !important;
+  display: flex !important;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.gallery-dialog :deep(.DialogHeader) {
+  padding: 20px 20px 10px;
 }
 
 .sheet-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.sheet-content-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 20px 20px;
   display: flex;
   flex-direction: column;
   gap: 20px;
-  padding-bottom: 8px;
+}
+
+.sheet-content-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sheet-content-scroll::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 999px;
 }
 
 .sheet-hero {
@@ -662,6 +699,11 @@ onMounted(() => {
 .sheet-footer {
   display: flex;
   justify-content: flex-end;
+  padding: 16px 20px;
+  background: #fff;
+  border-top: 1px solid #eee;
+  border-bottom-left-radius: 16px;
+  border-bottom-right-radius: 16px;
 }
 
 .add-friend-btn {
