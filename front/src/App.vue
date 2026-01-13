@@ -10,7 +10,9 @@ import SetupWizard from './components/SetupWizard.vue'
 import ToastContainer from './components/ToastContainer.vue'
 import WindowControls from './components/WindowControls.vue'
 import ChatDrawerMenu from './components/ChatDrawerMenu.vue'
+import FriendComposeDialog from './components/FriendComposeDialog.vue'
 import { useSettingsStore } from '@/stores/settings'
+
 import { checkHealth } from '@/api/health'
 
 const isSidebarOpen = ref(true)
@@ -19,7 +21,11 @@ const isSettingsOpen = ref(false)
 const isProfileOpen = ref(false)
 const isSetupWizardOpen = ref(false)
 const isDrawerOpen = ref(false)
+const isFriendComposeOpen = ref(false)
+const friendComposeMode = ref<'add' | 'edit'>('add')
+const friendComposeId = ref<number | null>(null)
 const settingsStore = useSettingsStore()
+
 
 const updateActiveTab = (tab: 'chat' | 'gallery') => {
   const nextTab = tab === 'gallery' ? 'gallery' : 'chat'
@@ -40,6 +46,19 @@ const handleOpenGallery = () => {
 const toggleSidebar = () => {
   isSidebarOpen.value = !isSidebarOpen.value
 }
+
+const handleAddFriend = () => {
+  friendComposeMode.value = 'add'
+  friendComposeId.value = null
+  isFriendComposeOpen.value = true
+}
+
+const handleEditFriend = (id: number) => {
+  friendComposeMode.value = 'edit'
+  friendComposeId.value = id
+  isFriendComposeOpen.value = true
+}
+
 
 onMounted(async () => {
   activeTab.value = 'chat'
@@ -104,7 +123,7 @@ const handleSetupComplete = () => {
 
       <!-- Conversation List Sidebar -->
       <div v-if="activeTab !== 'gallery'" class="sidebar-container" :class="{ collapsed: !isSidebarOpen }">
-        <Sidebar @open-gallery="handleOpenGallery" />
+        <Sidebar @open-gallery="handleOpenGallery" @add-friend="handleAddFriend" @edit-friend="handleEditFriend" />
       </div>
 
       <!-- Mobile Sidebar Overlay (Only on small screens) -->
@@ -112,15 +131,17 @@ const handleSetupComplete = () => {
         <div class="mobile-sidebar" @click.stop>
           <IconSidebar :active-tab="activeTab" @update:activeTab="updateActiveTab($event as 'chat' | 'gallery')"
             @open-settings="isSettingsOpen = true" @open-profile="isProfileOpen = true" />
-          <Sidebar @open-gallery="handleOpenGallery" />
+          <Sidebar @open-gallery="handleOpenGallery" @add-friend="handleAddFriend" @edit-friend="handleEditFriend" />
         </div>
       </div>
+
 
       <!-- Main Chat Area -->
       <main class="chat-container">
         <FriendGallery v-if="activeTab === 'gallery'" @back-chat="updateActiveTab('chat')" />
-        <ChatArea v-else :is-sidebar-collapsed="!isSidebarOpen" @toggle-sidebar="toggleSidebar" />
+        <ChatArea v-else :is-sidebar-collapsed="!isSidebarOpen" @toggle-sidebar="toggleSidebar" @open-drawer="isDrawerOpen = true" @edit-friend="handleEditFriend" />
       </main>
+
 
       <!-- Settings Dialog -->
       <SettingsDialog v-model:open="isSettingsOpen" />
@@ -133,6 +154,14 @@ const handleSetupComplete = () => {
 
       <!-- Global Chat Drawer -->
       <ChatDrawerMenu v-model:open="isDrawerOpen" />
+
+      <!-- Global Friend Compose Dialog -->
+      <FriendComposeDialog
+        v-model:open="isFriendComposeOpen"
+        :mode="friendComposeMode"
+        :friend-id="friendComposeId"
+      />
+
 
       <!-- Global Toast Container -->
       <ToastContainer />

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
+import { computed, ref } from 'vue'
 import { useSessionStore } from '@/stores/session'
 import { useFriendStore } from '@/stores/friend'
 import { Menu, MoreHorizontal, Brain, MessageSquarePlus } from 'lucide-vue-next'
@@ -32,6 +32,13 @@ import {
 import { useChat } from '@/composables/useChat'
 import EmojiPicker from '@/components/EmojiPicker.vue'
 import ChatDrawerMenu from '@/components/ChatDrawerMenu.vue'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger
+} from '@/components/ui/tooltip'
+
 
 const props = defineProps({
   isSidebarCollapsed: {
@@ -40,7 +47,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['toggle-sidebar'])
+const emit = defineEmits(['toggle-sidebar', 'open-drawer', 'edit-friend'])
 
 const { messages, input, status, isThinkingMode, toggleThinkingMode, handleSubmit } = useChat()
 
@@ -51,12 +58,20 @@ const settingsStore = useSettingsStore()
 // System settings for display
 const { showThinking: sysShowThinking, showToolCalls: sysShowToolCalls } = storeToRefs(settingsStore)
 
-// Get current friend's name for header
-const currentFriendName = computed(() => {
-  if (!sessionStore.currentFriendId) return '选择好友'
-  const friend = friendStore.getFriend(sessionStore.currentFriendId)
-  return friend ? friend.name : '好友'
+// Get current friend metadata
+const currentFriend = computed(() => {
+  if (!sessionStore.currentFriendId) return null
+  return friendStore.getFriend(sessionStore.currentFriendId)
 })
+
+const currentFriendName = computed(() => {
+  return currentFriend.value ? currentFriend.value.name : '选择好友'
+})
+
+const currentFriendDescription = computed(() => {
+  return currentFriend.value?.description || ''
+})
+
 
 // Check if a specific message is in loading state (assistant message with no content yet)
 const isMessageLoading = (msg: any, index: number) => {
@@ -193,9 +208,21 @@ const handleHeaderContextMenu = (event: MouseEvent) => {
 // Drawer 菜单状态 (仅 Web 模式使用，Electron 模式由 App.vue 管理)
 const drawerOpen = ref(false)
 
-const handleOpenDrawer = () => {
-  drawerOpen.value = true
+const handleTitleClick = () => {
+  if (sessionStore.currentFriendId) {
+    emit('edit-friend', sessionStore.currentFriendId)
+  }
 }
+
+const handleOpenDrawer = () => {
+
+  if (isElectron) {
+    emit('open-drawer')
+  } else {
+    drawerOpen.value = true
+  }
+}
+
 
 const formatToolArgs = (args: any) => {
   if (!args) return ''
@@ -218,8 +245,33 @@ const formatToolArgs = (args: any) => {
         <Menu :size="20" />
       </button>
       <div class="header-drag-area" @dblclick="handleToggleMaximize">
-        <h2 class="chat-title">{{ currentFriendName }}</h2>
+        <div 
+          v-if="sessionStore.currentFriendId" 
+          id="chat-title-area"
+          class="chat-title-container" 
+          @click="handleTitleClick"
+        >
+
+          <h2 class="chat-title">{{ currentFriendName }}</h2>
+          
+          <template v-if="currentFriendDescription">
+            <span class="title-separator">|</span>
+            
+            <TooltipProvider>
+              <Tooltip :delay-duration="300">
+                <TooltipTrigger as-child>
+                  <span class="chat-description">{{ currentFriendDescription }}</span>
+                </TooltipTrigger>
+                <TooltipContent v-if="currentFriendDescription.length > 20" side="bottom" class="max-w-xs">
+                  <p class="text-xs">{{ currentFriendDescription }}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </template>
+        </div>
+        <h2 v-else class="chat-title">{{ currentFriendName }}</h2>
       </div>
+
       <div class="header-actions">
         <!-- 
           "更多"按钮 - Web 模式回退
@@ -413,12 +465,63 @@ const formatToolArgs = (args: any) => {
 .header-drag-area {
   flex: 1;
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
   align-items: center;
+  height: 100%;
+  padding-left: 8px;
   -webkit-app-region: drag;
 }
 
+.chat-title-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+  -webkit-app-region: no-drag;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.chat-title-container:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.chat-title {
+  font-size: 16px;
+  font-weight: 500;
+  color: #333;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.title-separator {
+  color: #ccc;
+  font-size: 14px;
+  margin-top: 1px;
+}
+
+.chat-description {
+  font-size: 12px;
+  color: #999;
+  font-weight: normal;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 240px;
+}
+
+/* 窄屏适配：隐藏描述 */
+@media (max-width: 640px) {
+  .chat-description, .title-separator {
+    display: none;
+  }
+}
+
 .header-actions {
+
   display: flex;
   align-items: center;
   gap: 4px;

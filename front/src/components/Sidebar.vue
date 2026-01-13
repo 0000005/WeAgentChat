@@ -13,7 +13,9 @@ import {
   LayoutGrid,
   Sparkles,
 } from 'lucide-vue-next'
-import FriendComposeDialog from './FriendComposeDialog.vue'
+// FriendComposeDialog is now managed globally in App.vue
+
+
 import { getStaticUrl } from '@/api/base'
 import {
   DropdownMenu,
@@ -34,7 +36,10 @@ import AssistantWizard from './AssistantWizard.vue'
 
 const emit = defineEmits<{
   (e: 'open-gallery'): void
+  (e: 'add-friend'): void
+  (e: 'edit-friend', id: number): void
 }>()
+
 
 const sessionStore = useSessionStore()
 const friendStore = useFriendStore()
@@ -95,16 +100,10 @@ const onSelectFriend = (friendId: number) => {
 
 const isWizardOpen = ref(false)
 
-// Friend Compose Dialog Logic
-const composeDialogOpen = ref(false)
-const composeDialogMode = ref<'add' | 'edit'>('add')
-const composeFriendId = ref<number | null>(null)
-
 const onAddFriend = () => {
-  composeDialogMode.value = 'add'
-  composeFriendId.value = null
-  composeDialogOpen.value = true
+  emit('add-friend')
 }
+
 
 // Delete Friend Dialog Logic
 const isDeleteFriendOpen = ref(false)
@@ -132,10 +131,9 @@ const confirmDeleteFriend = async () => {
 }
 
 const openEditFriendDialog = (id: number) => {
-  composeDialogMode.value = 'edit'
-  composeFriendId.value = id
-  composeDialogOpen.value = true
+  emit('edit-friend', id)
 }
+
 
 // Initialize: select first friend if none selected
 onMounted(async () => {
@@ -259,14 +257,8 @@ onMounted(async () => {
 
     <!-- Assistant Wizard -->
     <AssistantWizard v-model:open="isWizardOpen" />
-
-    <!-- Friend Compose Dialog -->
-    <FriendComposeDialog
-      v-model:open="composeDialogOpen"
-      :mode="composeDialogMode"
-      :friend-id="composeFriendId"
-    />
   </aside>
+
 </template>
 
 <style scoped>
