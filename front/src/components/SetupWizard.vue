@@ -29,6 +29,9 @@ import {
 } from 'lucide-vue-next'
 import { useLlmStore } from '@/stores/llm'
 import { useEmbeddingStore } from '@/stores/embedding'
+import { useMemoryStore } from '@/stores/memory'
+import { useFriendStore } from '@/stores/friend'
+import { getFriendTemplates } from '@/api/friend-template'
 import { useToast } from '@/composables/useToast'
 
 interface Props {
@@ -41,13 +44,30 @@ const emit = defineEmits(['update:open', 'complete'])
 const toast = useToast()
 const llmStore = useLlmStore()
 const embeddingStore = useEmbeddingStore()
+const memoryStore = useMemoryStore()
+const friendStore = useFriendStore()
 
 const step = ref(1)
 const isTesting = ref(false)
 const isSaving = ref(false)
+const gender = ref<'男' | '女' | ''>('')
+const isGenderInitialized = ref(false)
 
 // Step transitions logic
-const nextStep = () => {
+const nextStep = async () => {
+  if (step.value === 1 && !isGenderInitialized.value) {
+    try {
+      isSaving.value = true
+      await ensureGenderProfile()
+      await ensureDefaultFriend()
+      isGenderInitialized.value = true
+    } catch (error: any) {
+      toast.error(error.message || '性别保存失败')
+      return
+    } finally {
+      isSaving.value = false
+    }
+  }
   if (step.value < 4) step.value++
 }
 
@@ -89,12 +109,52 @@ const testEmbedding = async () => {
   }
 }
 
+const ensureGenderProfile = async () => {
+  if (!gender.value) return
+  await memoryStore.fetchProfiles()
+  const topic = '基本信息'
+  const content = `性别：${gender.value}`
+  const existing = memoryStore.profiles.find(
+    p => p.attributes.topic === topic && p.content.startsWith('性别：')
+  )
+  await memoryStore.upsertProfile(existing?.id ?? null, content, { topic })
+}
+
+const ensureDefaultFriend = async () => {
+  if (!gender.value) return
+  const targetName = gender.value === '男' ? '灵儿' : '俊哥'
+  await friendStore.fetchFriends()
+  if (friendStore.friends.some(f => f.name === targetName)) return
+  const templates = await getFriendTemplates({ q: targetName })
+  const match = templates.find(t => t.name === targetName)
+  if (!match) {
+    throw new Error(`未找到默认好友模板：${targetName}`)
+  }
+  await friendStore.cloneFromTemplate(match.id)
+}
+
+const hydrateGenderFromProfile = async () => {
+  await memoryStore.fetchProfiles()
+  const existing = memoryStore.profiles.find(
+    p => p.attributes.topic === '基本信息' && p.content.startsWith('性别：')
+  )
+  if (existing) {
+    const value = existing.content.replace('性别：', '').trim() as '男' | '女'
+    if (value === '男' || value === '女') {
+      gender.value = value
+      isGenderInitialized.value = true
+    }
+  }
+}
+
 const completeSetup = async () => {
   isSaving.value = true
   try {
     // Save both configs
     await llmStore.saveConfig()
     await embeddingStore.saveConfig()
+    await ensureGenderProfile()
+    await ensureDefaultFriend()
 
     toast.success('配置已保存，欢迎使用 WeAgentChat！')
     emit('complete')
@@ -107,6 +167,9 @@ const completeSetup = async () => {
 }
 
 const canGoNext = computed(() => {
+  if (step.value === 1) {
+    return !!gender.value && !isSaving.value
+  }
   if (step.value === 2) {
     return !!llmStore.apiKey && !!llmStore.modelName
   }
@@ -120,11 +183,16 @@ onMounted(async () => {
   // Try to load existing configs if any
   await llmStore.fetchConfig()
   await embeddingStore.fetchConfig()
+  await hydrateGenderFromProfile()
+  if (isGenderInitialized.value) {
+    step.value = 2
+  }
 })
 </script>
 
 <template>
-  <Dialog :open="open" @update:open="(val) => !isSaving && emit('update:open', val)">
+  <Dialog :open="open"
+    @update:open="(val) => (isSaving || !isGenderInitialized) ? null : emit('update:open', val)">
     <DialogContent class="max-w-[500px] p-0 gap-0 overflow-hidden border-none shadow-2xl">
       <!-- Gradient Header Area -->
       <div class="h-32 bg-gradient-to-br from-green-600 to-emerald-700 p-8 flex items-end relative overflow-hidden">
@@ -174,6 +242,24 @@ onMounted(async () => {
               <h4 class="font-bold text-gray-900">双轨记忆系统</h4>
               <p class="text-sm text-gray-500 mt-0.5">AI 伙伴会记住您的习惯与点滴，模拟真实的社交反馈。这需要您配置一个向量模型来支持高效检索。</p>
             </div>
+          </div>
+          <div v-if="!isGenderInitialized" class="space-y-2">
+            <label class="text-sm font-semibold text-gray-700">
+              性别 <span class="text-red-500">*</span>
+            </label>
+            <Select v-model="gender">
+              <SelectTrigger class="border-gray-200">
+                <SelectValue placeholder="请选择性别" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="男">男</SelectItem>
+                <SelectItem value="女">女</SelectItem>
+              </SelectContent>
+            </Select>
+            <p class="text-[10px] text-gray-400">用于初始化默认好友与个人档案</p>
+          </div>
+          <div v-else class="rounded-lg border border-green-100 bg-green-50/50 px-4 py-3 text-sm text-gray-600">
+            已设置性别：<span class="font-semibold text-gray-800">{{ gender }}</span>
           </div>
           <p class="text-sm text-gray-400 text-center pt-4">为了开始体验，我们需要几分钟时间来配置您的 AI 后端服务。</p>
         </div>
@@ -285,7 +371,8 @@ onMounted(async () => {
       <DialogFooter
         class="p-6 pt-0 flex flex-row items-center justify-between gap-3 bg-gray-50/50 border-t border-gray-100">
         <div>
-          <Button v-if="step > 1" variant="ghost" size="sm" @click="prevStep" class="text-gray-500">
+          <Button v-if="step > 1" variant="ghost" size="sm" @click="prevStep" class="text-gray-500"
+            :disabled="isGenderInitialized && step === 2">
             <ChevronLeft class="mr-1 w-4 h-4" /> 上一步
           </Button>
         </div>

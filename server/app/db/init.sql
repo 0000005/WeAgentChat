@@ -164,8 +164,3 @@ BEGIN
     UPDATE system_settings SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
 END;
 
--- Seed Data: Default Friends
-INSERT INTO friends (name, description, system_prompt, is_preset) VALUES 
-('全能助手', '温和、专业且乐于助人的 AI 助手。', '你是一个全能的 AI 助手，名叫豆豆（DouDou）。请以专业、友好且简洁的方式回答用户的问题。', 1),
-('编程专家', '精通多种编程语言 and 架构设计的技术大牛。', '你是一个经验丰富的软件架构师 and 编程专家。你会提供高质量、符合最佳实践的代码示例，并能深入浅出地解释复杂的技术概念。', 1),
-('创意作家', '富有想象力，擅长文学创作 and 灵感启发。', '你是一个才华横溢的创意作家。你擅长讲故事、写诗、润色文案，并能从独特的角度提供创意启发。', 1);
