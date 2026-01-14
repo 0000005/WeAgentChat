@@ -463,8 +463,8 @@ const originalSetTab = (tab: string) => {
 
                     <div class="flex justify-end gap-2">
                         <Button variant="outline" @click="$emit('update:open', false)">取消</Button>
-                        <Button v-if="activeTab !== 'memory'" variant="outline" @click="handleTest"
-                            :disabled="isLlmTesting || isEmbedTesting">
+                        <Button v-if="activeTab === 'llm' || activeTab === 'embedding'" variant="outline"
+                            @click="handleTest" :disabled="isLlmTesting || isEmbedTesting">
                             <Loader2 v-if="isLlmTesting || isEmbedTesting" class="w-4 h-4 mr-2 animate-spin" />
                             测试
                         </Button>
