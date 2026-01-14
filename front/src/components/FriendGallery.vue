@@ -161,12 +161,14 @@ onMounted(() => {
 <template>
   <div class="friend-gallery">
     <header class="gallery-header" @dblclick="handleToggleMaximize" @contextmenu="handleHeaderContextMenu">
-      <div class="gallery-title">
-        <button class="back-btn" @click="emit('back-chat')">返回</button>
-        <LayoutGrid :size="18" />
-        <span>好友库</span>
+      <div class="gallery-header-inner">
+        <div class="gallery-title">
+          <button class="back-btn" @click="emit('back-chat')">返回</button>
+          <LayoutGrid :size="18" />
+          <span>好友库</span>
+        </div>
+        <div class="gallery-subtitle">探索更多 AI 角色，找到最合适的伙伴</div>
       </div>
-      <div class="gallery-subtitle">探索更多 AI 角色，找到最合适的伙伴</div>
     </header>
 
     <section class="gallery-toolbar">
@@ -296,8 +298,12 @@ onMounted(() => {
   /* Right padding for global window controls */
   border-bottom: 1px solid #e3e3e3;
   background: #fdfdfd;
+}
+
+.gallery-header-inner {
   -webkit-app-region: drag;
-  /* Make header draggable */
+  display: flex;
+  flex-direction: column;
 }
 
 .gallery-title {
