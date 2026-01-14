@@ -33,6 +33,8 @@ hiddenimports += app_hiddenimports
 # Alembic migrations/config needed at runtime
 datas += [(os.path.join(server_dir, 'alembic'), 'alembic')]
 datas += [(os.path.join(server_dir, 'alembic.ini'), '.')]
+# Static assets for preset avatars and other static files
+datas += [(os.path.join(server_dir, 'static'), 'static')]
 # Memobase migrations
 datas += [
     (
