@@ -581,47 +581,58 @@ onMounted(() => {
   border-radius: 999px;
 }
 
-.gallery-dialog {
-  max-width: min(560px, 92vw);
-  max-height: 90vh;
-  background: #f9f9f9;
-  border-radius: 16px;
+/* Dialog styles need :global() because DialogPortal renders outside this component */
+:global(.gallery-dialog) {
+  max-width: min(560px, 92vw) !important;
+  max-height: 85vh !important;
+  background: #f9f9f9 !important;
+  border-radius: 16px !important;
   padding: 0 !important;
   display: flex !important;
-  flex-direction: column;
-  overflow: hidden;
+  flex-direction: column !important;
+  overflow: hidden !important;
 }
 
-.gallery-dialog :deep(.DialogHeader) {
+/* Fix DialogHeader positioning */
+:global(.gallery-dialog > div:first-child) {
   padding: 20px 20px 10px;
+  flex-shrink: 0;
 }
 
-.sheet-body {
+:global(.gallery-dialog > div:first-child h2) {
+  font-size: 18px;
+  font-weight: 600;
+  color: #222;
+}
+
+:global(.gallery-dialog .sheet-body) {
   flex: 1;
   display: flex;
   flex-direction: column;
   min-height: 0;
+  overflow: hidden;
 }
 
-.sheet-content-scroll {
+:global(.gallery-dialog .sheet-content-scroll) {
   flex: 1;
   overflow-y: auto;
   padding: 10px 20px 20px;
   display: flex;
   flex-direction: column;
   gap: 20px;
+  min-height: 0;
 }
 
-.sheet-content-scroll::-webkit-scrollbar {
+:global(.gallery-dialog .sheet-content-scroll::-webkit-scrollbar) {
   width: 6px;
 }
 
-.sheet-content-scroll::-webkit-scrollbar-thumb {
+:global(.gallery-dialog .sheet-content-scroll::-webkit-scrollbar-thumb) {
   background: rgba(0, 0, 0, 0.1);
   border-radius: 999px;
 }
 
-.sheet-hero {
+:global(.gallery-dialog .sheet-hero) {
   display: flex;
   gap: 16px;
   align-items: center;
@@ -631,7 +642,7 @@ onMounted(() => {
   box-shadow: 0 6px 12px rgba(0, 0, 0, 0.06);
 }
 
-.hero-avatar {
+:global(.gallery-dialog .hero-avatar) {
   width: 72px;
   height: 72px;
   border-radius: 16px;
@@ -639,46 +650,46 @@ onMounted(() => {
   background: #f0f0f0;
 }
 
-.hero-avatar img {
+:global(.gallery-dialog .hero-avatar img) {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-.hero-info h2 {
+:global(.gallery-dialog .hero-info h2) {
   font-size: 18px;
   font-weight: 600;
   color: #222;
   margin-bottom: 6px;
 }
 
-.hero-tags {
+:global(.gallery-dialog .hero-tags) {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
 }
 
-.sheet-section {
+:global(.gallery-dialog .sheet-section) {
   background: #fff;
   border-radius: 12px;
   padding: 16px;
   box-shadow: 0 6px 12px rgba(0, 0, 0, 0.05);
 }
 
-.section-title {
+:global(.gallery-dialog .section-title) {
   font-size: 13px;
   font-weight: 600;
   color: #333;
   margin-bottom: 10px;
 }
 
-.sheet-markdown {
+:global(.gallery-dialog .sheet-markdown) {
   font-size: 13px;
   color: #444;
   line-height: 1.6;
 }
 
-.prompt-trigger {
+:global(.gallery-dialog .prompt-trigger) {
   width: 100%;
   display: flex;
   justify-content: space-between;
@@ -692,11 +703,12 @@ onMounted(() => {
   cursor: pointer;
 }
 
-.prompt-content {
+:global(.gallery-dialog .prompt-content) {
   margin-top: 10px;
 }
 
-.sheet-footer {
+:global(.gallery-dialog .sheet-footer) {
+  flex-shrink: 0;
   display: flex;
   justify-content: flex-end;
   padding: 16px 20px;
@@ -706,11 +718,11 @@ onMounted(() => {
   border-bottom-right-radius: 16px;
 }
 
-.add-friend-btn {
+:global(.gallery-dialog .add-friend-btn) {
   background: #07c160;
 }
 
-.add-friend-btn:hover {
+:global(.gallery-dialog .add-friend-btn:hover) {
   background: #06ad56;
 }
 
