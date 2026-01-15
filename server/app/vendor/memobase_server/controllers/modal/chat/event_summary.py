@@ -19,10 +19,16 @@ async def tag_event(
     if len(event_tags) == 0:
         return Promise.resolve(None)
     event_tags_str = "\n".join([f"- {et.name}({et.description})" for et in event_tags])
+    history_messages = (
+        event_tagging_prompt.get_few_shot_messages()
+        if hasattr(event_tagging_prompt, "get_few_shot_messages")
+        else []
+    )
     r = await llm_complete(
         project_id,
         event_summary,
         system_prompt=event_tagging_prompt.get_prompt(event_tags_str),
+        history_messages=history_messages,
         temperature=0.2,
         model=CONFIG.best_llm_model,
         **event_tagging_prompt.get_kwargs(),

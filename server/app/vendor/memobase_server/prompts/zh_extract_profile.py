@@ -1,47 +1,16 @@
 from . import zh_user_profile_topics
-from ..models.response import AIUserProfiles
-from ..env import CONFIG, LOG
-from .utils import pack_profiles_into_string
+from ..env import CONFIG
 
 ADD_KWARGS = {
     "prompt_id": "zh_extract_profile",
 }
-
-EXAMPLES = [
-    (
-        """- 用户向助手问好。
-""",
-        AIUserProfiles(**{"facts": []}),
-    ),
-    (
-        """
-- 用户最喜欢的电影是《盗梦空间》和《星际穿越》 [提及于2025/01/01]
-- 用户最喜欢的电影是《信条》 [提及于2025/01/02]
-""",
-        AIUserProfiles(
-            **{
-                "facts": [
-                    {
-                        "topic": "兴趣爱好",
-                        "sub_topic": "电影",
-                        "memo": "《盗梦空间》、《星际穿越》[提及于2025/01/01]；最喜欢的是《信条》[提及于2025/01/02]",
-                    },
-                    {
-                        "topic": "兴趣爱好",
-                        "sub_topic": "电影导演",
-                        "memo": "用户似乎是克里斯托弗·诺兰的忠实粉丝",
-                    },
-                ]
-            }
-        ),
-    ),
-]
 
 DEFAULT_JOB = """你是一位专业的心理学家。
 你的责任是仔细阅读用户的备忘录并以结构化的格式提取用户的重要信息。
 然后提取相关且重要的事实、用户偏好，这些信息将有助于评估用户的状态。
 你不仅要提取明确陈述的信息，还要推断对话中隐含的信息。
 你要使用与用户输入相同的语言来记录这些事实。
+注意：备忘录可能来自包含好友/助手发言的对话，但你只提取真实用户(ROLE=user)相关的事实与偏好，忽略好友/助手的自述、推测、设定。
 """
 
 FACT_RETRIEVAL_PROMPT = """{system_prompt}
@@ -87,11 +56,6 @@ POSSIBLE TOPICS THINKING
 - ...
 ```
 
-## 主题抽取示例
-以下是一些示例：
-{examples}
-请按上述格式返回事实和偏好。
-
 #### 主题建议
 以下是你应该重点收集和提取的主题和子主题列表：
 {topic_examples}
@@ -105,6 +69,7 @@ POSSIBLE TOPICS THINKING
 - 将所有与该主题/子主题相关的内容放在一个元素中，不要重复。
 - 备忘录中会有两种时间，一种是这个备忘录被记录的时间，一种是备忘录中的事件发生的时间, 两种时间都很重要，不要混淆了, 你需要正确的提取时间信息并且在相关的memo后使用时间表示[...]
 - 只提取有实际值的属性，如果用户没有提供任何值，请不要提取。
+- 只提取真实用户相关信息，不要提取好友/助手的内容或推测。
 
 现在开始执行你的任务。
 以下是用户的备忘录。你需要从中提取/推断相关的事实和偏好，并按上述格式返回。
@@ -133,21 +98,8 @@ def get_default_profiles() -> str:
 
 def get_prompt(topic_examples: str) -> str:
     sys_prompt = CONFIG.system_prompt or DEFAULT_JOB
-    examples = "\n\n".join(
-        [
-            f"""<example>
-<input>{p[0]}</input>
-<output>
-{pack_profiles_into_string(p[1])}
-</output>
-</example>
-"""
-            for p in EXAMPLES
-        ]
-    )
     return FACT_RETRIEVAL_PROMPT.format(
         system_prompt=sys_prompt,
-        examples=examples,
         tab=CONFIG.llm_tab_separator,
         topic_examples=topic_examples,
     )
@@ -155,6 +107,84 @@ def get_prompt(topic_examples: str) -> str:
 
 def get_kwargs() -> dict:
     return ADD_KWARGS
+
+
+def get_few_shot_messages() -> list[dict]:
+    tab = CONFIG.llm_tab_separator
+    return [
+        {
+            "role": "user",
+            "content": """#### 已有的主题
+如果提取相关的主题/子主题，请考虑使用下面的主题/子主题命名:
+
+#### 备忘录
+- 用户这两周加班到很晚，昨晚两点才睡。[提及于2024/06/02]
+- 用户白天很困，靠黑咖啡提神。[提及于2024/06/02]
+- 用户喜欢黑咖啡。[提及于2024/06/02]
+- 用户计划周五去体检。[提及于2024/06/02]
+""",
+        },
+        {
+            "role": "assistant",
+            "content": f"""POSSIBLE TOPICS THINKING
+---
+- 生活习惯{tab}作息{tab}这两周加班到很晚，昨晚两点才睡。[提及于2024/06/02]
+- 生活习惯{tab}精力状态{tab}白天很困，靠黑咖啡提神。[提及于2024/06/02]
+- 饮食偏好{tab}咖啡偏好{tab}喜欢黑咖啡。[提及于2024/06/02]
+- 健康管理{tab}体检计划{tab}计划周五去体检。[提及于2024/06/02]""",
+        },
+        {
+            "role": "user",
+            "content": """#### 已有的主题
+如果提取相关的主题/子主题，请考虑使用下面的主题/子主题命名:
+
+#### 备忘录
+- 用户周末要带孩子去看牙。[提及于2024/06/05]
+- 用户目前住在上海。[提及于2024/06/05]
+""",
+        },
+        {
+            "role": "assistant",
+            "content": f"""POSSIBLE TOPICS THINKING
+---
+- 家庭关系{tab}子女健康{tab}周末要带孩子去看牙。[提及于2024/06/05]
+- 基本信息{tab}所在地{tab}目前住在上海。[提及于2024/06/05]""",
+        },
+        {
+            "role": "user",
+            "content": """#### 已有的主题
+如果提取相关的主题/子主题，请考虑使用下面的主题/子主题命名:
+
+#### 备忘录
+- 用户最近在健身，计划周三跑步。[提及于2024/06/08]
+- 用户不太能吃辣。[提及于2024/06/08]
+""",
+        },
+        {
+            "role": "assistant",
+            "content": f"""POSSIBLE TOPICS THINKING
+---
+- 健康管理{tab}运动计划{tab}最近在健身，计划周三跑步。[提及于2024/06/08]
+- 饮食偏好{tab}口味偏好{tab}不太能吃辣。[提及于2024/06/08]""",
+        },
+        {
+            "role": "user",
+            "content": """#### 已有的主题
+如果提取相关的主题/子主题，请考虑使用下面的主题/子主题命名:
+
+#### 备忘录
+- 用户上个月感冒了，现在好多了。[提及于2024/06/12]
+- 用户下周准备去成都旅行。[提及于2024/06/12]
+""",
+        },
+        {
+            "role": "assistant",
+            "content": f"""POSSIBLE TOPICS THINKING
+---
+- 健康管理{tab}近期疾病{tab}上个月感冒了，现在好多了。[提及于2024/06/12]
+- 出行计划{tab}旅行计划{tab}下周准备去成都旅行。[提及于2024/06/12]""",
+        },
+    ]
 
 
 if __name__ == "__main__":

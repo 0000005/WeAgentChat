@@ -39,6 +39,11 @@ async def extract_topics(
     STRICT_MODE = CURRENT_PROFILE_INFO["strict_mode"]
 
     project_profiles_slots = CURRENT_PROFILE_INFO["project_profile_slots"]
+    history_messages = (
+        PROMPTS[USE_LANGUAGE]["extract"].get_few_shot_messages()
+        if hasattr(PROMPTS[USE_LANGUAGE]["extract"], "get_few_shot_messages")
+        else []
+    )
 
     p = await llm_complete(
         project_id,
@@ -50,6 +55,7 @@ async def extract_topics(
         system_prompt=PROMPTS[USE_LANGUAGE]["extract"].get_prompt(
             PROMPTS[USE_LANGUAGE]["profile"].get_prompt(project_profiles_slots)
         ),
+        history_messages=history_messages,
         temperature=0.2,  # precise
         **PROMPTS[USE_LANGUAGE]["extract"].get_kwargs(),
     )

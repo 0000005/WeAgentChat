@@ -6,26 +6,10 @@ from ..env import CONFIG
 ADD_KWARGS = {
     "prompt_id": "event_tagging",
 }
-EXAMPLES = [
-    (
-        """
-## Assume the event tags are:
-## - emotion(the user's current emotion)
-## - goals(the user's goals)
-## - location(the location of user)
-The assistant passionately expresses their love and care for the user, trying to convince them that their feelings are genuine and not just physical, despite the user's skepticism and demand for proof.
-""",
-        """- emotion{tab}skepticism about the assistant's love
-- goals{tab}Demand proof of assistant's love
-""",
-        """The event mentioned the users' feelings and demands, so the `emotion` and `goals` tags can be filled,
-But the location is not mentioned, so it's not included in the result.
-""",
-    )
-]
-
 FACT_RETRIEVAL_PROMPT = """You are a expert of tagging events.
 You will be given a event summary, and you need to extract the specific tags' values for the event.
+Only tag facts about the real user; ignore assistant/friend statements or roleplay content.
+仅基于真实用户的事实打标签，忽略好友/助手的自述、推测或角色设定。
 
 ## Event Tags
 Below are some event tags you need to extract:
@@ -52,31 +36,18 @@ For each line is a new event tag of this summary, containing:
 2. VALUE: the value of the event tag
 those elements should be separated by `{tab}` and each line should be separated by `\n` and started with "- ".
 
-## Examples
-Here are some few shot examples:
-{examples}
-
 ## Rules
 - Return the new event tags in a list format as shown above.
 - Strick to the exact tag name, don't change the tag name.
 - If some tags are not mentioned in the summary, you should not include them in the result.
+- Only tag facts about the real user; do not infer tags from assistant/friend content.
 
 Now, please extract the event tags for the following event summary:
 """
 
 
 def get_prompt(event_tags: str) -> str:
-    examples = "\n\n".join(
-        [
-            f"""<input>{p[0]}</input>
-<output>{p[1]}</output>
-<explanation>{p[2]}</explanation>
-"""
-            for p in EXAMPLES
-        ]
-    )
     return FACT_RETRIEVAL_PROMPT.format(
-        examples=examples.format(tab=CONFIG.llm_tab_separator),
         tab=CONFIG.llm_tab_separator,
         event_tags=event_tags,
     )
@@ -84,6 +55,62 @@ def get_prompt(event_tags: str) -> str:
 
 def get_kwargs() -> dict:
     return ADD_KWARGS
+
+
+def get_few_shot_messages() -> list[dict]:
+    tab = CONFIG.llm_tab_separator
+    return [
+        {
+            "role": "user",
+            "content": """Event summary:
+- 用户这两周加班到很晚，昨晚两点才睡。[提及于2024/06/02]
+- 用户白天很困，靠黑咖啡提神。[提及于2024/06/02]
+- 用户喜欢黑咖啡。[提及于2024/06/02]
+- 用户计划周五去体检。[提及于2024/06/02]
+""",
+        },
+        {
+            "role": "assistant",
+            "content": f"""- emotion{tab}tired
+- goals{tab}attend medical checkup""",
+        },
+        {
+            "role": "user",
+            "content": """Event summary:
+- 用户周末要带孩子去看牙。[提及于2024/06/05]
+- 用户目前住在上海。[提及于2024/06/05]
+""",
+        },
+        {
+            "role": "assistant",
+            "content": f"""- goals{tab}take child to dentist
+- location{tab}Shanghai""",
+        },
+        {
+            "role": "user",
+            "content": """Event summary:
+- 用户最近在健身，计划周三跑步。[提及于2024/06/08]
+- 用户不太能吃辣。[提及于2024/06/08]
+""",
+        },
+        {
+            "role": "assistant",
+            "content": f"""- goals{tab}go running on Wednesday
+- emotion{tab}motivated""",
+        },
+        {
+            "role": "user",
+            "content": """Event summary:
+- 用户上个月感冒了，现在好多了。[提及于2024/06/12]
+- 用户下周准备去成都旅行。[提及于2024/06/12]
+""",
+        },
+        {
+            "role": "assistant",
+            "content": f"""- emotion{tab}relieved
+- goals{tab}travel to Chengdu""",
+        },
+    ]
 
 
 if __name__ == "__main__":

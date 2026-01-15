@@ -31,6 +31,9 @@ async def entry_chat_summary(
     event_summary_theme = (
         project_profiles.event_theme_requirement or CONFIG.event_theme_requirement
     )
+    history_messages = (
+        prompt.get_few_shot_messages() if hasattr(prompt, "get_few_shot_messages") else []
+    )
 
     event_tags = read_out_event_tags(project_profiles)
     event_attriubtes_str = "\n".join(
@@ -48,6 +51,7 @@ async def entry_chat_summary(
             event_attriubtes_str,
             additional_requirements=event_summary_theme,
         ),
+        history_messages=history_messages,
         temperature=0.2,  # precise
         model=CONFIG.summary_llm_model,
         **prompt.get_kwargs(),
