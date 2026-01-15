@@ -12,6 +12,7 @@ import { MessageContent, MessageResponse } from '@/components/ai-elements/messag
 import { useSettingsStore } from '@/stores/settings'
 import { storeToRefs } from 'pinia'
 import { getStaticUrl } from '@/api/base'
+import { useEmbeddingStore } from '@/stores/embedding'
 import {
   PromptInput,
   PromptInputTextarea,
@@ -67,12 +68,15 @@ const sessionStore = useSessionStore()
 const friendStore = useFriendStore()
 const settingsStore = useSettingsStore()
 const llmStore = useLlmStore()
+const embeddingStore = useEmbeddingStore()
 
 onMounted(async () => {
   // Ensure LLM config is loaded to check isConfigured status
   if (!llmStore.apiKey) {
     await llmStore.fetchConfig()
   }
+  // Load embedding config
+  await embeddingStore.fetchConfig()
 })
 
 const showNoLlmDialog = ref(false)
@@ -89,6 +93,12 @@ const handleGoToSettings = () => {
   showNoLlmDialog.value = false
   emit('open-settings')
 }
+
+const handleOpenEmbeddingSettings = () => {
+  emit('open-settings', 'embedding')
+}
+
+const isEmbeddingConfigured = computed(() => embeddingStore.isConfigured)
 
 // System settings for display
 const { showThinking: sysShowThinking, showToolCalls: sysShowToolCalls } = storeToRefs(settingsStore)
@@ -317,9 +327,18 @@ const formatToolArgs = (args: any) => {
     </header>
 
     <!-- Messages Area -->
-    <div class="chat-messages-container">
+    <div class="chat-messages-container flex-col">
+      <!-- Vectorization Warning Banner -->
+      <div v-if="!isEmbeddingConfigured" class="vector-warning-banner" @click="handleOpenEmbeddingSettings">
+        <div class="banner-content">
+          <AlertTriangle :size="16" class="warning-icon" />
+          <span>向量化模型未配置，记忆系统将无法工作。</span>
+          <span class="action-link">去配置 &gt;</span>
+        </div>
+      </div>
+
       <!-- Empty State with WeChat Logo -->
-      <div v-if="!hasMessages" class="empty-state">
+      <div v-if="!hasMessages" class="empty-state flex-1">
         <div class="wechat-logo">
           <svg viewBox="0 0 100 100" class="logo-svg">
             <g fill="#c8c8c8">
@@ -335,7 +354,7 @@ const formatToolArgs = (args: any) => {
       </div>
 
       <!-- Conversation with Messages -->
-      <Conversation v-else class="h-full w-full">
+      <Conversation v-else class="flex-1 w-full overflow-hidden">
         <ConversationContent class="messages-content">
           <template v-for="(msg, index) in messages" :key="msg.id">
             <!-- 会话分隔线（session_id 变化时显示） -->
@@ -610,6 +629,41 @@ const formatToolArgs = (args: any) => {
   flex: 1;
   overflow: hidden;
   position: relative;
+  display: flex !important;
+  flex-direction: column;
+}
+
+.vector-warning-banner {
+  background-color: #fef0f0;
+  color: #f56c6c;
+  padding: 8px 16px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-bottom: 1px solid #fde2e2;
+  transition: background-color 0.2s;
+  flex-shrink: 0;
+}
+
+.vector-warning-banner:hover {
+  background-color: #fde2e2;
+}
+
+.banner-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.action-link {
+  text-decoration: underline;
+  margin-left: 4px;
+}
+
+.warning-icon {
+  flex-shrink: 0;
 }
 
 .empty-state {

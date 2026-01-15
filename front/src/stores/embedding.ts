@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import {
     getEmbeddingSettings,
     createEmbeddingSetting,
@@ -116,6 +116,10 @@ export const useEmbeddingStore = defineStore('embedding', () => {
         }
     }
 
+    const isConfigured = computed(() => {
+        return !!baseUrl.value && baseUrl.value.trim().length > 0
+    })
+
     return {
         id,
         provider,
@@ -128,6 +132,7 @@ export const useEmbeddingStore = defineStore('embedding', () => {
         isTesting,
         error,
         testResult,
+        isConfigured,
         fetchConfig,
         saveConfig,
         testConfig

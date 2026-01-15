@@ -25,7 +25,12 @@ const isFriendComposeOpen = ref(false)
 const friendComposeMode = ref<'add' | 'edit'>('add')
 const friendComposeId = ref<number | null>(null)
 const settingsStore = useSettingsStore()
+const settingsDefaultTab = ref('llm')
 
+const handleOpenSettings = (tab: string = 'llm') => {
+  settingsDefaultTab.value = tab
+  isSettingsOpen.value = true
+}
 
 const updateActiveTab = (tab: 'chat' | 'gallery') => {
   const nextTab = tab === 'gallery' ? 'gallery' : 'chat'
@@ -108,17 +113,14 @@ const handleSetupComplete = () => {
       
       注意: 这不是重复代码，而是针对不同运行环境的适配逻辑。
     -->
-    <WindowControls 
-      class="global-window-controls" 
-      :show-more="activeTab === 'chat'" 
-      @more-click="isDrawerOpen = true"
-    />
-    
+    <WindowControls class="global-window-controls" :show-more="activeTab === 'chat'"
+      @more-click="isDrawerOpen = true" />
+
     <div class="wechat-app">
       <!-- Icon Sidebar (always visible on desktop) -->
       <div class="icon-sidebar-container">
-        <IconSidebar :active-tab="activeTab" @update:activeTab="updateActiveTab($event as 'chat' | 'gallery')" @open-settings="isSettingsOpen = true"
-          @open-profile="isProfileOpen = true" />
+        <IconSidebar :active-tab="activeTab" @update:activeTab="updateActiveTab($event as 'chat' | 'gallery')"
+          @open-settings="handleOpenSettings('llm')" @open-profile="isProfileOpen = true" />
       </div>
 
       <!-- Conversation List Sidebar -->
@@ -127,10 +129,11 @@ const handleSetupComplete = () => {
       </div>
 
       <!-- Mobile Sidebar Overlay (Only on small screens) -->
-      <div v-if="isSidebarOpen && activeTab !== 'gallery'" class="mobile-overlay md:hidden" @click="isSidebarOpen = false">
+      <div v-if="isSidebarOpen && activeTab !== 'gallery'" class="mobile-overlay md:hidden"
+        @click="isSidebarOpen = false">
         <div class="mobile-sidebar" @click.stop>
           <IconSidebar :active-tab="activeTab" @update:activeTab="updateActiveTab($event as 'chat' | 'gallery')"
-            @open-settings="isSettingsOpen = true" @open-profile="isProfileOpen = true" />
+            @open-settings="handleOpenSettings('llm')" @open-profile="isProfileOpen = true" />
           <Sidebar @open-gallery="handleOpenGallery" @add-friend="handleAddFriend" @edit-friend="handleEditFriend" />
         </div>
       </div>
@@ -139,12 +142,13 @@ const handleSetupComplete = () => {
       <!-- Main Chat Area -->
       <main class="chat-container">
         <FriendGallery v-if="activeTab === 'gallery'" @back-chat="updateActiveTab('chat')" />
-        <ChatArea v-else :is-sidebar-collapsed="!isSidebarOpen" @toggle-sidebar="toggleSidebar" @open-drawer="isDrawerOpen = true" @edit-friend="handleEditFriend" @open-settings="isSettingsOpen = true" />
+        <ChatArea v-else :is-sidebar-collapsed="!isSidebarOpen" @toggle-sidebar="toggleSidebar"
+          @open-drawer="isDrawerOpen = true" @edit-friend="handleEditFriend" @open-settings="handleOpenSettings" />
       </main>
 
 
       <!-- Settings Dialog -->
-      <SettingsDialog v-model:open="isSettingsOpen" />
+      <SettingsDialog v-model:open="isSettingsOpen" :default-tab="settingsDefaultTab" />
 
       <!-- Profile Dialog -->
       <ProfileDialog v-model:open="isProfileOpen" />
@@ -156,11 +160,7 @@ const handleSetupComplete = () => {
       <ChatDrawerMenu v-model:open="isDrawerOpen" />
 
       <!-- Global Friend Compose Dialog -->
-      <FriendComposeDialog
-        v-model:open="isFriendComposeOpen"
-        :mode="friendComposeMode"
-        :friend-id="friendComposeId"
-      />
+      <FriendComposeDialog v-model:open="isFriendComposeOpen" :mode="friendComposeMode" :friend-id="friendComposeId" />
 
 
       <!-- Global Toast Container -->
@@ -261,4 +261,3 @@ const handleSetupComplete = () => {
   }
 }
 </style>
-

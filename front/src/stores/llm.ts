@@ -72,7 +72,7 @@ export const useLlmStore = defineStore('llm', () => {
   }
 
   const isConfigured = computed(() => {
-    return !!apiKey.value && apiKey.value.trim().length > 0
+    return !!apiBaseUrl.value && apiBaseUrl.value.trim().length > 0
   })
 
   return {

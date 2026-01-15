@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import {
     Dialog,
     DialogContent,
@@ -30,8 +30,9 @@ import {
     AccordionTrigger,
 } from '@/components/ui/accordion'
 
-defineProps<{
+const props = defineProps<{
     open: boolean
+    defaultTab?: string
 }>()
 
 const emit = defineEmits(['update:open'])
@@ -76,8 +77,23 @@ const passiveTimeoutMinutes = computed({
 const testStatus = ref<'idle' | 'success' | 'error'>('idle')
 const testMessage = ref('')
 
-const activeTab = ref('llm')
+const activeTab = ref(props.defaultTab || 'llm')
 const showApiKey = ref(false)
+
+// Watch for changes in defaultTab when the dialog opens
+watch(() => props.open, (newVal) => {
+    if (newVal && props.defaultTab) {
+        activeTab.value = props.defaultTab
+    }
+})
+
+// Also watch defaultTab directly in case it changes while open
+watch(() => props.defaultTab, (newVal) => {
+    if (newVal) {
+        activeTab.value = newVal
+    }
+})
+
 
 const toggleApiKeyVisibility = () => {
     showApiKey.value = !showApiKey.value
