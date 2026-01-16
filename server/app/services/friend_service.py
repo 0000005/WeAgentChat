@@ -9,6 +9,18 @@ from app.schemas.friend import FriendCreate, FriendUpdate
 def get_friend(db: Session, friend_id: int) -> Optional[Friend]:
     return db.query(Friend).filter(Friend.id == friend_id, Friend.deleted == False).first()
 
+import re
+
+def _strip_message_tags(content: Optional[str]) -> Optional[str]:
+    if not content:
+        return content
+    # 提取所有 <message> 标签内容并用空格合并
+    parts = re.findall(r'<message>(.*?)</message>', content, re.DOTALL)
+    if parts:
+        return " ".join(part.strip() for part in parts if part.strip())
+    # 兜底：如果没有匹配到完整标签但包含标签字符，直接剔除所有标签文本
+    return re.sub(r'</?message>', '', content).strip()
+
 def get_friends(db: Session, skip: int = 0, limit: int = 100) -> List[Friend]:
     # 子查询：获取每个好友的最新消息ID（通过 ChatSession 连接）
     latest_message_subquery = (
@@ -41,7 +53,7 @@ def get_friends(db: Session, skip: int = 0, limit: int = 100) -> List[Friend]:
     results = []
     for friend, content, role, msg_time in query.all():
         # 将消息内容绑定到 friend 对象（临时属性，以便 Pydantic 转换）
-        friend.last_message = content
+        friend.last_message = _strip_message_tags(content)
         friend.last_message_role = role
         friend.last_message_time = msg_time
         results.append(friend)

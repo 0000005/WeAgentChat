@@ -392,6 +392,7 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  text-align: left;
 }
 
 .friend-header {
@@ -435,6 +436,7 @@ onMounted(async () => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-align: left;
 }
 
 .friend-actions {

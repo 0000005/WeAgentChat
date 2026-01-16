@@ -20,6 +20,56 @@ export interface Message {
     sessionId?: number
 }
 
+/**
+ * Parse message content into segments based on <message> tags.
+ * If no tags are found, returns original content as a single segment.
+ * 
+ * Edge cases handled:
+ * 1. No tags at all → return original content as single segment
+ * 2. Multiple complete <message>...</message> tags → return all segments
+ * 3. Trailing unclosed <message>... → include as last segment (for SSE streaming)
+ * 4. Empty <message></message> → filter out
+ * 5. Malformed/nested tags → extract outermost complete blocks
+ */
+export function parseMessageSegments(content: string): string[] {
+    if (!content) return []
+
+    // Quick path: no tags at all
+    if (!content.includes('<message>')) {
+        return [content.trim()]
+    }
+
+    const regex = /<message>([\s\S]*?)<\/message>/g
+    const segments: string[] = []
+    let lastIndex = 0
+    let match
+
+    while ((match = regex.exec(content)) !== null) {
+        const segment = match[1].trim()
+        if (segment) {
+            segments.push(segment)
+        }
+        lastIndex = regex.lastIndex
+    }
+
+    // Handle trailing unclosed <message> tag (SSE streaming case)
+    const remainingContent = content.slice(lastIndex)
+    if (remainingContent.includes('<message>')) {
+        const openTagIndex = remainingContent.indexOf('<message>')
+        const trailingContent = remainingContent.slice(openTagIndex + '<message>'.length).trim()
+        if (trailingContent) {
+            segments.push(trailingContent)
+        }
+    }
+
+    // Fallback: if we found <message> tags but extracted nothing, show raw content
+    if (segments.length === 0) {
+        return [content.trim()]
+    }
+
+    return segments
+}
+
 export const useSessionStore = defineStore('session', () => {
     const friendStore = useFriendStore()
 
@@ -201,8 +251,28 @@ export const useSessionStore = defineStore('session', () => {
                         tc.result = data.result
                         tc.status = 'completed'
                     }
-                } else if (event === 'error') {
-                    contentBuffer += `\n[Error: ${data.detail}]`
+                } else if (event === 'error' || event === 'task_error') {
+                    // Backend error - immediately show error and reset streaming state
+                    const errorDetail = data.detail || data.message || JSON.stringify(data)
+                    const errorContent = contentBuffer
+                        ? `${contentBuffer}\n\n[错误: ${errorDetail}]`
+                        : `[错误: ${errorDetail}]`
+
+                    const errorMsg: Message = {
+                        id: Date.now() + 2,
+                        role: 'assistant',
+                        content: errorContent,
+                        thinkingContent: thinkingBuffer || undefined,
+                        toolCalls: toolCallsBuffer.length > 0 ? toolCallsBuffer : undefined,
+                        createdAt: Date.now()
+                    }
+                    messagesMap.value[friendId].push(errorMsg)
+
+                    streamingMap.value[friendId] = false
+                    friendStore.updateLastMessage(friendId, contentBuffer || '[消息发送失败]', 'assistant')
+
+                    // Return early - no need to continue processing
+                    return
                 } else if (event === 'done') {
                     // Finalize: Push the complete message to the list all at once
                     const assistantMsg: Message = {
@@ -218,8 +288,10 @@ export const useSessionStore = defineStore('session', () => {
                     streamingMap.value[friendId] = false
 
                     // Check if user has switched away during streaming - mark as unread
+                    // Count segments to match visual perception (3 bubbles = 3 unread)
                     if (currentFriendId.value !== friendId) {
-                        unreadCounts.value[friendId] = (unreadCounts.value[friendId] || 0) + 1
+                        const segmentCount = parseMessageSegments(contentBuffer).length || 1
+                        unreadCounts.value[friendId] = (unreadCounts.value[friendId] || 0) + segmentCount
                     }
 
                     // 异步刷新会话列表统计

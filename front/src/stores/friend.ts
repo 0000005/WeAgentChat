@@ -94,7 +94,17 @@ export const useFriendStore = defineStore('friend', () => {
         const index = friends.value.findIndex(f => f.id === friendId)
         if (index !== -1) {
             const friend = friends.value[index]
-            friend.last_message = content
+
+            // Clean up content: strip <message> tags for sidebar preview
+            let previewContent = content
+            if (role === 'assistant' && content.includes('<message>')) {
+                // Join segments with a space for preview
+                previewContent = content.replace(/<message>([\s\S]*?)<\/message>/g, '$1 ').trim()
+                // Strip any remaining/unclosed tags
+                previewContent = previewContent.replace(/<\/?message>/g, '').trim()
+            }
+
+            friend.last_message = previewContent
             friend.last_message_role = role
             friend.last_message_time = time || new Date().toISOString()
 

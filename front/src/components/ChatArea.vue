@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { useSessionStore } from '@/stores/session'
+import { useSessionStore, parseMessageSegments } from '@/stores/session'
 import { useFriendStore } from '@/stores/friend'
 import { Menu, MoreHorizontal, Brain, MessageSquarePlus } from 'lucide-vue-next'
 import {
@@ -339,11 +339,35 @@ const handleOpenDrawer = () => {
             <div v-if="msg.role === 'system'" class="message-system">
               <span>{{ msg.content }}</span>
             </div>
-            <div v-else class="message-group" :class="msg.role === 'user' ? 'group-user' : 'group-assistant'">
-              <div class="message-wrapper" :class="msg.role === 'user' ? 'message-user' : 'message-assistant'">
+            
+            <template v-else-if="msg.role === 'assistant'">
+              <!-- AI 回复：动态拆分渲染 -->
+              <div v-for="(segment, sIndex) in parseMessageSegments(msg.content)" 
+                   :key="msg.id + '-' + sIndex" 
+                   class="message-group group-assistant">
+                <div class="message-wrapper message-assistant">
+                  <!-- Avatar -->
+                  <div class="message-avatar">
+                    <img :src="getAssistantAvatar()" alt="Avatar" />
+                  </div>
+
+                  <!-- Message Bubble -->
+                  <div class="message-bubble-container" :class="{ 'message-pop-in': segment }">
+                    <div class="message-bubble">
+                      <MessageContent>
+                        <MessageResponse :content="segment" />
+                      </MessageContent>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </template>
+
+            <div v-else class="message-group group-user">
+              <div class="message-wrapper message-user">
                 <!-- Avatar -->
                 <div class="message-avatar">
-                  <img :src="msg.role === 'user' ? getUserAvatar() : getAssistantAvatar()" alt="Avatar" />
+                  <img :src="getUserAvatar()" alt="Avatar" />
                 </div>
 
                 <!-- Message Bubble -->
@@ -515,6 +539,7 @@ const handleOpenDrawer = () => {
   color: #333;
   white-space: nowrap;
   flex-shrink: 0;
+  text-align: left;
 }
 
 .title-separator {
@@ -537,6 +562,7 @@ const handleOpenDrawer = () => {
   display: flex;
   flex-direction: column;
   justify-content: center;
+  align-items: flex-start;
 }
 
 .typing-indicator {
@@ -544,6 +570,7 @@ const handleOpenDrawer = () => {
   color: #888;
   margin-top: -2px;
   animation: typing-fade 1.5s infinite ease-in-out;
+  text-align: left;
 }
 
 @keyframes typing-fade {

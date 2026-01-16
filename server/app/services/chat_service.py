@@ -19,6 +19,17 @@ from app.services.memo.bridge import MemoService
 from app.services.memo.constants import DEFAULT_USER_ID, DEFAULT_SPACE_ID
 from app.prompt import get_prompt
 from app.db.session import SessionLocal
+import re
+
+def _strip_message_tags(content: Optional[str]) -> Optional[str]:
+    if not content:
+        return content
+    # 提取所有 <message> 标签内容并用空格合并
+    parts = re.findall(r'<message>(.*?)</message>', content, re.DOTALL)
+    if parts:
+        return " ".join(part.strip() for part in parts if part.strip())
+    # 兜底：如果没有匹配到完整标签但包含标签字符，直接剔除所有标签文本
+    return re.sub(r'</?message>', '', content).strip()
 
 # Initialize logger for this module
 logger = logging.getLogger(__name__)
@@ -392,8 +403,9 @@ def get_sessions_with_stats_by_friend(db: Session, friend_id: int) -> List[dict]
         .all()
     )
     for msg in first_user_messages:
-        text = msg.content[:50].strip().replace('\n', ' ')
-        previews_map[msg.session_id] = f"{text}{'...' if len(msg.content) > 50 else ''}"
+        content = _strip_message_tags(msg.content)
+        text = content[:50].strip().replace('\n', ' ')
+        previews_map[msg.session_id] = f"{text}{'...' if len(content) > 50 else ''}"
 
     # 对于没有用户消息的会话（如全系统消息），回退到最后一条消息
     remaining_session_ids = [sid for sid in session_ids if sid not in previews_map]
@@ -411,8 +423,9 @@ def get_sessions_with_stats_by_friend(db: Session, friend_id: int) -> List[dict]
         )
         for msg in latest_messages:
             role_name = "AI" if msg.role == "assistant" else ("系统" if msg.role == "system" else "我")
-            text = msg.content[:50].strip().replace('\n', ' ')
-            previews_map[msg.session_id] = f"{role_name}: {text}{'...' if len(msg.content) > 50 else ''}"
+            content = _strip_message_tags(msg.content)
+            text = content[:50].strip().replace('\n', ' ')
+            previews_map[msg.session_id] = f"{role_name}: {text}{'...' if len(content) > 50 else ''}"
 
     # 第一个是活跃会话（因为按 update_time 倒序排列）
     active_session_id = sessions[0].id
@@ -723,16 +736,27 @@ async def _run_chat_generation_task(
             except Exception:
                 pass
 
+        segment_prompt = ""
+        try:
+            if friend and friend.script_expression:
+                segment_prompt = get_prompt("chat/message_segment_script.txt").strip()
+            else:
+                segment_prompt = get_prompt("chat/message_segment_normal.txt").strip()
+        except Exception:
+            pass
+
         try:
             root_template = get_prompt("chat/root_system_prompt.txt")
             final_instructions = root_template.replace("{{role-play-prompt}}", persona_prompt)
             final_instructions = final_instructions.replace("{{script-expression}}", f"\n\n{script_prompt}" if script_prompt else "")
             final_instructions = final_instructions.replace("{{user-profile}}", f"\n\n【用户信息】\n{profile_data}" if profile_data else "")
+            final_instructions = final_instructions.replace("{{segment-instruction}}", f"\n\n{segment_prompt}" if segment_prompt else "")
             final_instructions = final_instructions.replace("{{current-time}}", current_time)
         except Exception:
             final_instructions = persona_prompt
             if script_prompt: final_instructions += f"\n\n{script_prompt}"
             if profile_data: final_instructions += f"\n\n【用户信息】\n{profile_data}"
+            if segment_prompt: final_instructions += f"\n\n{segment_prompt}"
             final_instructions += f"\n\n【当前时间】\n{current_time}"
 
         # 4. Run LLM

@@ -1,7 +1,7 @@
 这是一个角色扮演的聊天软件，你将扮演下面这个角色。请完全遵循下面的角色设定：
 
 【角色设定】
-{{role-play-prompt}}{{script-expression}}{{user-profile}}
+{{role-play-prompt}}{{script-expression}}{{user-profile}}{{segment-instruction}}
 
 【当前时间】
 {{current-time}}
