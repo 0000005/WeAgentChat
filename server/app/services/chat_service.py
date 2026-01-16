@@ -106,23 +106,36 @@ def get_session(db: Session, session_id: int) -> Optional[ChatSession]:
 def create_session(db: Session, session_in: chat_schemas.ChatSessionCreate) -> ChatSession:
     """
     Create a new chat session.
-    手动新建会话时，强制归档该好友现有的活跃会话。
+    手动新建会话时，如果已经存在一个没有任何消息的活跃会话，则直接返回该会话；
+    否则，强制归档该好友现有的活跃会话，并创建新会话。
     """
-    # 检查是否存在未归档的活跃会话，仅提取 ID 列表
-    existing_session_ids = [
-        s.id for s in db.query(ChatSession.id)
+    # 查找该好友所有活跃（未删除、未归档）的会话
+    active_sessions = (
+        db.query(ChatSession)
         .filter(
             ChatSession.friend_id == session_in.friend_id,
             ChatSession.deleted == False,
             ChatSession.memory_generated == 0
         )
         .all()
-    ]
+    )
 
-    # 强制归档所有旧会话
-    for session_id in existing_session_ids:
-        logger.info(f"[Create Session] Force archiving old session {session_id} for friend {session_in.friend_id}")
-        archive_session(db, session_id)
+    # 优先检查是否存在没有任何消息的空活跃会话
+    for session in active_sessions:
+        msg_count = db.query(Message).filter(Message.session_id == session.id, Message.deleted == False).count()
+        if msg_count == 0:
+            logger.info(f"[Create Session] Reusing existing empty session {session.id} for friend {session_in.friend_id}")
+            # 如果请求带了新标题，则更新标题
+            if session_in.title and session.title != session_in.title:
+                session.title = session_in.title
+                db.commit()
+                db.refresh(session)
+            return session
+
+    # 如果没有空会话，强制归档所有旧活跃会话
+    for session in active_sessions:
+        logger.info(f"[Create Session] Force archiving session {session.id} for friend {session_in.friend_id} before creating new one")
+        archive_session(db, session.id)
     
     # 创建新会话
     db_session = ChatSession(
