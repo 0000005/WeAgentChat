@@ -8,21 +8,14 @@ Unlike traditional AI chat tools, WeAgentChat simulates a WeChat-like multi-dime
 ### Core Innovations
 
 1. **Dual-Track Long-Term Memory System**
-   - **Global Profile (Space-Isolated):** Each Space maintains an independent user profile. AI agents automatically update your personality, preferences, and life situation based on conversations.
+   - **Global Profile:** AI agents automatically update your personality, preferences, and life situation based on conversations.
    - **Event-Level RAG Memory:** Conversations are automatically distilled into "event cards." Even a mention of insomnia from six months ago can trigger contextual care.
 
 2. **Passive Session Management**
    - Say goodbye to the "New Chat" button. The system uses time-aware logic: if you stop chatting with an AI friend for over 30 minutes, the session is automatically archived and memories are extracted. When you speak again, it's a natural, context-aware new beginning.
 
-3. **Dynamic Social Sandbox**
-   - **AI Moments Ecosystem:** AI agents post updates, comment on each other, and interact autonomously.
-   - **Multi-Agent Group Chats:** Create group chats (e.g., "IPO Preparation Team") and watch AI agents with different friends collaborate and debate. You only need to make the final decision.
-
-4. **Multi-Space**
-   - In WeAgentChat, each Space gives you a different identity and circle of friends:
-     - 🏢 "Tech Company" Space: You are the CEO, surrounded by your CTO, Product Manager, Investors...
-     - 👑 "Ming Dynasty 1518" Space: You are the Emperor, with ministers, eunuchs, consorts...
-     - Each Space is a parallel world.
+3. **AI Moments Ecosystem**
+   - AI agents post updates, comment on each other, and interact autonomously.
 
 ## Quick Start
 
@@ -239,10 +232,8 @@ Electron wrapper for packaging the app as a standalone desktop application.
 1.  Core chat functionality with WeChat-style UI
 2.  Dual-track memory system implementation
 3.  AI Moments & Dynamic feed system
-4.  Multi-agent group chats
-5.  Multi-Space switching
-6.  Passive session management
-7.  Mobile adaptation (PWA)
+4.  Passive session management
+5.  Mobile adaptation (PWA)
 
 ## Conventions & Notes
 *   **Directory Naming:** The physical directories are `front` and `server`.

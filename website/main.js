@@ -42,18 +42,32 @@ if (!prefersReducedMotion && revealElements.length) {
 }
 
 const carouselTrack = document.querySelector("[data-carousel]");
-const dots = document.querySelectorAll("[data-dots] .dot");
 const prevBtn = document.querySelector(".carousel-btn.prev");
 const nextBtn = document.querySelector(".carousel-btn.next");
 
-if (carouselTrack && dots.length) {
-  let index = 0;
+if (carouselTrack) {
   const items = carouselTrack.querySelectorAll(".carousel-item");
+  const dotsContainer = document.querySelector("[data-dots]");
+  let index = 0;
+
+  // Clear and regenerate dots if container exists
+  if (dotsContainer) {
+    dotsContainer.innerHTML = "";
+    items.forEach((_, i) => {
+      const dot = document.createElement("button");
+      dot.className = "dot" + (i === 0 ? " active" : "");
+      dot.setAttribute("aria-label", `第 ${i + 1} 张`);
+      dot.addEventListener("click", () => updateCarousel(i));
+      dotsContainer.appendChild(dot);
+    });
+  }
+
+  const allDots = dotsContainer?.querySelectorAll(".dot") || [];
 
   const updateCarousel = (nextIndex) => {
     index = (nextIndex + items.length) % items.length;
     carouselTrack.style.transform = `translateX(-${index * 100}%)`;
-    dots.forEach((dot, dotIndex) => {
+    allDots.forEach((dot, dotIndex) => {
       dot.classList.toggle("active", dotIndex === index);
     });
   };
@@ -61,9 +75,51 @@ if (carouselTrack && dots.length) {
   prevBtn?.addEventListener("click", () => updateCarousel(index - 1));
   nextBtn?.addEventListener("click", () => updateCarousel(index + 1));
 
-  dots.forEach((dot, dotIndex) => {
-    dot.addEventListener("click", () => updateCarousel(dotIndex));
+  // Handle swipes for touch devices
+  let startX = 0;
+  carouselTrack.addEventListener("touchstart", (e) => (startX = e.touches[0].clientX));
+  carouselTrack.addEventListener("touchend", (e) => {
+    const endX = e.changedTouches[0].clientX;
+    if (startX - endX > 50) updateCarousel(index + 1);
+    else if (endX - startX > 50) updateCarousel(index - 1);
   });
 
   updateCarousel(0);
+}
+
+// Lightbox functionality
+const lightbox = document.getElementById("lightbox");
+const lightboxImg = document.getElementById("lightboxImg");
+const lightboxClose = document.querySelector(".lightbox-close");
+
+if (lightbox && lightboxImg) {
+  // Open lightbox when clicking carousel images
+  document.querySelectorAll(".carousel-item img").forEach((img) => {
+    img.addEventListener("click", () => {
+      lightboxImg.src = img.src;
+      lightboxImg.alt = img.alt;
+      lightbox.classList.add("active");
+      lightbox.setAttribute("aria-hidden", "false");
+      document.body.style.overflow = "hidden";
+    });
+  });
+
+  // Close lightbox
+  const closeLightbox = () => {
+    lightbox.classList.remove("active");
+    lightbox.setAttribute("aria-hidden", "true");
+    document.body.style.overflow = "";
+  };
+
+  lightboxClose?.addEventListener("click", closeLightbox);
+  lightbox.addEventListener("click", (e) => {
+    if (e.target === lightbox) closeLightbox();
+  });
+
+  // Close on ESC key
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && lightbox.classList.contains("active")) {
+      closeLightbox();
+    }
+  });
 }

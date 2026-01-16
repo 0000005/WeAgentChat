@@ -4,7 +4,7 @@
   <img src="electron/icons/icon.png" alt="WeAgentChat Logo" width="180">
 </p>
 
-<h3 align="center">🤖 你的另一个微信，这里的每个人（AI）都为你而来。</h3>
+<h3 align="center">🤖 你的另一个微信，这里的每个人都带着记忆，只为你而来。</h3>
 
 <p align="center">
   <em>An AI companion platform with long-term memory — where every AI friend truly knows you.</em>
@@ -16,14 +16,6 @@
   <a href="https://fastapi.tiangolo.com/"><img src="https://img.shields.io/badge/Backend-FastAPI-009688.svg" alt="FastAPI"></a>
   <a href="https://github.com/asg017/sqlite-vec"><img src="https://img.shields.io/badge/Database-SQLite--vec-003B57.svg" alt="SQLite-vec"></a>
 </p>
-
----
-
-## ⚡ 30 秒演示
-
-> 🎬 *演示 GIF 即将上线...*
->
-> 想象一下：你和 AI 好友聊了三个月前的失眠问题，今天它主动问你"最近睡得怎么样？"
 
 ---
 
@@ -101,9 +93,40 @@ WeAgentChat 不一样。
 ---
 
 
-## �️ 界面预览
+## 🖼️ 界面预览
 
-> 📸 *截图即将上线...*
+> 点击缩略图可查看高清大图。
+
+<table>
+  <tr>
+    <td align="center" width="33%">
+      <a href="website/assets/screenshot/1主界面.png"><img src="website/assets/screenshot/1主界面.png" alt="主界面" width="260"></a>
+      <p>主界面</p>
+    </td>
+    <td align="center" width="33%">
+      <a href="website/assets/screenshot/2个人资料（用户画像）.png"><img src="website/assets/screenshot/2个人资料（用户画像）.png" alt="个人资料（用户画像）" width="260"></a>
+      <p>个人资料（用户画像）</p>
+    </td>
+    <td align="center" width="33%">
+      <a href="website/assets/screenshot/3好友记忆.png"><img src="website/assets/screenshot/3好友记忆.png" alt="好友记忆" width="260"></a>
+      <p>好友记忆</p>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="33%">
+      <a href="website/assets/screenshot/4好友库.png"><img src="website/assets/screenshot/4好友库.png" alt="好友库" width="260"></a>
+      <p>好友库</p>
+    </td>
+    <td align="center" width="33%">
+      <a href="website/assets/screenshot/5智能创建好友.png"><img src="website/assets/screenshot/5智能创建好友.png" alt="智能创建好友" width="260"></a>
+      <p>智能创建好友</p>
+    </td>
+    <td align="center" width="33%">
+      <a href="website/assets/screenshot/6记忆设置.png"><img src="website/assets/screenshot/6记忆设置.png" alt="记忆设置" width="260"></a>
+      <p>记忆设置</p>
+    </td>
+  </tr>
+</table>
 
 ---
 
@@ -217,6 +240,23 @@ pnpm electron:dev
 - [ ] AI 群聊功能
 - [ ] AI 朋友圈 (Moments)
 - [ ] 日程管理 (Schedule Management)
+
+---
+
+## 👫 好友库示例
+
+| 姓名 | 角色类型 | 关键词 |
+| :--- | :--- | :--- |
+| 马云 | 商业领袖 | 创业、战略、公益 |
+| 雷军 | 科技创业者 | 性价比、效率、产品力 |
+| 埃隆·马斯克 | 科技狂人 | 火星、SpaceX、特斯拉 |
+| 孔子 | 思想先哲 | 仁、礼、教化 |
+| 理查德·费曼 | 物理学家 | 好奇心、科普、量子电动力学 |
+| 阿兰·图灵 | 计算机先驱 | 计算、密码学、人工智能思考 |
+| 诸葛亮 | 军师 | 策略、筹谋、三国 |
+| 王阳明 | 思想家 | 心学、知行合一、自省 |
+| 陈奕迅 | 音乐人 | 粤语流行、共情、K歌 |
+
 
 ---
 

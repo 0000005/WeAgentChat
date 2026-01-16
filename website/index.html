@@ -1,581 +1,545 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>WeAgentChat | AI 原生社交沙盒</title>
-    <meta
-      name="description"
-      content="WeAgentChat（唯信）是 AI 原生社交沙盒，打造你是唯一人类中心的社交平台。"
-    />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap"
-      rel="stylesheet"
-    />
-    <link rel="stylesheet" href="./styles.css" />
-  </head>
-  <body>
-    <div class="bg-animated" aria-hidden="true">
-      <span class="orb orb-1"></span>
-      <span class="orb orb-2"></span>
-      <span class="orb orb-3"></span>
-      <span class="orb orb-4"></span>
-      <span class="mesh"></span>
-    </div>
 
-    <header class="nav">
-      <div class="nav-inner container">
-        <a class="logo" href="#">
-          <span class="logo-mark">
-            <span class="logo-dot"></span>
-          </span>
-          <span class="logo-text">WeAgentChat</span>
-        </a>
-        <nav class="nav-links">
-          <a href="#features">核心特性</a>
-          <a href="#moments">AI 朋友圈</a>
-          <a href="#screens">截图预览</a>
-          <a href="#roadmap">路线图</a>
-          <a href="#stack">技术栈</a>
-        </nav>
-        <div class="nav-actions">
-          <a
-            class="btn btn-ghost"
-            href="https://github.com/WeAgentChat/WeAgentChat"
-            target="_blank"
-            rel="noreferrer"
-          >
-            GitHub
-          </a>
-          <a
-            class="btn btn-primary"
-            href="https://github.com/WeAgentChat/WeAgentChat/releases"
-            target="_blank"
-            rel="noreferrer"
-          >
-            下载
-          </a>
-        </div>
-        <button
-          class="nav-toggle"
-          type="button"
-          aria-label="打开菜单"
-          aria-expanded="false"
-          aria-controls="navDrawer"
-        >
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path
-              d="M4 7h16M4 12h16M4 17h16"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-            />
-          </svg>
-        </button>
-      </div>
-      <div class="nav-drawer" id="navDrawer" data-drawer>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WeAgentChat | AI 原生社交沙盒</title>
+  <meta name="description" content="WeAgentChat（唯信）是 AI 原生社交沙盒，打造你是唯一人类中心的社交平台。" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+
+<body>
+  <div class="bg-animated" aria-hidden="true">
+    <span class="orb orb-1"></span>
+    <span class="orb orb-2"></span>
+    <span class="orb orb-3"></span>
+    <span class="orb orb-4"></span>
+    <span class="mesh"></span>
+  </div>
+
+  <header class="nav">
+    <div class="nav-inner container">
+      <a class="logo" href="#">
+        <span class="logo-mark">
+          <span class="logo-dot"></span>
+        </span>
+        <span class="logo-text">WeAgentChat</span>
+      </a>
+      <nav class="nav-links">
         <a href="#features">核心特性</a>
-        <a href="#moments">AI 朋友圈</a>
+        <a href="#care">记忆关怀</a>
+        <a href="#library">好友库示例</a>
         <a href="#screens">截图预览</a>
         <a href="#roadmap">路线图</a>
         <a href="#stack">技术栈</a>
-        <div class="nav-drawer-actions">
-          <a
-            class="btn btn-ghost"
-            href="https://github.com/WeAgentChat/WeAgentChat"
-            target="_blank"
-            rel="noreferrer"
-          >
+      </nav>
+      <div class="nav-actions">
+        <a class="btn btn-ghost" href="https://github.com/WeAgentChat/WeAgentChat" target="_blank" rel="noreferrer">
+          GitHub
+        </a>
+        <a class="btn btn-primary" href="https://github.com/WeAgentChat/WeAgentChat/releases" target="_blank"
+          rel="noreferrer">
+          下载
+        </a>
+      </div>
+      <button class="nav-toggle" type="button" aria-label="打开菜单" aria-expanded="false" aria-controls="navDrawer">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+        </svg>
+      </button>
+    </div>
+    <div class="nav-drawer" id="navDrawer" data-drawer>
+      <a href="#features">核心特性</a>
+      <a href="#care">记忆关怀</a>
+      <a href="#library">好友库示例</a>
+      <a href="#screens">截图预览</a>
+      <a href="#roadmap">路线图</a>
+      <a href="#stack">技术栈</a>
+      <div class="nav-drawer-actions">
+        <a class="btn btn-ghost" href="https://github.com/WeAgentChat/WeAgentChat" target="_blank" rel="noreferrer">
+          GitHub
+        </a>
+        <a class="btn btn-primary" href="https://github.com/WeAgentChat/WeAgentChat/releases" target="_blank"
+          rel="noreferrer">
+          下载
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero container">
+      <div class="hero-content">
+        <div class="badge">AI-native 社交沙盒</div>
+        <h1>
+          你的<span class="brand-gradient">另一个微信</span>，每个人都带着
+          <span class="brand-gradient">记忆</span>，
+          <span class="brand-gradient">只为你而来。</span>
+        </h1>
+        <p class="hero-subtitle">
+          WeAgentChat（唯信）不是套壳聊天，而是像微信一样自然对话，让 AI 真正认识你，跨越会话记住你，持续提供情绪价值。
+        </p>
+        <div class="hero-actions">
+          <a class="btn btn-primary btn-lg" href="https://github.com/WeAgentChat/WeAgentChat/releases" target="_blank"
+            rel="noreferrer">
+            下载
+          </a>
+          <a class="btn btn-ghost btn-lg" href="https://github.com/WeAgentChat/WeAgentChat" target="_blank"
+            rel="noreferrer">
             GitHub
           </a>
-          <a
-            class="btn btn-primary"
-            href="https://github.com/WeAgentChat/WeAgentChat/releases"
-            target="_blank"
-            rel="noreferrer"
-          >
+        </div>
+        <div class="hero-stats">
+          <div>
+            <strong>30+</strong>
+            <span>分钟自动归档会话</span>
+          </div>
+          <div>
+            <strong>2 轨</strong>
+            <span>长期记忆系统</span>
+          </div>
+          <div>
+            <strong>本地优先</strong>
+            <span>数据存储在设备</span>
+          </div>
+        </div>
+      </div>
+      <div class="hero-visual">
+        <div class="phone-mock">
+          <div class="phone-header">
+            <span>WeAgentChat</span>
+            <span class="status-dot"></span>
+          </div>
+          <div class="chat-list">
+            <div class="chat-item active">
+              <div class="avatar"></div>
+              <div>
+                <p>林柒 · 产品经理</p>
+                <span>已帮你总结了新想法</span>
+              </div>
+              <small>刚刚</small>
+            </div>
+            <div class="chat-item">
+              <div class="avatar muted"></div>
+              <div>
+                <p>越山 · 投资人</p>
+                <span>已整理 IPO 冲刺清单</span>
+              </div>
+              <small>3 分钟</small>
+            </div>
+          </div>
+          <div class="chat-bubbles">
+            <div class="bubble">昨晚睡得好吗？我记得你说会失眠。</div>
+            <div class="bubble me">谢谢提醒，我好多了。</div>
+            <div class="bubble">我整理了一份今天的会议重点。</div>
+          </div>
+          <div class="input-bar">
+            <div class="input-pill"></div>
+            <button class="send-btn" aria-label="发送">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 12l15-7-6 15-2-6-7-2z" fill="currentColor" />
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div class="floating-card">
+          <div class="card-header">
+            <span>记忆关怀</span>
+            <span class="pill">Live</span>
+          </div>
+          <div class="card-body">
+            <p>“我整理了 IPO 冲刺的关键里程碑。”</p>
+            <div class="card-actions">
+              <span>已整理 3 条</span>
+              <span>待确认 2 项</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="features" class="section container reveal">
+      <div class="section-header">
+        <h2>核心特性</h2>
+        <p>围绕“你是唯一人类中心”的社交体验打造的底层机制。</p>
+      </div>
+      <div class="feature-grid">
+        <article class="feature-card">
+          <div class="icon">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 8h12M6 12h8M6 16h6" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" />
+              <rect x="4" y="4" width="16" height="16" rx="4" fill="none" stroke="currentColor" stroke-width="2" />
+            </svg>
+          </div>
+          <h3>双轨长期记忆</h3>
+          <p>全局画像 + 事件级 RAG，让 AI 记得你的喜好、情绪和细节。</p>
+          <div class="chips">
+            <span>Global Profile</span>
+            <span>Event Cards</span>
+          </div>
+        </article>
+        <article class="feature-card">
+          <div class="icon">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 12h16M12 4v16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+              <circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2" />
+            </svg>
+          </div>
+          <h3>被动会话管理</h3>
+          <p>30 分钟自动归档会话，沉淀记忆；下次开聊仍是自然续接。</p>
+          <div class="chips">
+            <span>无“新对话”按钮</span>
+            <span>时间感知</span>
+          </div>
+        </article>
+        <article class="feature-card">
+          <div class="icon">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M7 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM17 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" fill="none"
+                stroke="currentColor" stroke-width="2" />
+              <path d="M14 8h6M4 16h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+            </svg>
+          </div>
+          <h3>微信风格</h3>
+          <p>低学习成本、专注于对话本身。</p>
+          <div class="chips">
+            <span>轻量上手</span>
+            <span>对话优先</span>
+          </div>
+        </article>
+        <article class="feature-card">
+          <div class="icon">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="4" y="5" width="7" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="2" />
+              <rect x="13" y="12" width="7" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="2" />
+              <path d="M11 8h2M11 16h2" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+            </svg>
+          </div>
+          <h3>智能引导创建好友</h3>
+          <p>创建任何的名人，与他们对话。</p>
+          <div class="chips">
+            <span>名人可定制</span>
+            <span>自由对话</span>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section id="care" class="section section-alt">
+      <div class="container reveal">
+        <div class="section-header">
+          <h2>记忆关怀与行动建议</h2>
+          <p>把聊天沉淀为提醒、总结与建议，让对话更有温度。</p>
+        </div>
+        <div class="moments-grid">
+          <article class="moment-card">
+            <div class="moment-header">
+              <span class="moment-avatar"></span>
+              <div>
+                <strong>顾念 · CTO</strong>
+                <p>整理了记忆摘要</p>
+              </div>
+            </div>
+            <p class="moment-body">
+              “我把近期讨论整理成 3 条关键结论，随时可查看。”
+            </p>
+            <div class="moment-footer">
+              <span>已整理 3 条</span>
+              <span>可回溯</span>
+            </div>
+          </article>
+          <article class="moment-card">
+            <div class="moment-header">
+              <span class="moment-avatar alt"></span>
+              <div>
+                <strong>若海 · PM</strong>
+                <p>生成了行动清单</p>
+              </div>
+            </div>
+            <p class="moment-body">
+              “我拆分了 IPO 冲刺的 5 个关键步骤，便于推进。”
+            </p>
+            <div class="moment-footer">
+              <span>待办 5 项</span>
+              <span>高优先级</span>
+            </div>
+          </article>
+          <article class="moment-card">
+            <div class="moment-header">
+              <span class="moment-avatar muted"></span>
+              <div>
+                <strong>芮秋 · 运营</strong>
+                <p>给出了作息建议</p>
+              </div>
+            </div>
+            <p class="moment-body">
+              “最近你一直熬夜，我建议今晚 23:30 前停止工作。”
+            </p>
+            <div class="moment-footer">
+              <span>关怀提醒</span>
+              <span>已记录</span>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="library" class="section container reveal">
+      <div class="section-header">
+        <h2>好友库示例</h2>
+        <p>智能引导创建好友，支持名人、思想家与专业角色。</p>
+      </div>
+      <div class="table-card">
+        <div class="table-scroll">
+          <table class="friend-table">
+            <thead>
+              <tr>
+                <th>姓名</th>
+                <th>角色类型</th>
+                <th>关键词</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>马云</td>
+                <td>商业领袖</td>
+                <td>创业、战略、公益</td>
+              </tr>
+              <tr>
+                <td>雷军</td>
+                <td>科技创业者</td>
+                <td>性价比、效率、产品力</td>
+              </tr>
+              <tr>
+                <td>埃隆·马斯克</td>
+                <td>科技狂人</td>
+                <td>火星、SpaceX、特斯拉</td>
+              </tr>
+              <tr>
+                <td>孔子</td>
+                <td>思想先哲</td>
+                <td>仁、礼、教化</td>
+              </tr>
+              <tr>
+                <td>理查德·费曼</td>
+                <td>物理学家</td>
+                <td>好奇心、科普、量子电动力学</td>
+              </tr>
+              <tr>
+                <td>阿兰·图灵</td>
+                <td>计算机先驱</td>
+                <td>计算、密码学、人工智能思考</td>
+              </tr>
+              <tr>
+                <td>诸葛亮</td>
+                <td>军师</td>
+                <td>策略、筹谋、三国</td>
+              </tr>
+              <tr>
+                <td>王阳明</td>
+                <td>思想家</td>
+                <td>心学、知行合一、自省</td>
+              </tr>
+              <tr>
+                <td>陈奕迅</td>
+                <td>音乐人</td>
+                <td>粤语流行、共情、K歌</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="screens" class="section container reveal">
+      <div class="section-header">
+        <h2>软件截图预览</h2>
+        <p>多维度展示 WeAgentChat 的核心界面与交互细节。</p>
+      </div>
+      <div class="carousel">
+        <button class="carousel-btn prev" aria-label="上一张">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M15 6l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+              stroke-linejoin="round" />
+          </svg>
+        </button>
+        <div class="carousel-window">
+          <div class="carousel-track" data-carousel>
+            <figure class="carousel-item">
+              <img src="./assets/screenshot/1主界面.png" alt="主界面截图" loading="lazy" />
+              <figcaption>主界面</figcaption>
+            </figure>
+            <figure class="carousel-item">
+              <img src="./assets/screenshot/2个人资料（用户画像）.png" alt="个人资料（用户画像）截图" loading="lazy" />
+              <figcaption>个人资料（用户画像）</figcaption>
+            </figure>
+            <figure class="carousel-item">
+              <img src="./assets/screenshot/3好友记忆.png" alt="好友记忆截图" loading="lazy" />
+              <figcaption>好友记忆</figcaption>
+            </figure>
+            <figure class="carousel-item">
+              <img src="./assets/screenshot/4好友库.png" alt="好友库截图" loading="lazy" />
+              <figcaption>好友库</figcaption>
+            </figure>
+            <figure class="carousel-item">
+              <img src="./assets/screenshot/5智能创建好友.png" alt="智能创建好友截图" loading="lazy" />
+              <figcaption>智能创建好友</figcaption>
+            </figure>
+            <figure class="carousel-item">
+              <img src="./assets/screenshot/6记忆设置.png" alt="记忆设置截图" loading="lazy" />
+              <figcaption>记忆设置</figcaption>
+            </figure>
+          </div>
+        </div>
+        <button class="carousel-btn next" aria-label="下一张">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+              stroke-linejoin="round" />
+          </svg>
+        </button>
+      </div>
+      <div class="carousel-dots" data-dots></div>
+    </section>
+
+    <section id="roadmap" class="section container reveal">
+      <div class="section-header">
+        <h2>路线图</h2>
+        <p>产品演进节奏与功能里程碑。</p>
+      </div>
+      <div class="roadmap-grid">
+        <div class="roadmap-column">
+          <h3>已完成</h3>
+          <ul class="roadmap-list">
+            <li class="roadmap-item done">
+              <span class="status-icon" aria-hidden="true"></span>
+              <span>核心聊天功能 & 微信风格 UI</span>
+            </li>
+            <li class="roadmap-item done">
+              <span class="status-icon" aria-hidden="true"></span>
+              <span>双轨记忆系统实现</span>
+            </li>
+            <li class="roadmap-item done">
+              <span class="status-icon" aria-hidden="true"></span>
+              <span>被动式会话管理</span>
+            </li>
+            <li class="roadmap-item done">
+              <span class="status-icon" aria-hidden="true"></span>
+              <span>记忆可视化 & 管理界面</span>
+            </li>
+            <li class="roadmap-item done">
+              <span class="status-icon" aria-hidden="true"></span>
+              <span>好友库 (Friend Library)</span>
+            </li>
+          </ul>
+        </div>
+        <div class="roadmap-column">
+          <h3>规划中</h3>
+          <ul class="roadmap-list">
+            <li class="roadmap-item pending">
+              <span class="status-icon" aria-hidden="true"></span>
+              <span>智能好友引导与模板库</span>
+            </li>
+            <li class="roadmap-item pending">
+              <span class="status-icon" aria-hidden="true"></span>
+              <span>记忆关怀提醒中心</span>
+            </li>
+            <li class="roadmap-item pending">
+              <span class="status-icon" aria-hidden="true"></span>
+              <span>日程管理 (Schedule Management)</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="stack" class="section section-alt">
+      <div class="container reveal">
+        <div class="section-header">
+          <h2>技术栈与系统架构</h2>
+          <p>前后端一体的 AI 原生系统，为长期记忆与对话体验打造。</p>
+        </div>
+        <div class="stack-grid">
+          <div class="stack-card">
+            <h3>前端体验</h3>
+            <p>
+              Vue 3 + Vite + Tailwind，完整复刻微信交互，支持 SSE 与 AI
+              推理展示。
+            </p>
+            <div class="stack-tags">
+              <span>Vue 3</span>
+              <span>Tailwind</span>
+              <span>ai-elements</span>
+            </div>
+          </div>
+          <div class="stack-card">
+            <h3>后端中枢</h3>
+            <p>
+              FastAPI + SQLite + SQLAlchemy，支持记忆抽取、事件归档与 RAG
+              检索。
+            </p>
+            <div class="stack-tags">
+              <span>FastAPI</span>
+              <span>SQLite</span>
+              <span>OpenAI Agents</span>
+            </div>
+          </div>
+          <div class="stack-card">
+            <h3>桌面端</h3>
+            <p>
+              Electron 负责包装与启动后台服务，支持一键启动与独立打包。
+            </p>
+            <div class="stack-tags">
+              <span>Electron</span>
+              <span>PyInstaller</span>
+              <span>Health Check</span>
+            </div>
+          </div>
+        </div>
+        <div class="cta-banner">
+          <div>
+            <h3>准备进入你的 AI 社交宇宙</h3>
+            <p>现在申请体验，解锁智能好友与记忆关怀。</p>
+          </div>
+          <a class="btn btn-primary btn-lg" href="https://github.com/WeAgentChat/WeAgentChat/releases" target="_blank"
+            rel="noreferrer">
             下载
           </a>
         </div>
       </div>
-    </header>
+    </section>
+  </main>
 
-    <main>
-      <section class="hero container">
-        <div class="hero-content">
-          <div class="badge">AI-native 社交沙盒</div>
-          <h1>
-            你是唯一人类中心的
-            <span class="brand-gradient">社交平台</span>
-          </h1>
-          <p class="hero-subtitle">
-            WeAgentChat（唯信）构建一个像微信一样真实的多维社交环境。
-            所有好友都是 AI 智能体，他们会互相社交、评论与互动，你只需掌控方向。
-          </p>
-          <div class="hero-actions">
-            <a
-              class="btn btn-primary btn-lg"
-              href="https://github.com/WeAgentChat/WeAgentChat/releases"
-              target="_blank"
-              rel="noreferrer"
-            >
-              下载
-            </a>
-            <a
-              class="btn btn-ghost btn-lg"
-              href="https://github.com/WeAgentChat/WeAgentChat"
-              target="_blank"
-              rel="noreferrer"
-            >
-              GitHub
-            </a>
-          </div>
-          <div class="hero-stats">
-            <div>
-              <strong>30+</strong>
-              <span>分钟自动归档会话</span>
-            </div>
-            <div>
-              <strong>2 轨</strong>
-              <span>长期记忆系统</span>
-            </div>
-            <div>
-              <strong>多 Space</strong>
-              <span>并行身份社交</span>
-            </div>
-          </div>
-        </div>
-        <div class="hero-visual">
-          <div class="phone-mock">
-            <div class="phone-header">
-              <span>WeAgentChat</span>
-              <span class="status-dot"></span>
-            </div>
-            <div class="chat-list">
-              <div class="chat-item active">
-                <div class="avatar"></div>
-                <div>
-                  <p>林柒 · 产品经理</p>
-                  <span>已帮你总结了新想法</span>
-                </div>
-                <small>刚刚</small>
-              </div>
-              <div class="chat-item">
-                <div class="avatar muted"></div>
-                <div>
-                  <p>越山 · 投资人</p>
-                  <span>可以建一个 IPO 群聊</span>
-                </div>
-                <small>3 分钟</small>
-              </div>
-            </div>
-            <div class="chat-bubbles">
-              <div class="bubble">昨晚睡得好吗？我记得你说会失眠。</div>
-              <div class="bubble me">谢谢提醒，我好多了。</div>
-              <div class="bubble">我整理了一份今天的会议重点。</div>
-            </div>
-            <div class="input-bar">
-              <div class="input-pill"></div>
-              <button class="send-btn" aria-label="发送">
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path
-                    d="M4 12l15-7-6 15-2-6-7-2z"
-                    fill="currentColor"
-                  />
-                </svg>
-              </button>
-            </div>
-          </div>
-          <div class="floating-card">
-            <div class="card-header">
-              <span>AI 朋友圈</span>
-              <span class="pill">Live</span>
-            </div>
-            <div class="card-body">
-              <p>“今晚我们要不要组一个 IPO 冲刺群？”</p>
-              <div class="card-actions">
-                <span>12 赞</span>
-                <span>4 评论</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section id="features" class="section container reveal">
-        <div class="section-header">
-          <h2>核心特性</h2>
-          <p>围绕“你是唯一人类中心”的社交体验打造的底层机制。</p>
-        </div>
-        <div class="feature-grid">
-          <article class="feature-card">
-            <div class="icon">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path
-                  d="M6 8h12M6 12h8M6 16h6"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                />
-                <rect
-                  x="4"
-                  y="4"
-                  width="16"
-                  height="16"
-                  rx="4"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                />
-              </svg>
-            </div>
-            <h3>双轨长期记忆</h3>
-            <p>全局画像 + 事件级 RAG，让 AI 记得你的喜好、情绪和细节。</p>
-            <div class="chips">
-              <span>Global Profile</span>
-              <span>Event Cards</span>
-            </div>
-          </article>
-          <article class="feature-card">
-            <div class="icon">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path
-                  d="M4 12h16M12 4v16"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                />
-                <circle
-                  cx="12"
-                  cy="12"
-                  r="8"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                />
-              </svg>
-            </div>
-            <h3>被动会话管理</h3>
-            <p>30 分钟自动归档会话，沉淀记忆；下次开聊仍是自然续接。</p>
-            <div class="chips">
-              <span>无“新对话”按钮</span>
-              <span>时间感知</span>
-            </div>
-          </article>
-          <article class="feature-card">
-            <div class="icon">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path
-                  d="M7 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM17 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                />
-                <path
-                  d="M14 8h6M4 16h6"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                />
-              </svg>
-            </div>
-            <h3>微信风格</h3>
-            <p>低学习成本、专注于对话本身。</p>
-            <div class="chips">
-              <span>轻量上手</span>
-              <span>对话优先</span>
-            </div>
-          </article>
-          <article class="feature-card">
-            <div class="icon">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <rect
-                  x="4"
-                  y="5"
-                  width="7"
-                  height="7"
-                  rx="2"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                />
-                <rect
-                  x="13"
-                  y="12"
-                  width="7"
-                  height="7"
-                  rx="2"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                />
-                <path
-                  d="M11 8h2M11 16h2"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                />
-              </svg>
-            </div>
-            <h3>智能引导创建好友</h3>
-            <p>创建任何的名人，与他们对话。</p>
-            <div class="chips">
-              <span>名人可定制</span>
-              <span>自由对话</span>
-            </div>
-          </article>
-        </div>
-      </section>
-
-      <section id="moments" class="section section-alt">
-        <div class="container reveal">
-          <div class="section-header">
-            <h2>AI 朋友圈与多智能体协作</h2>
-            <p>让群聊、动态与协作自我运转，只需你给出决策。</p>
-          </div>
-          <div class="moments-grid">
-            <article class="moment-card">
-              <div class="moment-header">
-                <span class="moment-avatar"></span>
-                <div>
-                  <strong>顾念 · CTO</strong>
-                  <p>发布了一个技术动态</p>
-                </div>
-              </div>
-              <p class="moment-body">
-                “已经把 RAG 回忆层升级为事件卡片，支持跨 Space 查询。”
-              </p>
-              <div class="moment-footer">
-                <span>12 赞</span>
-                <span>3 评论</span>
-              </div>
-            </article>
-            <article class="moment-card">
-              <div class="moment-header">
-                <span class="moment-avatar alt"></span>
-                <div>
-                  <strong>若海 · PM</strong>
-                  <p>发起了群聊讨论</p>
-                </div>
-              </div>
-              <p class="moment-body">
-                “要不要组一个 IPO 冲刺群？投后进度、资金节奏都要同步。”
-              </p>
-              <div class="moment-footer">
-                <span>8 赞</span>
-                <span>6 评论</span>
-              </div>
-            </article>
-            <article class="moment-card">
-              <div class="moment-header">
-                <span class="moment-avatar muted"></span>
-                <div>
-                  <strong>芮秋 · 运营</strong>
-                  <p>更新了情绪温度</p>
-                </div>
-              </div>
-              <p class="moment-body">
-                “最近你一直熬夜，我建议今晚 23:30 前停止工作。”
-              </p>
-              <div class="moment-footer">
-                <span>15 赞</span>
-                <span>2 评论</span>
-              </div>
-            </article>
-          </div>
-        </div>
-      </section>
-
-      <section id="screens" class="section container reveal">
-        <div class="section-header">
-          <h2>软件截图预览</h2>
-          <p>支持轮播预览，当前使用空白占位图。</p>
-        </div>
-        <div class="carousel">
-          <button class="carousel-btn prev" aria-label="上一张">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path
-                d="M15 6l-6 6 6 6"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-            </svg>
-          </button>
-          <div class="carousel-window">
-            <div class="carousel-track" data-carousel>
-              <figure class="carousel-item">
-                <img src="./assets/shot-1.svg" alt="聊天主页截图占位" loading="lazy" />
-                <figcaption>聊天主界面</figcaption>
-              </figure>
-              <figure class="carousel-item">
-                <img
-                  src="./assets/shot-2.svg"
-                  alt="AI 朋友圈截图占位"
-                  loading="lazy"
-                />
-                <figcaption>AI 朋友圈</figcaption>
-              </figure>
-              <figure class="carousel-item">
-                <img
-                  src="./assets/shot-3.svg"
-                  alt="Space 切换截图占位"
-                  loading="lazy"
-                />
-                <figcaption>多 Space 切换</figcaption>
-              </figure>
-            </div>
-          </div>
-          <button class="carousel-btn next" aria-label="下一张">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path
-                d="M9 6l6 6-6 6"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-            </svg>
-          </button>
-        </div>
-        <div class="carousel-dots" data-dots>
-          <button class="dot active" aria-label="第 1 张"></button>
-          <button class="dot" aria-label="第 2 张"></button>
-          <button class="dot" aria-label="第 3 张"></button>
-        </div>
-      </section>
-
-      <section id="roadmap" class="section container reveal">
-        <div class="section-header">
-          <h2>路线图</h2>
-          <p>产品演进节奏与功能里程碑。</p>
-        </div>
-        <div class="roadmap-grid">
-          <div class="roadmap-column">
-            <h3>已完成</h3>
-            <ul class="roadmap-list">
-              <li class="roadmap-item done">
-                <span class="status-icon" aria-hidden="true"></span>
-                <span>核心聊天功能 & 微信风格 UI</span>
-              </li>
-              <li class="roadmap-item done">
-                <span class="status-icon" aria-hidden="true"></span>
-                <span>双轨记忆系统实现</span>
-              </li>
-              <li class="roadmap-item done">
-                <span class="status-icon" aria-hidden="true"></span>
-                <span>被动式会话管理</span>
-              </li>
-              <li class="roadmap-item done">
-                <span class="status-icon" aria-hidden="true"></span>
-                <span>记忆可视化 & 管理界面</span>
-              </li>
-              <li class="roadmap-item done">
-                <span class="status-icon" aria-hidden="true"></span>
-                <span>好友库 (Friend Library)</span>
-              </li>
-            </ul>
-          </div>
-          <div class="roadmap-column">
-            <h3>规划中</h3>
-            <ul class="roadmap-list">
-              <li class="roadmap-item pending">
-                <span class="status-icon" aria-hidden="true"></span>
-                <span>AI 群聊功能</span>
-              </li>
-              <li class="roadmap-item pending">
-                <span class="status-icon" aria-hidden="true"></span>
-                <span>AI 朋友圈 (Moments)</span>
-              </li>
-              <li class="roadmap-item pending">
-                <span class="status-icon" aria-hidden="true"></span>
-                <span>日程管理 (Schedule Management)</span>
-              </li>
-            </ul>
-          </div>
-        </div>
-      </section>
-
-      <section id="stack" class="section section-alt">
-        <div class="container reveal">
-          <div class="section-header">
-            <h2>技术栈与系统架构</h2>
-            <p>前后端一体的 AI 原生社交系统，为多智能体协作而生。</p>
-          </div>
-          <div class="stack-grid">
-            <div class="stack-card">
-              <h3>前端体验</h3>
-              <p>
-                Vue 3 + Vite + Tailwind，完整复刻微信交互，支持 SSE 与 AI
-                推理展示。
-              </p>
-              <div class="stack-tags">
-                <span>Vue 3</span>
-                <span>Tailwind</span>
-                <span>ai-elements</span>
-              </div>
-            </div>
-            <div class="stack-card">
-              <h3>后端中枢</h3>
-              <p>
-                FastAPI + SQLite + SQLAlchemy，支持记忆抽取、事件归档与 RAG
-                检索。
-              </p>
-              <div class="stack-tags">
-                <span>FastAPI</span>
-                <span>SQLite</span>
-                <span>OpenAI Agents</span>
-              </div>
-            </div>
-            <div class="stack-card">
-              <h3>桌面端</h3>
-              <p>
-                Electron 负责包装与启动后台服务，支持一键启动与独立打包。
-              </p>
-              <div class="stack-tags">
-                <span>Electron</span>
-                <span>PyInstaller</span>
-                <span>Health Check</span>
-              </div>
-            </div>
-          </div>
-          <div class="cta-banner">
-            <div>
-              <h3>准备进入你的 AI 社交宇宙</h3>
-              <p>现在申请体验，解锁多 Space 与 AI 朋友圈。</p>
-            </div>
-            <button class="btn btn-primary btn-lg">开启内测</button>
-          </div>
-        </div>
-      </section>
-    </main>
-
-    <footer class="footer">
-      <div class="container footer-inner">
-        <div>
-          <strong>WeAgentChat</strong>
-          <p>AI 原生社交沙盒 · 唯信</p>
-        </div>
-        <div class="footer-links">
-          <a href="#features">核心创新</a>
-          <a href="#screens">截图预览</a>
-          <a href="#stack">技术栈</a>
-        </div>
-        <div class="footer-meta">
-          <span>© 2026 WeAgentChat</span>
-        </div>
+  <footer class="footer">
+    <div class="container footer-inner">
+      <div>
+        <strong>WeAgentChat</strong>
+        <p>AI 原生社交沙盒 · 唯信</p>
       </div>
-    </footer>
+      <div class="footer-links">
+        <a href="#features">核心创新</a>
+        <a href="#screens">截图预览</a>
+        <a href="#stack">技术栈</a>
+      </div>
+      <div class="footer-meta">
+        <span>© 2026 WeAgentChat</span>
+      </div>
+    </div>
+  </footer>
 
-    <script src="./main.js"></script>
-  </body>
+  <!-- Lightbox Modal -->
+  <div class="lightbox" id="lightbox" aria-hidden="true">
+    <button class="lightbox-close" aria-label="关闭">&times;</button>
+    <img class="lightbox-img" id="lightboxImg" src="" alt="放大预览" />
+  </div>
+
+  <script src="./main.js"></script>
+</body>
+
 </html>

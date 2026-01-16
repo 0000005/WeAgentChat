@@ -1,36 +1,17 @@
 {
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "statusLine": {
+    "type": "command",
+    "command": "npx -y ccstatusline@latest",
+    "padding": 0
+  },
+  "enabledPlugins": {
+    "mgrep@Mixedbread-Grep": false
+  },
+  "alwaysThinkingEnabled": true,
   "permissions": {
     "allow": [
-      "Bash(npm install:*)",
-      "Bash(Get-Location)",
-      "Bash(tree:*)",
-      "Bash(if:*)",
-      "Bash(then echo \"目录存在\")",
-      "Bash(else echo:*)",
-      "Bash(fi)",
-      "Bash(pnpm install:*)",
-      "Bash(mkdir:*)",
-      "Bash(git add:*)",
-      "Bash(git rm:*)",
-      "Bash(pnpm add:*)",
-      "Bash(npx shadcn-vue@latest init:*)",
-      "Bash(npx ai-elements-vue@latest)",
-      "Bash(git commit:*)",
-      "Bash(pnpm dev:*)",
-      "Bash(test:*)",
-      "Bash(cat:*)",
-      "Bash(gemini mcp remove --help:*)",
-      "Bash(dir:*)",
-      "Bash(gemini extension uninstall:*)",
-      "Bash(pnpm:*)",
-      "Bash(npm --version:*)",
-      "Bash(nvm version:*)",
-      "Bash(nvm list:*)",
-      "Bash(node:*)",
-      "Bash(nvm use:*)",
-      "Bash(nvm:*)",
-      "Bash(\"D:\\\\nvm\\\\v22.16.0\\\\node.exe\":*)",
-      "Bash(\"D:\\\\nvm\\\\v22.16.0\\\\pnpm.cmd\" --version)"
+      "Edit"
     ]
   }
 }
