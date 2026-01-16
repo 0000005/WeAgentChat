@@ -97,14 +97,15 @@ class SettingsService:
             defaults = [
                 ("session", "passive_timeout", 1800, "int", "会话判定过期的非活跃时长 (秒)"),
                 ("chat", "enable_thinking", False, "bool", "是否启用深度思考模式"),
-                ("chat", "show_thinking", False, "bool", "聊天界面是否展示思维链"),
-                ("chat", "show_tool_calls", False, "bool", "聊天界面是否展示工具调用过程"),
                 ("memory", "recall_enabled", True, "bool", "是否启用记忆召回功能"),
                 ("memory", "search_rounds", 3, "int", "记忆检索的最大轮数"),
                 ("memory", "event_topk", 5, "int", "事件记忆召回的数量"),
                 ("memory", "similarity_threshold", 0.5, "float", "语义检索的相似度阈值"),
             ]
+            # Clean up deprecated settings
             db.query(SystemSetting).filter_by(group_name="memory", key="profile_topk").delete()
+            db.query(SystemSetting).filter_by(group_name="chat", key="show_thinking").delete()
+            db.query(SystemSetting).filter_by(group_name="chat", key="show_tool_calls").delete()
             db.commit()
             for group, key, val, vtype, desc in defaults:
                 try:

@@ -10,7 +10,6 @@ import {
 } from '@/components/ai-elements/conversation'
 import { MessageContent, MessageResponse } from '@/components/ai-elements/message'
 import { useSettingsStore } from '@/stores/settings'
-import { storeToRefs } from 'pinia'
 import { getStaticUrl } from '@/api/base'
 import { useEmbeddingStore } from '@/stores/embedding'
 import {
@@ -18,18 +17,6 @@ import {
   PromptInputTextarea,
   PromptInputSubmit
 } from '@/components/ai-elements/prompt-input'
-import { Loader } from '@/components/ai-elements/loader'
-import {
-  Reasoning,
-  ReasoningContent,
-  ReasoningTrigger
-} from '@/components/ai-elements/reasoning'
-import {
-  Tool,
-  ToolHeader,
-  ToolContent,
-  ToolOutput
-} from '@/components/ai-elements/tool'
 import { useChat } from '@/composables/useChat'
 import EmojiPicker from '@/components/EmojiPicker.vue'
 import ChatDrawerMenu from '@/components/ChatDrawerMenu.vue'
@@ -100,9 +87,6 @@ const handleOpenEmbeddingSettings = () => {
 
 const isEmbeddingConfigured = computed(() => embeddingStore.isConfigured)
 
-// System settings for display
-const { showThinking: sysShowThinking, showToolCalls: sysShowToolCalls } = storeToRefs(settingsStore)
-
 // Get current friend metadata
 const currentFriend = computed(() => {
   if (!sessionStore.currentFriendId) return null
@@ -117,16 +101,6 @@ const currentFriendDescription = computed(() => {
   return currentFriend.value?.description || ''
 })
 
-
-// Check if a specific message is in loading state (assistant message with no content yet)
-const isMessageLoading = (msg: any, index: number) => {
-  if (msg.role !== 'assistant') return false
-  if (status.value !== 'streaming') return false
-  // Only the last message can be loading
-  if (index !== messages.value.length - 1) return false
-  // Loading if no content (showing loader even if thinking, to keep avatar company)
-  return !msg.content
-}
 
 const hasMessages = computed(() => messages.value.length > 0)
 
@@ -267,19 +241,6 @@ const handleOpenDrawer = () => {
     drawerOpen.value = true
   }
 }
-
-
-const formatToolArgs = (args: any) => {
-  if (!args) return ''
-  if (typeof args === 'string') {
-    try {
-      return JSON.stringify(JSON.parse(args), null, 2)
-    } catch {
-      return args
-    }
-  }
-  return JSON.stringify(args, null, 2)
-}
 </script>
 
 <template>
@@ -292,10 +253,12 @@ const formatToolArgs = (args: any) => {
       <div class="header-drag-area" @dblclick="handleToggleMaximize">
         <div v-if="sessionStore.currentFriendId" id="chat-title-area" class="chat-title-container"
           @click="handleTitleClick">
+          <div class="title-text-group">
+            <h2 class="chat-title">{{ currentFriendName }}</h2>
+            <span v-if="sessionStore.isStreaming" class="typing-indicator">对方正在输入...</span>
+          </div>
 
-          <h2 class="chat-title">{{ currentFriendName }}</h2>
-
-          <template v-if="currentFriendDescription">
+          <template v-if="currentFriendDescription && !sessionStore.isStreaming">
             <span class="title-separator">|</span>
 
             <TooltipProvider>
@@ -377,16 +340,6 @@ const formatToolArgs = (args: any) => {
               <span>{{ msg.content }}</span>
             </div>
             <div v-else class="message-group" :class="msg.role === 'user' ? 'group-user' : 'group-assistant'">
-              <!-- Thinking Block (Assistant Only) - Placed above the message row -->
-              <div v-if="msg.role === 'assistant' && msg.thinkingContent && sysShowThinking"
-                class="reasoning-external-container">
-                <Reasoning :is-streaming="status === 'streaming' && index === messages.length - 1"
-                  class="reasoning-block">
-                  <ReasoningTrigger />
-                  <ReasoningContent :content="msg.thinkingContent" />
-                </Reasoning>
-              </div>
-
               <div class="message-wrapper" :class="msg.role === 'user' ? 'message-user' : 'message-assistant'">
                 <!-- Avatar -->
                 <div class="message-avatar">
@@ -394,33 +347,9 @@ const formatToolArgs = (args: any) => {
                 </div>
 
                 <!-- Message Bubble -->
-                <div class="message-bubble-container">
-                  <!-- Tool Calls (Assistant Only) -->
-                  <div v-if="msg.role === 'assistant' && msg.toolCalls?.length && sysShowToolCalls"
-                    class="tool-calls-container">
-                    <Tool v-for="(tool, idx) in msg.toolCalls" :key="idx" class="m-0 mb-2 bg-white">
-                      <ToolHeader :title="tool.name === 'recall_memory' ? '记忆召回' : tool.name" type="tool-call"
-                        :state="tool.status === 'calling' ? 'input-available' : (tool.status === 'error' ? 'output-error' : 'output-available')"
-                        class="p-2 py-1.5" />
-                      <ToolContent>
-                        <div class="p-3 pt-0">
-                          <div class="text-[10px] font-bold text-muted-foreground uppercase mb-1">Arguments</div>
-                          <pre
-                            class="text-[11px] p-2 bg-muted/30 rounded overflow-x-auto">{{ formatToolArgs(tool.args) }}</pre>
-                        </div>
-                        <ToolOutput v-if="tool.result" :output="tool.result" :error-text="undefined"
-                          class="p-0 border-t" />
-                      </ToolContent>
-                    </Tool>
-                  </div>
-
-                  <!-- Loading state for assistant message -->
-                  <div v-if="isMessageLoading(msg, index)" class="message-bubble loading-bubble">
-                    <Loader class="h-5 w-5 text-gray-400" />
-                  </div>
-
+                <div class="message-bubble-container" :class="{ 'message-pop-in': msg.content }">
                   <!-- Normal message content -->
-                  <div v-else-if="msg.content" class="message-bubble">
+                  <div v-if="msg.content" class="message-bubble">
                     <MessageContent>
                       <MessageResponse :content="msg.content" />
                     </MessageContent>
@@ -602,6 +531,39 @@ const formatToolArgs = (args: any) => {
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 240px;
+}
+
+.title-text-group {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.typing-indicator {
+  font-size: 11px;
+  color: #888;
+  margin-top: -2px;
+  animation: typing-fade 1.5s infinite ease-in-out;
+}
+
+@keyframes typing-fade {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+.message-pop-in {
+  animation: message-pop-in 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes message-pop-in {
+  from { 
+    opacity: 0; 
+    transform: scale(0.96) translateY(10px); 
+  }
+  to { 
+    opacity: 1; 
+    transform: scale(1) translateY(0); 
+  }
 }
 
 /* 窄屏适配：隐藏描述 */

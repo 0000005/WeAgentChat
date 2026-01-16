@@ -14,10 +14,6 @@ export const useSettingsStore = defineStore('settings', () => {
     // ===== Chat 配置 =====
     // 是否启用深度思考模式，默认 false
     const enableThinking = ref<boolean>(false)
-    // 聊天界面是否展示思维链
-    const showThinking = ref<boolean>(false)
-    // 聊天界面是否展示工具调用过程
-    const showToolCalls = ref<boolean>(false)
 
     // ===== Memory 配置 =====
     const recallEnabled = ref<boolean>(true)
@@ -88,9 +84,7 @@ export const useSettingsStore = defineStore('settings', () => {
      */
     const fetchChatSettings = () =>
         fetchSettings('chat', {
-            enable_thinking: enableThinking,
-            show_thinking: showThinking,
-            show_tool_calls: showToolCalls
+            enable_thinking: enableThinking
         })
 
     /**
@@ -98,9 +92,7 @@ export const useSettingsStore = defineStore('settings', () => {
      */
     const saveChatSettings = () =>
         saveSettings('chat', {
-            enable_thinking: enableThinking,
-            show_thinking: showThinking,
-            show_tool_calls: showToolCalls
+            enable_thinking: enableThinking
         })
 
     /**
@@ -154,8 +146,6 @@ export const useSettingsStore = defineStore('settings', () => {
         // State
         passiveTimeout,
         enableThinking,
-        showThinking,
-        showToolCalls,
         recallEnabled,
         searchRounds,
         eventTopk,

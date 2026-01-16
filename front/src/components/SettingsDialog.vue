@@ -56,8 +56,6 @@ const settingsStore = useSettingsStore()
 const {
     passiveTimeout,
     enableThinking,
-    showThinking,
-    showToolCalls,
     recallEnabled,
     searchRounds,
     eventTopk,
@@ -461,22 +459,6 @@ const openTutorial = () => {
 
                             <div class="space-y-4">
                                 <div class="flex items-center justify-between">
-                                    <div class="space-y-0.5">
-                                        <label class="text-sm font-medium">显示思维链</label>
-                                        <p class="text-xs text-gray-500">在消息下方展示 AI 的推理思考过程。</p>
-                                    </div>
-                                    <Switch v-model="showThinking" />
-                                </div>
-
-                                <div class="flex items-center justify-between border-t pt-4">
-                                    <div class="space-y-0.5">
-                                        <label class="text-sm font-medium">显示工具调用</label>
-                                        <p class="text-xs text-gray-500">在消息中展示 AI 调用外部工具的详细信息。</p>
-                                    </div>
-                                    <Switch v-model="showToolCalls" />
-                                </div>
-
-                                <div class="flex items-center justify-between border-t pt-4">
                                     <div class="space-y-0.5">
                                         <label class="text-sm font-medium">启用深度思考模式 (推理)</label>
                                         <p class="text-xs text-gray-500">如果模型支持，开启后将强制模型进行链式思考后再回答。</p>

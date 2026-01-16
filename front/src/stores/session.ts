@@ -161,16 +161,11 @@ export const useSessionStore = defineStore('session', () => {
         // Update friend list preview immediately for user message
         friendStore.updateLastMessage(friendId, content, 'user')
 
-        // 2. Add placeholder assistant message
+        // Buffers for storing incoming data before they are "shown" in UI
+        let contentBuffer = ''
+        let thinkingBuffer = ''
+        let toolCallsBuffer: ToolCall[] = []
         const assistantMsgId = Date.now() + 1
-        const assistantMsg = ref<Message>({
-            id: assistantMsgId,
-            role: 'assistant',
-            content: '',
-            thinkingContent: '',
-            createdAt: Date.now()
-        })
-        messagesMap.value[friendId].push(assistantMsg.value)
 
         try {
             // 如果当前正在查看特定会话，则按会话 ID 发送消息；否则按好友 ID 发送（由后端自动寻址）
@@ -179,52 +174,47 @@ export const useSessionStore = defineStore('session', () => {
                 : ChatAPI.sendMessageToFriendStream(friendId, { content, enable_thinking: enableThinking })
 
             for await (const { event, data } of stream) {
-                const msgIndex = messagesMap.value[friendId].findIndex(m => m.id === assistantMsgId)
-                if (msgIndex === -1) continue
-
                 if (event === 'start') {
                     // Stream started - mark as streaming immediately
                     streamingMap.value[friendId] = true
-                    friendStore.updateLastMessage(friendId, '...', 'assistant')
+                    friendStore.updateLastMessage(friendId, '对方正在输入...', 'assistant')
                 } else if (event === 'thinking') {
                     streamingMap.value[friendId] = true
                     const delta = data.delta || ''
-                    messagesMap.value[friendId][msgIndex].thinkingContent += delta
-                    friendStore.updateLastMessage(friendId, '[思考中...]', 'assistant')
+                    thinkingBuffer += delta
                 } else if (event === 'message') {
                     streamingMap.value[friendId] = true
                     const delta = data.delta || ''
-                    messagesMap.value[friendId][msgIndex].content += delta
-                    // Real-time update of sidebar preview
-                    friendStore.updateLastMessage(friendId, messagesMap.value[friendId][msgIndex].content, 'assistant')
+                    contentBuffer += delta
                 } else if (event === 'tool_call') {
                     streamingMap.value[friendId] = true
-                    if (!messagesMap.value[friendId][msgIndex].toolCalls) {
-                        messagesMap.value[friendId][msgIndex].toolCalls = []
-                    }
-                    messagesMap.value[friendId][msgIndex].toolCalls.push({
+                    toolCallsBuffer.push({
                         name: data.tool_name,
                         args: data.arguments,
                         status: 'calling'
                     })
                 } else if (event === 'tool_result') {
                     streamingMap.value[friendId] = true
-                    const toolCalls = messagesMap.value[friendId][msgIndex].toolCalls
-                    if (toolCalls) {
-                        // Find the last one with the same name that is still 'calling'
-                        const tc = [...toolCalls].reverse().find(t => t.name === data.tool_name && t.status === 'calling')
-                        if (tc) {
-                            tc.result = data.result
-                            tc.status = 'completed'
-                        }
+                    // Find the last one with the same name that is still 'calling'
+                    const tc = [...toolCallsBuffer].reverse().find(t => t.name === data.tool_name && t.status === 'calling')
+                    if (tc) {
+                        tc.result = data.result
+                        tc.status = 'completed'
                     }
                 } else if (event === 'error') {
-                    messagesMap.value[friendId][msgIndex].content += `\n[Error: ${data.detail}]`
+                    contentBuffer += `\n[Error: ${data.detail}]`
                 } else if (event === 'done') {
-                    // Finalize, update real ID if provided
-                    if (data.message_id) {
-                        messagesMap.value[friendId][msgIndex].id = data.message_id
+                    // Finalize: Push the complete message to the list all at once
+                    const assistantMsg: Message = {
+                        id: data.message_id || assistantMsgId,
+                        role: 'assistant',
+                        content: contentBuffer,
+                        thinkingContent: thinkingBuffer,
+                        toolCalls: toolCallsBuffer,
+                        createdAt: Date.now()
                     }
+                    messagesMap.value[friendId].push(assistantMsg)
+
                     streamingMap.value[friendId] = false
 
                     // Check if user has switched away during streaming - mark as unread
@@ -234,18 +224,29 @@ export const useSessionStore = defineStore('session', () => {
 
                     // 异步刷新会话列表统计
                     fetchFriendSessions(friendId)
-                    // Update friend list preview for assistant message
-                    friendStore.updateLastMessage(friendId, assistantMsg.value.content, 'assistant')
+                    // Update friend list preview for assistant message with final content
+                    friendStore.updateLastMessage(friendId, contentBuffer, 'assistant')
                 }
             }
 
         } catch (error) {
             console.error('Failed to send message:', error)
-            // Show error in the assistant message
-            const msgIndex = messagesMap.value[friendId].findIndex(m => m.id === assistantMsgId)
-            if (msgIndex !== -1) {
-                messagesMap.value[friendId][msgIndex].content = 'Error: Failed to get response from AI.'
+            // If buffer has content, show it with a connection break marker
+            // Otherwise show a generic error message
+            const finalContent = contentBuffer
+                ? `${contentBuffer}\n\n[连接中断]`
+                : 'Error: Failed to get response from AI.'
+            const errorMsg: Message = {
+                id: Date.now() + 2,
+                role: 'assistant',
+                content: finalContent,
+                thinkingContent: thinkingBuffer || undefined,
+                toolCalls: toolCallsBuffer.length > 0 ? toolCallsBuffer : undefined,
+                createdAt: Date.now()
             }
+            messagesMap.value[friendId].push(errorMsg)
+            // Update sidebar preview with partial content or error indicator
+            friendStore.updateLastMessage(friendId, contentBuffer || '[消息发送失败]', 'assistant')
         } finally {
             streamingMap.value[friendId] = false
         }
@@ -295,6 +296,7 @@ export const useSessionStore = defineStore('session', () => {
         currentFriendId,
         unreadCounts,
         messagesMap,
+        streamingMap,
         currentMessages,
         currentSessions,
         currentSessionId,

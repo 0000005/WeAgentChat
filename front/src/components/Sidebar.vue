@@ -209,7 +209,12 @@ onMounted(async () => {
             <span class="friend-time">{{ getLastActiveTime(friend) }}</span>
           </div>
           <div class="friend-preview">
-            {{ getLastMessagePreview(friend) }}
+            <template v-if="sessionStore.streamingMap[friend.id]">
+              <span class="text-emerald-600 font-medium">对方正在输入...</span>
+            </template>
+            <template v-else>
+              {{ getLastMessagePreview(friend) }}
+            </template>
           </div>
         </div>
 
