@@ -13,7 +13,7 @@
 
 ## 1. 访问设置界面
 
-0. 下载并安装 WeAgentChat：https://github.com/WeAgentChat/WeAgentChat/releases
+0. 下载并安装 WeAgentChat：https://github.com/0000005/WeChatAgent/releases
 1. 启动 WeAgentChat 应用程序。
 2. 在左侧侧边栏底部，点击「设置」图标（通常是一个齿轮形状）。
 3. 设置弹窗将打开，包含「LLM 设置」、「向量化设置」、「记忆设置」和「聊天设置」。
