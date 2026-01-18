@@ -24,7 +24,7 @@ front/node_modules/
 front/dist/
 server/venv/
 server/__pycache__/
-.shared/ui-ux-pro-max/scripts/__pycache__
+.shared/ui-ux-pro-max/scripts嗯，这个表格我看了问题不大。但是每一个角色都要具体到姓名，比如说人物钢铁侠，钢铁侠是指谁呢？我们必须明确姓名，所以你将这个表格的内容整理成一个大表格。然后大表格里面有四列，第一列是分类，第二列是标签，第三列是人物姓名，第四列是人物简介一句话不超过40个字。__pycache__
 server/data/*.db
 *.pyc
 

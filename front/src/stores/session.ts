@@ -167,8 +167,23 @@ export const useSessionStore = defineStore('session', () => {
             const currentMsgs = messagesMap.value[friendId] || []
             const existingIds = new Set(currentMsgs.map(m => m.id))
 
+            // Helper to check if a message already exists (by ID or by content+timestamp)
+            const isDuplicate = (serverMsg: typeof mappedMessages[0]): boolean => {
+                // First check by ID
+                if (existingIds.has(serverMsg.id)) return true
+
+                // Then check by content + approximate timestamp (within 30 seconds)
+                // This handles local messages with temp IDs (Date.now()) vs server IDs
+                const TIME_TOLERANCE = 30000 // 30 seconds
+                return currentMsgs.some(localMsg =>
+                    localMsg.role === serverMsg.role &&
+                    localMsg.content === serverMsg.content &&
+                    Math.abs(localMsg.createdAt - serverMsg.createdAt) < TIME_TOLERANCE
+                )
+            }
+
             // Find messages that are NOT in current list
-            const newMsgs = mappedMessages.filter(m => !existingIds.has(m.id))
+            const newMsgs = mappedMessages.filter(m => !isDuplicate(m))
 
             if (newMsgs.length > 0) {
                 // Sort new messages by createdAt to ensure correct order

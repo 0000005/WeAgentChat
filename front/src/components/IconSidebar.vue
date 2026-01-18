@@ -39,7 +39,7 @@ const totalUnread = computed(() => {
   return Object.values(sessionStore.unreadCounts).reduce((acc, count) => acc + count, 0)
 })
 
-const DEFAULT_AVATAR = 'https://api.dicebear.com/7.x/avataaars/svg?seed=doudou'
+const DEFAULT_AVATAR = '/default_avatar.svg'
 
 const userAvatarUrl = computed(() =>
   getStaticUrl(settingsStore.userAvatar) || DEFAULT_AVATAR

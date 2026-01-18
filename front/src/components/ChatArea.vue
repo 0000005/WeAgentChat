@@ -144,7 +144,7 @@ const formatSessionTime = (timestamp: number): string => {
 }
 
 // Fallback avatars
-const DEFAULT_USER_AVATAR = 'https://api.dicebear.com/7.x/avataaars/svg?seed=user123'
+const DEFAULT_USER_AVATAR = '/default_avatar.svg'
 const DEFAULT_ASSISTANT_AVATAR = 'https://api.dicebear.com/7.x/bottts/svg?seed=doudou'
 
 // Get avatar for user/assistant
