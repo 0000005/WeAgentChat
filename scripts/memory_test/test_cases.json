@@ -1,0 +1,188 @@
+{
+    "test_cases": [
+        {
+            "id": "TC_SEM_001",
+            "description": "语义-动作游戏偏好 (无书名)",
+            "query_type": "semantic_indirect",
+            "query": "我以前玩过哪些高难度的动作游戏？",
+            "expected_keywords": [
+                "只狼",
+                "黑神话",
+                "艾尔登法环",
+                "魔兽世界"
+            ],
+            "noise_keywords": [
+                "英雄联盟",
+                "最终幻想"
+            ],
+            "notes": "测试不提具体游戏名，只提类型/风格的召回能力。只狼/老头环通常被认为是高难动作。"
+        },
+        {
+            "id": "TC_SEM_002",
+            "description": "语义-重口味食物推荐 (无具体菜名)",
+            "query_type": "semantic_indirect",
+            "query": "我想吃点辣的或者重口味的东西",
+            "expected_keywords": [
+                "四川火锅",
+                "麻辣烫",
+                "湖南小炒肉",
+                "日式拉面"
+            ],
+            "noise_keywords": [
+                "广东早茶",
+                "红富士苹果",
+                "意大利面"
+            ],
+            "notes": "测试基于口味描述召回具体食物。广东早茶通常清淡。"
+        },
+        {
+            "id": "TC_SEM_003",
+            "description": "语义-重要人生经历 (无'高考'词)",
+            "query_type": "semantic_indirect",
+            "query": "我以前经历过什么难忘的大考吗？",
+            "expected_keywords": [
+                "高考"
+            ],
+            "noise_keywords": [],
+            "notes": "测试概念关联：大考 -> 高考"
+        },
+        {
+            "id": "TC_SEM_004",
+            "description": "语义-编程烦恼 (无具体语言)",
+            "query_type": "semantic_indirect",
+            "query": "我觉得哪些编程技术最让人头大？",
+            "expected_keywords": [
+                "讨厌调试",
+                "觉得很难",
+                "段错误"
+            ],
+            "noise_keywords": [
+                "精通",
+                "重构"
+            ],
+            "notes": "测试情感关联：头大 -> 讨厌/觉得难"
+        },
+        {
+            "id": "TC_COMBO_001",
+            "description": "词组-旅游计划",
+            "query_type": "keyword_combo",
+            "query": "旅游 计划 明年",
+            "expected_keywords": [
+                "计划明年",
+                "明年去"
+            ],
+            "noise_keywords": [],
+            "notes": "模拟系统提取的关键词组合：旅游+计划+时间"
+        },
+        {
+            "id": "TC_COMBO_002",
+            "description": "词组-编程困难 C++",
+            "query_type": "keyword_combo",
+            "query": "编程 困难 C++",
+            "expected_keywords": [
+                "讨厌调试 C++",
+                "觉得很难 C++"
+            ],
+            "noise_keywords": [
+                "精通 C++"
+            ],
+            "notes": "测试离散关键词组合：领域+情感+具体项"
+        },
+        {
+            "id": "TC_COMBO_003",
+            "description": "词组-日常琐事 钥匙",
+            "query_type": "keyword_combo",
+            "query": "钥匙 忘记",
+            "expected_keywords": [
+                "忘记带钥匙"
+            ],
+            "noise_keywords": [],
+            "notes": "测试具体事件关键词组合"
+        },
+        {
+            "id": "TC_COMBO_004",
+            "description": "词组-饮食偏好 喜欢",
+            "query_type": "keyword_combo",
+            "query": "食物 喜欢",
+            "expected_keywords": [
+                "最喜欢吃",
+                "超级喜欢"
+            ],
+            "noise_keywords": [
+                "讨厌吃",
+                "吃腻了"
+            ],
+            "notes": "Broad keyword combo"
+        },
+        {
+            "id": "TC_COMBO_005",
+            "description": "词组-水果 购买",
+            "query_type": "keyword_combo",
+            "query": "水果 买了",
+            "expected_keywords": [
+                "红富士苹果"
+            ],
+            "noise_keywords": [
+                "苹果手机"
+            ],
+            "notes": "测试关键词组合是否能区分语义歧义(苹果手机 vs 水果)"
+        },
+        {
+            "id": "TC_COMP_001_NATURAL",
+            "description": "对照-只狼 (自然语言)",
+            "query_type": "simple_natural",
+            "query": "我玩只狼的情况怎么样？",
+            "expected_keywords": [
+                "只狼"
+            ],
+            "noise_keywords": [],
+            "notes": "基准对照组"
+        },
+        {
+            "id": "TC_COMP_001_COMBO",
+            "description": "对照-只狼 (关键词组)",
+            "query_type": "keyword_combo",
+            "query": "只狼 玩过 通关",
+            "expected_keywords": [
+                "只狼"
+            ],
+            "noise_keywords": [],
+            "notes": "与自然语言对比"
+        },
+        {
+            "id": "TC_COMP_002_NATURAL",
+            "description": "对照-喜欢的地方 (自然语言)",
+            "query_type": "simple_natural",
+            "query": "你最喜欢去的地方是什么？",
+            "expected_keywords": [
+                "云南旅游",
+                "日本旅游",
+                "欧洲旅游",
+                "西藏旅游"
+            ],
+            "noise_keywords": [
+                "不想去",
+                "回忆起"
+            ],
+            "notes": "用户建议的弱相关问法"
+        },
+        {
+            "id": "TC_COMP_002_COMBO",
+            "description": "对照-喜欢的地方 (关键词组)",
+            "query_type": "keyword_combo",
+            "query": "喜欢 旅游 地点",
+            "expected_keywords": [
+                "云南旅游",
+                "日本旅游",
+                "欧洲旅游"
+            ],
+            "noise_keywords": [],
+            "notes": "关键词组版本"
+        }
+    ],
+    "metadata": {
+        "version": "2.0",
+        "created_at": "2026-01-18",
+        "description": "Refined Test Cases: Semantic & Keyword Combos"
+    }
+}
