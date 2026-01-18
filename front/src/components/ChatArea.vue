@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import { useSessionStore, parseMessageSegments } from '@/stores/session'
 import { useFriendStore } from '@/stores/friend'
-import { Menu, MoreHorizontal, Brain, MessageSquarePlus } from 'lucide-vue-next'
+import { Menu, MoreHorizontal, Brain, MessageSquarePlus, AlertTriangle, Sparkles } from 'lucide-vue-next'
 import {
   Conversation,
   ConversationContent,
@@ -36,8 +36,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { AlertTriangle } from 'lucide-vue-next'
-import { onMounted } from 'vue'
+import { onMounted, nextTick, watch } from 'vue'
 
 
 const props = defineProps({
@@ -234,13 +233,86 @@ const handleTitleClick = () => {
 }
 
 const handleOpenDrawer = () => {
-
   if (isElectron) {
     emit('open-drawer')
   } else {
     drawerOpen.value = true
   }
 }
+
+// Pagination state
+const hasMoreMessages = ref(true)
+const conversationRef = ref<InstanceType<typeof Conversation> | null>(null)
+
+// Reset hasMore when friend changes
+watch(() => sessionStore.currentFriendId, () => {
+  hasMoreMessages.value = true
+})
+
+// Pagination using IntersectionObserver - triggers when top sentinel becomes visible
+const loadMoreTriggerRef = ref<HTMLElement | null>(null)
+let intersectionObserver: IntersectionObserver | null = null
+
+const loadMore = async () => {
+  if (!hasMoreMessages.value || sessionStore.isLoadingMore || !sessionStore.currentFriendId) return
+  
+  const scrollEl = currentScrollEl
+  const prevHeight = scrollEl?.scrollHeight || 0
+  const prevScrollTop = scrollEl?.scrollTop || 0
+  
+  const more = await sessionStore.loadMoreMessages(sessionStore.currentFriendId)
+  hasMoreMessages.value = more
+  
+  // Maintain scroll position after DOM updates
+  if (scrollEl) {
+    nextTick(() => {
+      const newHeight = scrollEl.scrollHeight
+      const heightDiff = newHeight - prevHeight
+      scrollEl.scrollTop = prevScrollTop + heightDiff
+    })
+  }
+}
+
+// Track scroll element to maintain position
+let currentScrollEl: HTMLElement | null = null
+
+watch(
+  // Watch the scrollRef - it resolves directly to HTMLElement
+  () => {
+    const conv = conversationRef.value as any
+    if (!conv) return undefined
+    const scrollRefComputed = conv.scrollRef
+    const element = scrollRefComputed?.value ?? scrollRefComputed
+    return element as HTMLElement | undefined
+  },
+  (scrollEl) => {
+    currentScrollEl = scrollEl || null
+  },
+  { immediate: true, flush: 'post' }
+)
+
+// Setup IntersectionObserver for load-more trigger
+watch(loadMoreTriggerRef, (el) => {
+  // Cleanup old observer
+  if (intersectionObserver) {
+    intersectionObserver.disconnect()
+    intersectionObserver = null
+  }
+  
+  if (el) {
+    intersectionObserver = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0]
+        if (entry && entry.isIntersecting) {
+          console.log('[Pagination] Load more triggered by IntersectionObserver')
+          loadMore()
+        }
+      },
+      { threshold: 0.1 }
+    )
+    intersectionObserver.observe(el)
+  }
+}, { immediate: true })
 </script>
 
 <template>
@@ -328,8 +400,19 @@ const handleOpenDrawer = () => {
       </div>
 
       <!-- Conversation with Messages -->
-      <Conversation v-else class="flex-1 w-full overflow-hidden">
+      <Conversation ref="conversationRef" v-else class="flex-1 w-full overflow-hidden">
         <ConversationContent class="messages-content">
+          <!-- Load More Trigger (observed by IntersectionObserver) -->
+          <div ref="loadMoreTriggerRef" class="load-more-trigger">
+            <div v-if="sessionStore.isLoadingMore" class="loading-more-container">
+              <div class="loading-dots">
+                <span></span><span></span><span></span>
+              </div>
+            </div>
+            <div v-else-if="!hasMoreMessages && messages.length >= sessionStore.INITIAL_MESSAGE_LIMIT" class="no-more-messages">
+              已经到头了
+            </div>
+          </div>
           <template v-for="(msg, index) in messages" :key="msg.id">
             <!-- 会话分隔线（session_id 变化时显示） -->
             <div v-if="shouldShowSessionDivider(index)" class="session-divider">
@@ -802,6 +885,75 @@ const handleOpenDrawer = () => {
   background: rgba(0, 0, 0, 0.05);
   padding: 4px 12px;
   border-radius: 12px;
+}
+
+/* Message Group Wrapper */
+.message-group {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.group-user {
+  align-items: flex-end;
+}
+
+.group-assistant {
+  align-items: flex-start;
+}
+
+/* Pagination Indicators */
+.loading-more-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 10px 0;
+  width: 100%;
+}
+
+.loading-dots {
+  display: flex;
+  gap: 4px;
+}
+
+.loading-dots span {
+  width: 6px;
+  height: 6px;
+  background-color: #ccc;
+  border-radius: 50%;
+  animation: dots-wave 1.4s infinite ease-in-out both;
+}
+
+.loading-dots span:nth-child(1) { animation-delay: -0.32s; }
+.loading-dots span:nth-child(2) { animation-delay: -0.16s; }
+
+@keyframes dots-wave {
+  0%, 80%, 100% { transform: scale(0); }
+  40% { transform: scale(1.0); }
+}
+
+.no-more-messages {
+  text-align: center;
+  color: #bbb;
+  font-size: 12px;
+  padding: 10px 0;
+  width: 100%;
+  user-select: none;
+}
+
+/* External Reasoning Container */
+.reasoning-external-container {
+  margin-left: 50px;
+  /* Align with message text (40px avatar + 10px gap) */
+  margin-bottom: 4px;
+  max-width: calc(100% - 60px);
+  /* Prevent overflow */
+}
+
+@media (min-width: 640px) {
+  .reasoning-external-container {
+    max-width: calc(85% - 50px);
+  }
 }
 
 /* 会话分隔线 */

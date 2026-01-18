@@ -103,10 +103,13 @@ export const useSessionStore = defineStore('session', () => {
         return !!streamingMap.value[currentFriendId.value]
     })
 
+    const isLoadingMore = ref(false)
+    const INITIAL_MESSAGE_LIMIT = 10 // TODO: Change back to 30 after testing
+
     // Fetch messages for a specific friend (merged from all sessions)
-    const fetchFriendMessages = async (friendId: number) => {
+    const fetchFriendMessages = async (friendId: number, skip: number = 0, limit: number = INITIAL_MESSAGE_LIMIT) => {
         try {
-            const apiMessages = await ChatAPI.getFriendMessages(friendId)
+            const apiMessages = await ChatAPI.getFriendMessages(friendId, skip, limit)
             const mappedMessages = apiMessages.map(m => ({
                 id: m.id,
                 role: m.role as 'user' | 'assistant' | 'system',
@@ -114,9 +117,67 @@ export const useSessionStore = defineStore('session', () => {
                 createdAt: new Date(m.create_time).getTime(),
                 sessionId: m.session_id
             }))
-            messagesMap.value[friendId] = mappedMessages
+
+            if (skip === 0) {
+                messagesMap.value[friendId] = mappedMessages
+            } else {
+                // If skipping, it's pagination - prepend messages
+                const currentMsgs = messagesMap.value[friendId] || []
+                // Ensure no duplicates
+                const existingIds = new Set(currentMsgs.map(m => m.id))
+                const newMsgs = mappedMessages.filter(m => !existingIds.has(m.id))
+                messagesMap.value[friendId] = [...newMsgs, ...currentMsgs]
+            }
+            return apiMessages.length
         } catch (error) {
             console.error(`Failed to fetch messages for friend ${friendId}:`, error)
+            return 0
+        }
+    }
+
+    // Load more (older) messages
+    const loadMoreMessages = async (friendId: number): Promise<boolean> => {
+        if (isLoadingMore.value) return false // Return false when already loading, don't assume there's more
+
+        const currentMsgs = messagesMap.value[friendId] || []
+        const skip = currentMsgs.length
+
+        isLoadingMore.value = true
+        try {
+            const count = await fetchFriendMessages(friendId, skip, INITIAL_MESSAGE_LIMIT)
+            return count >= INITIAL_MESSAGE_LIMIT // If we got full page, there might be more
+        } finally {
+            isLoadingMore.value = false
+        }
+    }
+
+    // Silent sync latest messages
+    const syncLatestMessages = async (friendId: number) => {
+        try {
+            // Get latest 10 messages to check for updates
+            const apiMessages = await ChatAPI.getFriendMessages(friendId, 0, 10)
+            const mappedMessages = apiMessages.map(m => ({
+                id: m.id,
+                role: m.role as 'user' | 'assistant' | 'system',
+                content: m.content,
+                createdAt: new Date(m.create_time).getTime(),
+                sessionId: m.session_id
+            }))
+
+            const currentMsgs = messagesMap.value[friendId] || []
+            const existingIds = new Set(currentMsgs.map(m => m.id))
+
+            // Find messages that are NOT in current list
+            const newMsgs = mappedMessages.filter(m => !existingIds.has(m.id))
+
+            if (newMsgs.length > 0) {
+                // Sort new messages by createdAt to ensure correct order
+                newMsgs.sort((a, b) => a.createdAt - b.createdAt)
+                // Append new messages to the end
+                messagesMap.value[friendId] = [...currentMsgs, ...newMsgs]
+            }
+        } catch (error) {
+            console.warn(`Silent sync failed for friend ${friendId}:`, error)
         }
     }
 
@@ -132,13 +193,12 @@ export const useSessionStore = defineStore('session', () => {
         }
     }
 
-    // Reset to merged view (all messages for the friend)
     const resetToMergedView = async () => {
         if (!currentFriendId.value) return
         currentSessionId.value = null
         isLoading.value = true
         try {
-            await fetchFriendMessages(currentFriendId.value)
+            await fetchFriendMessages(currentFriendId.value, 0, INITIAL_MESSAGE_LIMIT)
         } finally {
             isLoading.value = false
         }
@@ -170,7 +230,6 @@ export const useSessionStore = defineStore('session', () => {
         }
     }
 
-    // Select a friend and load their chat history
     const selectFriend = async (friendId: number) => {
         currentFriendId.value = friendId
         // Clear unread count when entering chat
@@ -178,10 +237,20 @@ export const useSessionStore = defineStore('session', () => {
             unreadCounts.value[friendId] = 0
         }
         currentSessionId.value = null // Reset to default merged/latest view
+
+        // Cache hit: render immediately, sync in background
+        if (messagesMap.value[friendId]?.length > 0) {
+            // Background silent sync (don't await)
+            syncLatestMessages(friendId).catch(e => console.warn('Silent sync failed:', e))
+            fetchFriendSessions(friendId) // Also refresh sessions silently
+            return
+        }
+
+        // Cache miss: show loading
         isLoading.value = true
         try {
             await Promise.all([
-                fetchFriendMessages(friendId),
+                fetchFriendMessages(friendId, 0, INITIAL_MESSAGE_LIMIT),
                 fetchFriendSessions(friendId)
             ])
         } finally {
@@ -374,10 +443,14 @@ export const useSessionStore = defineStore('session', () => {
         currentSessionId,
         fetchError,
         isLoading,
+        isLoadingMore,
+        INITIAL_MESSAGE_LIMIT,
         isStreaming,
         selectFriend,
         sendMessage,
         fetchFriendMessages,
+        loadMoreMessages,
+        syncLatestMessages,
         fetchFriendSessions,
         loadSpecificSession,
         resetToMergedView,
