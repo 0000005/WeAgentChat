@@ -69,7 +69,7 @@ const userAvatar = computed({
 })
 
 const userAvatarDisplayUrl = computed(() =>
-    getStaticUrl(settingsStore.userAvatar) || '/default_avatar.svg'
+    getStaticUrl(settingsStore.userAvatar) || 'default_avatar.svg'
 )
 
 onMounted(async () => {

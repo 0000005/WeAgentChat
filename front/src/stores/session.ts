@@ -378,6 +378,11 @@ export const useSessionStore = defineStore('session', () => {
                         unreadCounts.value[friendId] = (unreadCounts.value[friendId] || 0) + segmentCount
                     }
 
+                    // Trigger tray/taskbar flash if window doesn't have focus (Electron only)
+                    if (typeof document !== 'undefined' && !document.hasFocus()) {
+                        window.WeAgentChat?.notification?.flash()
+                    }
+
                     // 异步刷新会话列表统计
                     fetchFriendSessions(friendId)
                     // Update friend list preview for assistant message with final content

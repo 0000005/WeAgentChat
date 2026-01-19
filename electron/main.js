@@ -13,6 +13,11 @@ let isQuitting = false
 let ipcReady = false
 let isBootstrapping = false
 
+// Tray flash state
+let trayFlashTimer = null
+let isFlashing = false
+const FLASH_INTERVAL_MS = 500
+
 const DEV_SERVER_URL = process.env.DOU_DOUCHAT_DEV_SERVER_URL || 'http://localhost:5173'
 const HEALTH_PATH = '/api/health'
 const BACKEND_START_TIMEOUT_MS = 45000
@@ -50,6 +55,50 @@ function resolveTrayIconPath() {
   return resolveAppIconPath('icon.ico')
 }
 
+function resolveTrayFlashIconPath() {
+  return resolveAppIconPath('icon_flash.ico')
+}
+
+function startTrayFlash() {
+  if (isFlashing || !tray) return
+  isFlashing = true
+
+  const normalIcon = nativeImage.createFromPath(resolveTrayIconPath())
+  const flashIcon = nativeImage.createFromPath(resolveTrayFlashIconPath())
+  let showNormal = true
+
+  trayFlashTimer = setInterval(() => {
+    tray.setImage(showNormal ? flashIcon : normalIcon)
+    showNormal = !showNormal
+  }, FLASH_INTERVAL_MS)
+
+  // Also activate taskbar flashing (Windows standard behavior)
+  if (mainWindow && !mainWindow.isFocused()) {
+    mainWindow.flashFrame(true)
+  }
+}
+
+function stopTrayFlash() {
+  if (!isFlashing) return
+  isFlashing = false
+
+  if (trayFlashTimer) {
+    clearInterval(trayFlashTimer)
+    trayFlashTimer = null
+  }
+
+  // Restore normal icon
+  if (tray) {
+    const normalIcon = nativeImage.createFromPath(resolveTrayIconPath())
+    tray.setImage(normalIcon)
+  }
+
+  // Stop taskbar flashing
+  if (mainWindow) {
+    mainWindow.flashFrame(false)
+  }
+}
+
 function createTray() {
   if (tray) return tray
   const iconPath = resolveTrayIconPath()
@@ -78,6 +127,7 @@ function createTray() {
 
   tray.setContextMenu(contextMenu)
   tray.on('click', () => {
+    stopTrayFlash() // Stop flashing when tray is clicked
     if (!mainWindow) return
     mainWindow.show()
     mainWindow.focus()
@@ -142,6 +192,9 @@ function createMainWindow() {
 
   mainWindow.on('maximize', () => sendWindowState(mainWindow))
   mainWindow.on('unmaximize', () => sendWindowState(mainWindow))
+  mainWindow.on('focus', () => {
+    stopTrayFlash() // Stop flashing when window gains focus
+  })
   mainWindow.on('closed', () => {
     mainWindow = null
   })
@@ -465,6 +518,15 @@ function registerIpcHandlers() {
     } else {
       await shell.openExternal(url)
     }
+  })
+
+  // Notification flash handlers for new message alerts
+  ipcMain.on('notification:flash', () => {
+    startTrayFlash()
+  })
+
+  ipcMain.on('notification:stop-flash', () => {
+    stopTrayFlash()
   })
 }
 

@@ -13,5 +13,9 @@
       showSystemMenu: (position: { x: number; y: number }) => void
       onState: (callback: (state: { isMaximized: boolean; isMinimized: boolean }) => void) => () => void
     }
+    notification?: {
+      flash: () => void
+      stopFlash: () => void
+    }
   }
 }

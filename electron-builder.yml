@@ -1,5 +1,8 @@
 appId: com.weagent.chat
 productName: WeAgentChat
+electronLanguages:
+  - zh-CN
+  - en-US
 files:
   - electron/**/*
   - front/dist/**/*

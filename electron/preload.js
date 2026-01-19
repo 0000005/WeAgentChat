@@ -24,6 +24,10 @@ contextBridge.exposeInMainWorld('WeAgentChat', {
       return () => ipcRenderer.removeListener('window:state', listener)
     },
   },
+  notification: {
+    flash: () => ipcRenderer.send('notification:flash'),
+    stopFlash: () => ipcRenderer.send('notification:stop-flash'),
+  },
   debug: {
     toggleDevTools: () => ipcRenderer.send('debug:toggle-devtools'),
   },

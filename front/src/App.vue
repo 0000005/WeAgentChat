@@ -1,5 +1,5 @@
 ﻿<script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import IconSidebar from './components/IconSidebar.vue'
 import Sidebar from './components/Sidebar.vue'
 import ChatArea from './components/ChatArea.vue'
@@ -74,6 +74,10 @@ const handleEditFriend = (id: number) => {
   isFriendComposeOpen.value = true
 }
 
+// Global focus handler to stop notification flashing
+const handleWindowFocus = () => {
+  window.WeAgentChat?.notification?.stopFlash()
+}
 
 onMounted(async () => {
   activeTab.value = 'chat'
@@ -81,6 +85,9 @@ onMounted(async () => {
   if (window.innerWidth < 768) {
     isSidebarOpen.value = false
   }
+
+  // Register global focus listener to stop tray flashing
+  window.addEventListener('focus', handleWindowFocus)
 
   // Load chat and user settings from backend
   await Promise.all([
@@ -102,6 +109,10 @@ onMounted(async () => {
   setTimeout(() => {
     checkUpdate()
   }, 2000)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('focus', handleWindowFocus)
 })
 
 const handleSetupComplete = () => {

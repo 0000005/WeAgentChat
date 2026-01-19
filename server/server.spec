@@ -65,7 +65,8 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    # Pillow 的 AVIF 插件占用较大且未使用，打包时排除以减小体积。
+    excludes=['PIL._avif', 'PIL.AvifImagePlugin'],
     noarchive=False,
     optimize=0,
 )
