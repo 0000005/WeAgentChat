@@ -269,7 +269,13 @@ const handleSelectSession = async (sessionId: number) => {
 
 const formatTime = (dateStr?: string) => {
     if (!dateStr) return ''
-    const date = new Date(dateStr)
+    // Fix: Backend might return naive UTC string (e.g. from memobase), treat as UTC
+    // Only append Z if no timezone info is present (no Z and no offset)
+    let dateString = dateStr
+    if (!dateString.endsWith('Z') && !/[+-]\d{2}:?\d{2}$/.test(dateString)) {
+        dateString += 'Z'
+    }
+    const date = new Date(dateString)
     const now = new Date()
     const diff = now.getTime() - date.getTime()
 
