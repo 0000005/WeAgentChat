@@ -35,6 +35,12 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Button } from '@/components/ui/button'
 import { onMounted, nextTick, watch } from 'vue'
 
@@ -437,7 +443,7 @@ const handleAvatarClick = (url: string) => {
               <div v-for="(segment, sIndex) in parseMessageSegments(msg.content)" 
                    :key="msg.id + '-' + sIndex" 
                    class="message-group group-assistant">
-                <div class="message-wrapper message-assistant">
+                <div class="message-wrapper message-assistant group relative">
                   <!-- Avatar -->
                   <div class="message-avatar" @click="handleAvatarClick(getAssistantAvatar())">
                     <img :src="getAssistantAvatar()" alt="Avatar" />
@@ -451,12 +457,28 @@ const handleAvatarClick = (url: string) => {
                       </MessageContent>
                     </div>
                   </div>
+
+                  <!-- Message Action Menu -->
+                  <div class="message-actions">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger as-child>
+                        <button class="message-action-btn opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100 transition-opacity">
+                          <MoreHorizontal :size="16" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start">
+                        <DropdownMenuItem>
+                          <span>复制</span>
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                 </div>
               </div>
             </template>
 
             <div v-else class="message-group group-user">
-              <div class="message-wrapper message-user">
+              <div class="message-wrapper message-user group relative">
                 <!-- Avatar -->
                 <div class="message-avatar" @click="handleAvatarClick(getUserAvatar())">
                   <img :src="getUserAvatar()" alt="Avatar" />
@@ -470,6 +492,22 @@ const handleAvatarClick = (url: string) => {
                       <MessageResponse :content="msg.content" />
                     </MessageContent>
                   </div>
+                </div>
+
+                <!-- Message Action Menu -->
+                <div class="message-actions">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger as-child>
+                      <button class="message-action-btn opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100 transition-opacity">
+                        <MoreHorizontal :size="16" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem>
+                        <span>复制</span>
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               </div>
             </div>
@@ -1196,5 +1234,34 @@ const handleAvatarClick = (url: string) => {
   border-radius: 8px;
   overflow: hidden;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+/* Message Actions */
+.message-actions {
+  display: flex;
+  align-items: center;
+  padding: 0 4px;
+  align-self: center; /* Center vertically relative to the bubble */
+}
+
+.message-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  background-color: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  color: #666;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.message-action-btn:hover {
+  background-color: #fff;
+  color: #333;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 </style>
