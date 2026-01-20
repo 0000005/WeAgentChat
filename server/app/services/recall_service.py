@@ -170,7 +170,7 @@ class RecallService:
         beijing_tz = timezone(timedelta(hours=8))
         now_time = datetime.now(timezone.utc).astimezone(beijing_tz)
         weekday_map = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
-        current_time = f"{now_time:%Y-%m-%d %H}点 {weekday_map[now_time.weekday()]}"
+        current_time = f"{now_time:%Y-%m-%d 约%H}点 {weekday_map[now_time.weekday()]}"
         instructions = get_prompt("recall/recall_instructions.txt").format(
             search_rounds=search_rounds,
             current_time=current_time,
