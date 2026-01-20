@@ -721,7 +721,7 @@ async def _run_chat_generation_task(
         now_time = datetime.now(timezone.utc).astimezone(beijing_tz)
         
         weekday_map = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
-        current_time = f"{now_time:%Y-%m-%d %H:%M:%S} {weekday_map[now_time.weekday()]}"
+        current_time = f"{now_time:%Y-%m-%d %H}点 {weekday_map[now_time.weekday()]}"
         
         persona_prompt = (friend.system_prompt if friend and friend.system_prompt else get_prompt("chat/default_system_prompt.txt"))
         if persona_prompt:

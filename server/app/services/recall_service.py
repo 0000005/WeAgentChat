@@ -168,7 +168,9 @@ class RecallService:
         # 4. 初始化 RecallAgent
         # 内部逻辑使用 UTC，但给 RecallAgent 的指示词建议使用北京时间以便更好地进行相对时间检索
         beijing_tz = timezone(timedelta(hours=8))
-        current_time = datetime.now(timezone.utc).astimezone(beijing_tz).strftime("%Y-%m-%d %H:%M:%S")
+        now_time = datetime.now(timezone.utc).astimezone(beijing_tz)
+        weekday_map = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+        current_time = f"{now_time:%Y-%m-%d %H}点 {weekday_map[now_time.weekday()]}"
         instructions = get_prompt("recall/recall_instructions.txt").format(
             search_rounds=search_rounds,
             current_time=current_time,
