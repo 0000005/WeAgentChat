@@ -176,16 +176,32 @@ const showToast = ref(false)
 const toastMessage = ref('')
 let toastTimeout: ReturnType<typeof setTimeout> | null = null
 
-const handleToggleThinking = () => {
-  toggleThinkingMode()
-  // Toast text based on new state
-  toastMessage.value = isThinkingMode.value ? '已开启思考模式' : '思考模式已关闭'
+const triggerToast = (message: string) => {
+  toastMessage.value = message
   showToast.value = true
 
   if (toastTimeout) clearTimeout(toastTimeout)
   toastTimeout = setTimeout(() => {
     showToast.value = false
   }, 2000)
+}
+
+const handleToggleThinking = () => {
+  toggleThinkingMode()
+  // Toast text based on new state
+  const message = isThinkingMode.value ? '已开启思考模式' : '思考模式已关闭'
+  triggerToast(message)
+}
+
+const handleCopyContent = async (content: string) => {
+  if (!content) return
+  try {
+    await navigator.clipboard.writeText(content)
+    triggerToast('复制成功')
+  } catch (err) {
+    console.error('Copy failed:', err)
+    triggerToast('复制失败')
+  }
 }
 
 const handleNewChat = async () => {
@@ -261,14 +277,14 @@ let intersectionObserver: IntersectionObserver | null = null
 
 const loadMore = async () => {
   if (!hasMoreMessages.value || sessionStore.isLoadingMore || !sessionStore.currentFriendId) return
-  
+
   const scrollEl = currentScrollEl
   const prevHeight = scrollEl?.scrollHeight || 0
   const prevScrollTop = scrollEl?.scrollTop || 0
-  
+
   const more = await sessionStore.loadMoreMessages(sessionStore.currentFriendId)
   hasMoreMessages.value = more
-  
+
   // Maintain scroll position after DOM updates
   if (scrollEl) {
     nextTick(() => {
@@ -304,7 +320,7 @@ watch(loadMoreTriggerRef, (el) => {
     intersectionObserver.disconnect()
     intersectionObserver = null
   }
-  
+
   if (el) {
     intersectionObserver = new IntersectionObserver(
       (entries) => {
@@ -424,7 +440,8 @@ const handleAvatarClick = (url: string) => {
                 <span></span><span></span><span></span>
               </div>
             </div>
-            <div v-else-if="!hasMoreMessages && messages.length >= sessionStore.INITIAL_MESSAGE_LIMIT" class="no-more-messages">
+            <div v-else-if="!hasMoreMessages && messages.length >= sessionStore.INITIAL_MESSAGE_LIMIT"
+              class="no-more-messages">
               已经到头了
             </div>
           </div>
@@ -437,12 +454,11 @@ const handleAvatarClick = (url: string) => {
             <div v-if="msg.role === 'system'" class="message-system">
               <span>{{ msg.content }}</span>
             </div>
-            
+
             <template v-else-if="msg.role === 'assistant'">
               <!-- AI 回复：动态拆分渲染 -->
-              <div v-for="(segment, sIndex) in parseMessageSegments(msg.content)" 
-                   :key="msg.id + '-' + sIndex" 
-                   class="message-group group-assistant">
+              <div v-for="(segment, sIndex) in parseMessageSegments(msg.content)" :key="msg.id + '-' + sIndex"
+                class="message-group group-assistant">
                 <div class="message-wrapper message-assistant group relative">
                   <!-- Avatar -->
                   <div class="message-avatar" @click="handleAvatarClick(getAssistantAvatar())">
@@ -462,12 +478,13 @@ const handleAvatarClick = (url: string) => {
                   <div class="message-actions">
                     <DropdownMenu>
                       <DropdownMenuTrigger as-child>
-                        <button class="message-action-btn opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100 transition-opacity">
+                        <button
+                          class="message-action-btn opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100 transition-opacity">
                           <MoreHorizontal :size="16" />
                         </button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="start">
-                        <DropdownMenuItem>
+                        <DropdownMenuItem @click="handleCopyContent(segment)">
                           <span>复制</span>
                         </DropdownMenuItem>
                       </DropdownMenuContent>
@@ -498,12 +515,13 @@ const handleAvatarClick = (url: string) => {
                 <div class="message-actions">
                   <DropdownMenu>
                     <DropdownMenuTrigger as-child>
-                      <button class="message-action-btn opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100 transition-opacity">
+                      <button
+                        class="message-action-btn opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100 transition-opacity">
                         <MoreHorizontal :size="16" />
                       </button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem>
+                      <DropdownMenuItem @click="handleCopyContent(msg.content)">
                         <span>复制</span>
                       </DropdownMenuItem>
                     </DropdownMenuContent>
@@ -559,7 +577,8 @@ const handleAvatarClick = (url: string) => {
     <ChatDrawerMenu v-if="!isElectron" v-model:open="drawerOpen" />
 
     <Dialog v-model:open="showAvatarPreview">
-      <DialogContent class="p-0 bg-transparent border-none shadow-none max-w-3xl w-auto flex justify-center items-center">
+      <DialogContent
+        class="p-0 bg-transparent border-none shadow-none max-w-3xl w-auto flex justify-center items-center">
         <img :src="previewAvatarUrl" class="max-w-full max-h-[80vh] object-contain rounded-md" alt="Avatar Preview" />
       </DialogContent>
     </Dialog>
@@ -710,8 +729,15 @@ const handleAvatarClick = (url: string) => {
 }
 
 @keyframes typing-fade {
-  0%, 100% { opacity: 0.6; }
-  50% { opacity: 1; }
+
+  0%,
+  100% {
+    opacity: 0.6;
+  }
+
+  50% {
+    opacity: 1;
+  }
 }
 
 .message-pop-in {
@@ -719,13 +745,14 @@ const handleAvatarClick = (url: string) => {
 }
 
 @keyframes message-pop-in {
-  from { 
-    opacity: 0; 
-    transform: scale(0.96) translateY(10px); 
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(10px);
   }
-  to { 
-    opacity: 1; 
-    transform: scale(1) translateY(0); 
+
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
   }
 }
 
@@ -884,7 +911,7 @@ const handleAvatarClick = (url: string) => {
   overflow: hidden;
   flex-shrink: 0;
   cursor: pointer;
-  
+
 }
 
 .message-avatar img {
@@ -985,12 +1012,25 @@ const handleAvatarClick = (url: string) => {
   animation: dots-wave 1.4s infinite ease-in-out both;
 }
 
-.loading-dots span:nth-child(1) { animation-delay: -0.32s; }
-.loading-dots span:nth-child(2) { animation-delay: -0.16s; }
+.loading-dots span:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.loading-dots span:nth-child(2) {
+  animation-delay: -0.16s;
+}
 
 @keyframes dots-wave {
-  0%, 80%, 100% { transform: scale(0); }
-  40% { transform: scale(1.0); }
+
+  0%,
+  80%,
+  100% {
+    transform: scale(0);
+  }
+
+  40% {
+    transform: scale(1.0);
+  }
 }
 
 .no-more-messages {
@@ -1241,7 +1281,8 @@ const handleAvatarClick = (url: string) => {
   display: flex;
   align-items: center;
   padding: 0 4px;
-  align-self: center; /* Center vertically relative to the bubble */
+  align-self: center;
+  /* Center vertically relative to the bubble */
 }
 
 .message-action-btn {
