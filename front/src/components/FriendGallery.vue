@@ -1,9 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { getStaticUrl } from '@/api/base'
-import { Search, LayoutGrid, ChevronDown, Plus } from 'lucide-vue-next'
+import { Search, LayoutGrid, ChevronDown, UserPlus, Sparkles, Plus } from 'lucide-vue-next'
 import { MessageResponse } from '@/components/ai-elements/message'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import {
   Dialog,
   DialogContent,
@@ -22,6 +28,7 @@ import { useToast } from '@/composables/useToast'
 import { Loader2 } from 'lucide-vue-next'
 
 import AssistantWizard from './AssistantWizard.vue'
+import FriendComposeDialog from './FriendComposeDialog.vue'
 
 const emit = defineEmits<{
   (e: 'back-chat'): void
@@ -52,6 +59,7 @@ const activeTemplate = ref<FriendTemplate | null>(null)
 const tagOptions = ref<string[]>([])
 const tagsSeeded = ref(false)
 const isWizardOpen = ref(false)
+const isComposeOpen = ref(false)
 const isCloning = ref(false)
 
 const friendStore = useFriendStore()
@@ -141,6 +149,13 @@ const getAvatar = (template: FriendTemplate) => {
 }
 
 const displayTags = computed(() => ['全部', ...tagOptions.value])
+const showAllTags = ref(false)
+const tagPreviewCount = computed(() => (selectedTag.value === '全部' ? 18 : 17))
+const visibleTags = computed(() => {
+  if (showAllTags.value) return displayTags.value
+  return displayTags.value.slice(0, tagPreviewCount.value)
+})
+const hasMoreTags = computed(() => displayTags.value.length > tagPreviewCount.value)
 
 watch(selectedTag, () => {
   fetchTemplates()
@@ -173,15 +188,43 @@ onMounted(() => {
 
     <section class="gallery-toolbar">
       <div class="gallery-tabs">
-        <button v-for="tag in displayTags" :key="tag" class="tab-btn" :class="{ active: selectedTag === tag }"
-          @click="selectedTag = tag">
-          {{ tag }}
+        <div class="gallery-tabs-list" :class="{ expanded: showAllTags }">
+          <button v-for="tag in visibleTags" :key="tag" class="tab-btn" :class="{ active: selectedTag === tag }"
+            @click="selectedTag = tag">
+            {{ tag }}
+          </button>
+        </div>
+        <button v-if="hasMoreTags" class="tab-toggle" @click="showAllTags = !showAllTags">
+          {{ showAllTags ? '收起' : '展开全部' }}
         </button>
       </div>
 
-      <div class="search-box">
-        <Search :size="16" class="search-icon" />
-        <input v-model="searchQuery" type="text" placeholder="搜索关键词或角色" class="search-input" />
+      <div class="toolbar-right">
+        <div class="search-box">
+          <Search :size="16" class="search-icon" />
+          <input v-model="searchQuery" type="text" placeholder="搜索关键词或角色" class="search-input" />
+        </div>
+
+        <div class="gallery-actions">
+          <DropdownMenu>
+            <DropdownMenuTrigger as-child>
+              <Button class="action-btn create-btn">
+                <Plus :size="16" class="mr-2" />
+                创建好友
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent class="create-menu" align="end">
+              <DropdownMenuItem class="create-item" @click="isWizardOpen = true">
+                <Sparkles :size="16" class="mr-2" />
+                自动创建
+              </DropdownMenuItem>
+              <DropdownMenuItem class="create-item" @click="isComposeOpen = true">
+                <UserPlus :size="16" class="mr-2" />
+                手动创建
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
     </section>
 
@@ -207,10 +250,26 @@ onMounted(() => {
         </div>
         <h3>暂无匹配的好友</h3>
         <p>可以尝试调整关键词，或创建你的专属 AI 伙伴。</p>
-        <Button class="empty-action" @click="isWizardOpen = true">
-          <Plus :size="16" class="mr-2" />
-          AI 创建
-        </Button>
+        <div class="empty-actions">
+          <DropdownMenu>
+            <DropdownMenuTrigger as-child>
+              <Button class="empty-action create-btn">
+                <Plus :size="16" class="mr-2" />
+                创建好友
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent class="create-menu" align="center">
+              <DropdownMenuItem class="create-item" @click="isWizardOpen = true">
+                <Sparkles :size="16" class="mr-2" />
+                自动创建
+              </DropdownMenuItem>
+              <DropdownMenuItem class="create-item" @click="isComposeOpen = true">
+                <UserPlus :size="16" class="mr-2" />
+                手动创建
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
 
       <div v-else class="gallery-grid">
@@ -281,23 +340,44 @@ onMounted(() => {
     </Dialog>
 
     <AssistantWizard v-model:open="isWizardOpen" @success="emit('back-chat')" />
+    <FriendComposeDialog v-model:open="isComposeOpen" mode="add" @success="emit('back-chat')" />
   </div>
 </template>
 
 <style scoped>
 .friend-gallery {
+  position: relative;
+  isolation: isolate;
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: linear-gradient(180deg, #f7f7f7 0%, #efefef 100%);
+  background: linear-gradient(180deg, #f6f7f6 0%, #eef2ef 55%, #f1f1f1 100%);
   overflow: hidden;
+}
+
+.friend-gallery::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 12% 8%, rgba(7, 193, 96, 0.08), transparent 38%),
+    radial-gradient(circle at 88% 18%, rgba(0, 0, 0, 0.04), transparent 42%),
+    radial-gradient(circle at 30% 90%, rgba(7, 193, 96, 0.06), transparent 45%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.friend-gallery>* {
+  position: relative;
+  z-index: 1;
 }
 
 .gallery-header {
   padding: 20px 130px 12px 24px;
   /* Right padding for global window controls */
-  border-bottom: 1px solid #e3e3e3;
-  background: #fdfdfd;
+  border-bottom: 1px solid #e5e8e5;
+  background: linear-gradient(180deg, #ffffff 0%, #f7f9f7 100%);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.04);
 }
 
 .gallery-header-inner {
@@ -339,35 +419,48 @@ onMounted(() => {
 
 .gallery-toolbar {
   display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  padding: 12px 20px 8px;
-  background: #f5f5f5;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px 24px;
+  background: rgba(247, 248, 247, 0.9);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+  backdrop-filter: blur(6px);
 }
 
 .gallery-tabs {
   display: flex;
   gap: 8px;
-  overflow-x: auto;
-  padding-bottom: 4px;
-  flex: 1 1 320px;
+  flex-wrap: nowrap;
+  width: 100%;
+  align-items: flex-start;
 }
 
-.gallery-tabs::-webkit-scrollbar {
-  height: 4px;
+.gallery-tabs-list {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  max-height: 34px;
+  /* Increase slightly to prevent cut-off */
+  overflow: hidden;
+  flex: 1;
 }
 
-.gallery-tabs::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.15);
-  border-radius: 999px;
+.gallery-tabs-list.expanded {
+  flex-wrap: wrap;
+  max-height: none;
+  overflow: visible;
 }
 
 .tab-btn {
-  padding: 6px 14px;
-  background: #e8e8e8;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 14px;
+  background: #f0f2f0;
   border: none;
   border-radius: 999px;
-  font-size: 12px;
+  font-size: 13px;
   color: #555;
   cursor: pointer;
   white-space: nowrap;
@@ -380,14 +473,73 @@ onMounted(() => {
   color: #fff;
 }
 
-.search-box {
+.tab-toggle {
+  height: 32px;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  background: #e6e6e6;
-  border-radius: 8px;
+  justify-content: center;
+  padding: 0 14px;
+  background: #fff;
+  border: 1px dashed rgba(7, 193, 96, 0.4);
+  border-radius: 999px;
+  font-size: 13px;
+  color: #049b4f;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.tab-toggle:hover {
+  background: rgba(7, 193, 96, 0.08);
+  border-color: rgba(7, 193, 96, 0.7);
+}
+
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.gallery-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.action-btn {
+  height: 32px;
+  border-radius: 999px;
+  font-size: 13px;
+  padding: 0 16px;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+}
+
+.action-btn.create-btn {
+  background: linear-gradient(135deg, #07c160 0%, #18d471 100%);
+  color: #fff;
+  border: none;
+}
+
+.action-btn.create-btn:hover {
+  background: linear-gradient(135deg, #06ad56 0%, #13c566 100%);
+}
+
+.search-box {
+  height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  background: #eef1ee;
+  border-radius: 999px;
+  /* Use rounded pill shape to match buttons if desired, but user likely wants consistent style. Let's stick to 8px or make it 999px for consistency */
+  border-radius: 18px;
+  /* Slightly rounder to match the "soft" feel */
   flex: 0 1 240px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
 }
 
 .search-icon {
@@ -421,7 +573,8 @@ onMounted(() => {
   padding: 16px;
   display: flex;
   gap: 12px;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.06);
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.06);
   cursor: pointer;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
@@ -436,8 +589,9 @@ onMounted(() => {
   height: 54px;
   border-radius: 12px;
   overflow: hidden;
-  background: #f4f4f4;
+  background: linear-gradient(135deg, #f2f4f2, #e6efe8);
   flex-shrink: 0;
+  border: 1px solid rgba(7, 193, 96, 0.18);
 }
 
 .card-avatar img {
@@ -541,13 +695,43 @@ onMounted(() => {
   transform: rotate(20deg);
 }
 
-.empty-action {
+.empty-actions {
   margin-top: 8px;
-  background: #07c160;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
-.empty-action:hover {
-  background: #06ad56;
+.empty-action {
+  border-radius: 999px;
+  height: 34px;
+  font-size: 12px;
+}
+
+.empty-action.create-btn {
+  background: linear-gradient(135deg, #07c160 0%, #18d471 100%);
+  color: #fff;
+}
+
+.empty-action.create-btn:hover {
+  background: linear-gradient(135deg, #06ad56 0%, #13c566 100%);
+}
+
+:global(.create-menu) {
+  min-width: 160px;
+  border-radius: 12px;
+  padding: 6px;
+}
+
+:global(.create-item) {
+  gap: 8px;
+  border-radius: 8px;
+}
+
+:global(.create-item[data-highlighted]) {
+  background: rgba(7, 193, 96, 0.12);
+  color: #047a40;
 }
 
 .skeleton {
@@ -735,6 +919,21 @@ onMounted(() => {
 @media (max-width: 640px) {
   .back-btn {
     display: inline-flex;
+  }
+
+  .toolbar-right {
+    flex: 1 1 100%;
+    justify-content: space-between;
+  }
+
+  .gallery-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .action-btn {
+    flex: 1;
+    justify-content: center;
   }
 
   .gallery-toolbar {
