@@ -323,6 +323,9 @@ def get_messages_by_friend(db: Session, friend_id: int, skip: int = 0, limit: in
     """
     Get all messages for a specific friend across all sessions.
     Messages are merged and sorted by create_time.
+    
+    NOTE: To support pagination correctly (newest messages first for initial load),
+    we query in DESC order and then reverse the result.
     """
     # Get all non-deleted sessions for this friend
     sessions = (
@@ -335,15 +338,17 @@ def get_messages_by_friend(db: Session, friend_id: int, skip: int = 0, limit: in
     if not session_ids:
         return []
     
-    # Get all messages from these sessions
-    return (
+    # Get messages in DESC order (newest first) for pagination, then reverse
+    messages = (
         db.query(Message)
         .filter(Message.session_id.in_(session_ids), Message.deleted == False)
-        .order_by(Message.create_time.asc())
+        .order_by(Message.create_time.desc())
         .offset(skip)
         .limit(limit)
         .all()
     )
+    # Reverse to display in chronological order (oldest to newest)
+    return list(reversed(messages))
 
 def get_sessions_by_friend(db: Session, friend_id: int) -> List[ChatSession]:
     """
@@ -536,7 +541,7 @@ def archive_session(db: Session, session_id: int):
         logger.warning(f"[Archive] Session {session_id} archived without memory generation (Missing Embedding Config).")
         return
 
-    # 标记为处理中（实际记忆生成由后台worker异步处理，完成后会设置最终状态）
+    # 标记为处理中（实际记忆生成由后台任务统一处理，完成后会设置最终状态）
     # 状态 3 = 处理中，防止 session 被误选
     session.memory_generated = 3
     session.update_time = datetime.now(timezone.utc)  # 更新时间以确保不会误选
@@ -1023,3 +1028,55 @@ async def process_memory_queue(db: Session):
             logger.error(f"[Memory Worker] Error processing session {session_id}: {str(e)}")
             # 失败后可以选择不再放回，由后续的过期检查兜底，或者放回
             # 这里我们不放回，因为若 _archive_session_async 报错通常是 SDK 问题，重试也可能失败
+
+def recall_message(db: Session, message_id: int) -> bool:
+    """
+    Recall a user message.
+    1. Check if session is active (not archived).
+    2. Change message content to "你撤回了一条消息" and role to "system".
+    3. If the next message is an assistant reply, soft delete it.
+    """
+    message = db.query(Message).filter(Message.id == message_id, Message.deleted == False).first()
+    if not message:
+        logger.warning(f"[Recall] Message {message_id} not found.")
+        return False
+        
+    if message.role != 'user':
+        logger.warning(f"[Recall] Cannot recall message {message_id} with role {message.role}.")
+        return False
+
+    session = db.query(ChatSession).filter(ChatSession.id == message.session_id).first()
+    if not session:
+        return False
+        
+    # Check if session is archived (memory_generated != 0)
+    if session.memory_generated != 0:
+        logger.warning(f"[Recall] Cannot recall message in archived session {session.id}.")
+        return False
+        
+    # Logic:
+    # 1. Update target message
+    message.content = "你撤回了一条消息"
+    message.role = "system"
+    # Note: We do NOT soft delete the user message, we transform it.
+    
+    # 2. Find and delete subsequent assistant message
+    # Get the next message in the same session (by time and ID)
+    next_msg = (
+        db.query(Message)
+        .filter(
+             Message.session_id == message.session_id,
+             Message.deleted == False,
+             (Message.create_time > message.create_time) | ((Message.create_time == message.create_time) & (Message.id > message.id))
+        )
+        .order_by(Message.create_time.asc(), Message.id.asc())
+        .first()
+    )
+    
+    if next_msg and next_msg.role == 'assistant':
+        next_msg.deleted = True
+        logger.info(f"[Recall] Cascading delete of assistant message {next_msg.id}")
+        
+    db.commit()
+    logger.info(f"[Recall] Message {message_id} recalled successfully.")
+    return True

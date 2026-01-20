@@ -302,3 +302,18 @@ export async function clearFriendMessages(friendId: number): Promise<void> {
     throw new Error('Failed to clear friend messages')
   }
 }
+
+export async function recallMessage(messageId: number): Promise<void> {
+  const response = await fetch(withApiBase(`/api/chat/messages/${messageId}/recall`), {
+    method: 'POST',
+  })
+  if (!response.ok) {
+    // Try to parse error detail from backend
+    try {
+      const errorData = await response.json()
+      throw new Error(errorData.detail || 'Failed to recall message')
+    } catch {
+      throw new Error('Failed to recall message')
+    }
+  }
+}

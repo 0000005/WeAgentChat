@@ -312,6 +312,15 @@ export const useSessionStore = defineStore('session', () => {
                     // Stream started - mark as streaming immediately
                     streamingMap.value[friendId] = true
                     friendStore.updateLastMessage(friendId, '对方正在输入...', 'assistant')
+
+                    // Update local user message with real database ID
+                    if (data.user_message_id && messagesMap.value[friendId]) {
+                        const localUserMsg = messagesMap.value[friendId].find(m => m.id === userMsg.id)
+                        if (localUserMsg) {
+                            localUserMsg.id = data.user_message_id
+                            localUserMsg.sessionId = data.session_id
+                        }
+                    }
                 } else if (event === 'thinking') {
                     streamingMap.value[friendId] = true
                     const delta = data.delta || ''
@@ -432,6 +441,49 @@ export const useSessionStore = defineStore('session', () => {
         }
     }
 
+    // Recall a message
+    const recallMessage = async (messageId: number) => {
+        try {
+            await ChatAPI.recallMessage(messageId)
+
+            // Find message locally in current friend's list
+            // Note: messagesMap stores all messages for a friend
+            if (!currentFriendId.value) return
+            const messages = messagesMap.value[currentFriendId.value]
+            if (!messages) return
+
+            const index = messages.findIndex(m => m.id === messageId)
+            if (index !== -1) {
+                // Update the recalled message
+                messages[index].content = '你撤回了一条消息'
+                messages[index].role = 'system'
+                // Clear any other properties if needed
+
+                // If this was the last message, update the sidebar preview
+                if (index === messages.length - 1) {
+                    friendStore.updateLastMessage(currentFriendId.value, '你撤回了一条消息', 'system')
+                }
+
+                // Check if next message is assistant and remove it (cascade delete)
+                if (index + 1 < messages.length) {
+                    const nextMsg = messages[index + 1]
+                    if (nextMsg.role === 'assistant') {
+                        // Backend service deletes the FIRST assistant message after the recalled user message
+                        // So we remove it here too
+                        messages.splice(index + 1, 1)
+                        // If we just removed the last message, update preview again
+                        if (index === messages.length - 1) {
+                            friendStore.updateLastMessage(currentFriendId.value, '你撤回了一条消息', 'system')
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Failed to recall message:', error)
+            throw error
+        }
+    }
+
     // Delete a specific session
     const deleteSession = async (sessionId: number) => {
         try {
@@ -475,6 +527,7 @@ export const useSessionStore = defineStore('session', () => {
         loadSpecificSession,
         resetToMergedView,
         clearFriendHistory,
+        recallMessage,
         deleteSession,
         startNewSession: async () => {
             if (!currentFriendId.value) return

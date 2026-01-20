@@ -193,3 +193,18 @@ async def send_message_to_friend(
             yield f"event: {event_type}\ndata: {json_data}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+@router.post("/messages/{message_id}/recall")
+def recall_message(
+    *,
+    db: Session = Depends(deps.get_db),
+    message_id: int,
+):
+    """
+    Withdraw a user message.
+    """
+    success = chat_service.recall_message(db, message_id=message_id)
+    if not success:
+        # 可能是消息不存在，或者不是User消息，或者会话已归档
+        raise HTTPException(status_code=400, detail="Recall failed. Check if message exists, is yours, and session is active.")
+    return {"ok": True}

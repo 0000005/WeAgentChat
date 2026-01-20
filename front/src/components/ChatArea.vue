@@ -210,6 +210,64 @@ const handleNewChat = async () => {
   // but usually new messages trigger scroll.
 }
 
+
+// Recall Logic
+const recallDialogOpen = ref(false)
+const messageToRecall = ref<number | null>(null)
+const messageToRecallContent = ref<string | null>(null)
+
+const canRecall = (msg: any) => {
+  // Only user messages
+  if (msg.role !== 'user') return false
+
+  // For messages with sessionId, check if session is archived
+  // memory_generated == 0 means active
+  if (msg.sessionId) {
+    const session = sessionStore.currentSessions.find(s => s.id === msg.sessionId)
+    if (session && session.memory_generated !== 0) {
+      return false // Session is archived
+    }
+  }
+  // For messages without sessionId (locally sent, not yet synced) or unknown sessions, allow recall attempt
+  // Backend will do final validation
+  return true
+}
+
+const handleRecallClick = (msg: any) => {
+  if (!canRecall(msg)) {
+    // Actually we shouldn't even show the button if !canRecall, but double check
+    triggerToast('当前会话已归档，无法撤回消息')
+    return
+  }
+  messageToRecall.value = msg.id
+  messageToRecallContent.value = msg.content // Store original content
+  recallDialogOpen.value = true
+}
+
+const confirmRecall = async () => {
+  if (!messageToRecall.value) return
+  const originalContent = messageToRecallContent.value
+  try {
+    await sessionStore.recallMessage(messageToRecall.value)
+    triggerToast('消息已撤回')
+    // Restore content to input box for re-editing
+    if (originalContent) {
+      input.value = originalContent
+    }
+  } catch (e: any) {
+    console.error(e)
+    // Show specific error message if available
+    const errorMsg = e?.message?.includes('archived') || e?.message?.includes('归档')
+      ? '会话已归档，无法撤回'
+      : '撤回失败'
+    triggerToast(errorMsg)
+  } finally {
+    recallDialogOpen.value = false
+    messageToRecall.value = null
+    messageToRecallContent.value = null
+  }
+}
+
 /**
  * ============================================================
  * Electron 模式检测与 Web 模式回退逻辑
@@ -524,6 +582,9 @@ const handleAvatarClick = (url: string) => {
                       <DropdownMenuItem @click="handleCopyContent(msg.content)">
                         <span>复制</span>
                       </DropdownMenuItem>
+                      <DropdownMenuItem v-if="canRecall(msg)" @click="handleRecallClick(msg)">
+                        <span class="text-red-500">撤回</span>
+                      </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
@@ -607,6 +668,25 @@ const handleAvatarClick = (url: string) => {
           <Button type="button" variant="default" @click="handleGoToSettings"
             class="bg-emerald-600 hover:bg-emerald-700">
             去配置
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    <!-- Confirmation Dialog for Recall -->
+    <Dialog v-model:open="recallDialogOpen">
+      <DialogContent class="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>撤回消息</DialogTitle>
+          <DialogDescription>
+            确定要撤回这条消息吗？撤回后，AI 的相关回复也会被一并删除。
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter class="sm:justify-end gap-2">
+          <Button variant="ghost" @click="recallDialogOpen = false">
+            取消
+          </Button>
+          <Button variant="destructive" @click="confirmRecall">
+            确定撤回
           </Button>
         </DialogFooter>
       </DialogContent>
