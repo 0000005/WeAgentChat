@@ -1,6 +1,7 @@
 import asyncio
 import traceback
 import logging
+import json
 from pathlib import Path
 import sys
 from contextlib import asynccontextmanager
@@ -9,6 +10,9 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
+
+from agents import add_trace_processor, set_trace_processors
+from agents.tracing import Trace, Span, TracingProcessor
 
 # 1. 初始日志设置 (尽可能早地配置)
 from app.core.logging import setup_logging, refresh_app_logging
@@ -22,6 +26,80 @@ from app.db.session import SessionLocal
 from app.services.chat_service import check_and_archive_expired_sessions
 
 logger = logging.getLogger(__name__)
+trace_logger = logging.getLogger("openai.agents.tracing")
+
+def _serialize_span_data(span_data: object):
+    if span_data is None:
+        return None
+    if hasattr(span_data, "export"):
+        try:
+            return span_data.export()
+        except Exception:
+            return None
+    if hasattr(span_data, "model_dump"):
+        try:
+            return span_data.model_dump()
+        except Exception:
+            return None
+    if hasattr(span_data, "__dict__"):
+        try:
+            return dict(span_data.__dict__)
+        except Exception:
+            return None
+    return str(span_data)
+
+def _export_span(span: Span):
+    if hasattr(span, "export"):
+        try:
+            return span.export()
+        except Exception:
+            return None
+    return None
+
+class LocalTraceProcessor(TracingProcessor):
+    def on_trace_start(self, trace: Trace) -> None:
+        trace_logger.info(json.dumps({
+            "event": "trace_start",
+            "trace_id": getattr(trace, "trace_id", None),
+            "workflow_name": getattr(trace, "workflow_name", None),
+        }, ensure_ascii=False, default=str))
+
+    def on_trace_end(self, trace: Trace) -> None:
+        trace_logger.info(json.dumps({
+            "event": "trace_end",
+            "trace_id": getattr(trace, "trace_id", None),
+            "workflow_name": getattr(trace, "workflow_name", None),
+            "duration_ms": getattr(trace, "duration_ms", None),
+        }, ensure_ascii=False, default=str))
+
+    def on_span_start(self, span: Span) -> None:
+        trace_logger.info(json.dumps({
+            "event": "span_start",
+            "trace_id": getattr(span, "trace_id", None),
+            "span_id": getattr(span, "span_id", None),
+            "parent_id": getattr(span, "parent_id", None),
+            "span": _export_span(span),
+        }, ensure_ascii=False, default=str))
+
+    def on_span_end(self, span: Span) -> None:
+        trace_logger.info(json.dumps({
+            "event": "span_end",
+            "trace_id": getattr(span, "trace_id", None),
+            "span_id": getattr(span, "span_id", None),
+            "parent_id": getattr(span, "parent_id", None),
+            "duration_ms": getattr(span, "duration_ms", None),
+            "span": _export_span(span),
+        }, ensure_ascii=False, default=str))
+
+    def shutdown(self) -> None:
+        return
+
+    def force_flush(self) -> None:
+        return
+
+# Replace default processors to avoid OpenAI cloud export while keeping local traces.
+set_trace_processors([])
+add_trace_processor(LocalTraceProcessor())
 
 # 定义应用实例
 app = FastAPI(title=settings.PROJECT_NAME)
