@@ -4,7 +4,7 @@ from typing import List, Optional
 from datetime import datetime, timezone
 from app.models.friend import Friend
 from app.models.chat import ChatSession, Message
-from app.models.llm import LLMConfig
+from app.services.llm_service import llm_service
 from app.schemas.friend import FriendCreate, FriendUpdate, FriendRecommendationItem
 from app.prompt.loader import load_prompt
 from openai import AsyncOpenAI
@@ -177,7 +177,7 @@ async def recommend_friends_by_topic_stream(db: Session, topic: str, exclude_nam
         return
 
     # 3. 获取 LLM 配置
-    llm_config = db.query(LLMConfig).filter(LLMConfig.deleted == False).order_by(LLMConfig.id.desc()).first()
+    llm_config = llm_service.get_active_config(db)
     if not llm_config:
         yield {"event": "error", "data": {"detail": "请先在设置中配置 LLM 模型"}}
         return

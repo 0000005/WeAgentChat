@@ -1,10 +1,36 @@
 from fastapi.testclient import TestClient
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 from app.main import app
 from app.api.deps import get_db
+from app.services.settings_service import SettingsService
+from tests.conftest import engine
 from unittest.mock import patch, AsyncMock, MagicMock
 from openai.types.responses import ResponseTextDeltaEvent
 import json
+
+MockSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+def activate_llm_config(db: Session, llm_config):
+    db.add(llm_config)
+    db.commit()
+    db.refresh(llm_config)
+    SettingsService.set_setting(
+        db,
+        "chat",
+        "active_llm_config_id",
+        llm_config.id,
+        "int",
+        "当前聊天模型配置ID",
+    )
+    SettingsService.set_setting(
+        db,
+        "memory",
+        "recall_enabled",
+        False,
+        "bool",
+        "是否启用记忆召回功能",
+    )
+    return llm_config
 
 def create_mock_event(delta, index):
     mock_event = MagicMock()
@@ -29,9 +55,7 @@ def test_send_message(client: TestClient, db: Session):
         api_key="mock_key",
         model_name="glm-4-flash"
     )
-    
-    db.add(llm_config)
-    db.commit()
+    activate_llm_config(db, llm_config)
 
     # 1. Create a Friend (needed for session)
     friend_data = {"name": "Test Friend", "is_preset": False, "system_prompt": "You are a helpful test assistant."}
@@ -55,7 +79,8 @@ def test_send_message(client: TestClient, db: Session):
     mock_runner_result = MagicMock()
     mock_runner_result.stream_events = mock_stream_events
 
-    with patch("app.services.chat_service.Runner.run_streamed", return_value=mock_runner_result):
+    with patch("app.services.chat_service.Runner.run_streamed", return_value=mock_runner_result), \
+         patch("app.services.chat_service.SessionLocal", MockSessionLocal):
         response = client.post(f"/api/chat/sessions/{session_id}/messages", json=msg_data)
         assert response.status_code == 200
         
@@ -93,10 +118,10 @@ def test_send_message_thinking(client: TestClient, db: Session):
     llm_config = LLMConfig(
         base_url="https://mock.url",
         api_key="mock_key",
-        model_name="deepseek-r1"
+        model_name="deepseek-r1",
+        capability_reasoning=True
     )
-    db.add(llm_config)
-    db.commit()
+    activate_llm_config(db, llm_config)
 
     # 1. Create Friend & Session
     friend_data = {"name": "Test Friend", "is_preset": False}
@@ -116,7 +141,8 @@ def test_send_message_thinking(client: TestClient, db: Session):
     mock_runner_result = MagicMock()
     mock_runner_result.stream_events = mock_stream_events
 
-    with patch("app.services.chat_service.Runner.run_streamed", return_value=mock_runner_result):
+    with patch("app.services.chat_service.Runner.run_streamed", return_value=mock_runner_result), \
+         patch("app.services.chat_service.SessionLocal", MockSessionLocal):
         response = client.post(f"/api/chat/sessions/{session_id}/messages", json={"content": "Hi", "enable_thinking": True})
         assert response.status_code == 200
         
@@ -134,12 +160,12 @@ def test_send_message_thinking(client: TestClient, db: Session):
                 events.append(last_event)
             if line_str.startswith("data: "):
                 data = json.loads(line_str[6:])
-                if last_event == "thinking":
+                if last_event == "model_thinking":
                     thinking_content += data.get("delta", "")
                 elif last_event == "message":
                     message_content += data.get("delta", "")
 
-        assert "thinking" in events
+        assert "model_thinking" in events
         assert "message" in events
         assert thinking_content == "Thinking..."
         assert message_content == "Result"
@@ -159,8 +185,7 @@ def test_send_message_llm_error(client: TestClient, db: Session):
         api_key="mock_key",
         model_name="mock-model"
     )
-    db.add(llm_config)
-    db.commit()
+    activate_llm_config(db, llm_config)
 
     # 1. Create Friend & Session
     friend_data = {"name": "Test Friend", "is_preset": False}
@@ -171,7 +196,8 @@ def test_send_message_llm_error(client: TestClient, db: Session):
     session_id = s_resp.json()["id"]
 
     # 2. Mock Runner to raise an exception
-    with patch("app.services.chat_service.Runner.run_streamed", side_effect=Exception("LLM API Error")):
+    with patch("app.services.chat_service.Runner.run_streamed", side_effect=Exception("LLM API Error")), \
+         patch("app.services.chat_service.SessionLocal", MockSessionLocal):
         response = client.post(f"/api/chat/sessions/{session_id}/messages", json={"content": "Hi"})
         assert response.status_code == 200
         
@@ -187,8 +213,7 @@ def test_send_message_llm_error(client: TestClient, db: Session):
                 if "detail" in data:
                     error_detail = data["detail"]
 
-        # Should have start, error, and done events
+        # Should have start and error events
         assert "start" in events
         assert "error" in events
-        assert "done" in events
         assert "LLM API Error" in error_detail

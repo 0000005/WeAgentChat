@@ -4,14 +4,18 @@ import statistics
 import time
 
 import httpx
+import pytest
 from agents import Agent, ModelSettings, Runner, set_default_openai_api, set_default_openai_client
 from openai import AsyncOpenAI
 
-BASE_URL = "https://api.z.ai/api/coding/paas/v4/"
-CHAT_COMPLETIONS_URL = "https://api.z.ai/api/coding/paas/v4/chat/completions"
-API_KEY = "xx"
-MODEL_NAME = "glm-4.7"
-RUNS = 10
+BASE_URL = os.getenv("LATENCY_TEST_BASE_URL") or os.getenv("MEMOBASE_LLM_BASE_URL") or os.getenv("OPENAI_BASE_URL")
+API_KEY = os.getenv("LATENCY_TEST_API_KEY") or os.getenv("MEMOBASE_LLM_API_KEY") or os.getenv("OPENAI_API_KEY")
+MODEL_NAME = os.getenv("LATENCY_TEST_MODEL") or os.getenv("MEMOBASE_BEST_LLM_MODEL") or "gpt-4o-mini"
+RUNS = int(os.getenv("LATENCY_TEST_RUNS", "10"))
+
+if BASE_URL:
+    BASE_URL = BASE_URL.rstrip("/") + "/"
+CHAT_COMPLETIONS_URL = os.getenv("LATENCY_TEST_CHAT_URL") or (f"{BASE_URL}chat/completions" if BASE_URL else None)
 
 
 async def _measure_agent_latency() -> list[float]:
@@ -74,6 +78,8 @@ def _format_stats(name: str, timings: list[float]) -> str:
 
 
 def test_openai_agent_vs_http_latency():
+    if not API_KEY or not BASE_URL or not CHAT_COMPLETIONS_URL:
+        pytest.skip("Missing latency test configuration (API_KEY/BASE_URL).")
     agent_timings = asyncio.run(_measure_agent_latency())
     http_timings = asyncio.run(_measure_http_latency())
 

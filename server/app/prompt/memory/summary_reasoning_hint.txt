@@ -1,0 +1,1 @@
+When summarizing memories, think step by step internally before producing the final concise summary. Do not reveal the reasoning steps.

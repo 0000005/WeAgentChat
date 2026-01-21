@@ -14,12 +14,14 @@ export const useSettingsStore = defineStore('settings', () => {
     // ===== Chat 配置 =====
     // 是否启用深度思考模式，默认 false
     const enableThinking = ref<boolean>(false)
+    const activeLlmConfigId = ref<number | null>(null)
 
     // ===== Memory 配置 =====
     const recallEnabled = ref<boolean>(true)
     const searchRounds = ref<number>(3)
     const eventTopk = ref<number>(5)
     const similarityThreshold = ref<number>(0.5)
+    const activeEmbeddingConfigId = ref<number | null>(null)
 
     // ===== User 配置 =====
     const userAvatar = ref<string>('')
@@ -54,7 +56,9 @@ export const useSettingsStore = defineStore('settings', () => {
         isSaving.value = true
         try {
             const payload = Object.fromEntries(
-                Object.entries(fieldMapping).map(([key, ref]) => [key, ref.value])
+                Object.entries(fieldMapping)
+                    .map(([key, ref]) => [key, ref.value])
+                    .filter(([, value]) => value !== null && value !== undefined)
             )
             console.log(`[SettingsStore] Saving ${groupName} settings payload:`, payload)
             const response = await SettingsAPI.updateSettingsBulk(groupName, payload)
@@ -84,7 +88,8 @@ export const useSettingsStore = defineStore('settings', () => {
      */
     const fetchChatSettings = () =>
         fetchSettings('chat', {
-            enable_thinking: enableThinking
+            enable_thinking: enableThinking,
+            active_llm_config_id: activeLlmConfigId
         })
 
     /**
@@ -92,7 +97,8 @@ export const useSettingsStore = defineStore('settings', () => {
      */
     const saveChatSettings = () =>
         saveSettings('chat', {
-            enable_thinking: enableThinking
+            enable_thinking: enableThinking,
+            active_llm_config_id: activeLlmConfigId
         })
 
     /**
@@ -103,7 +109,8 @@ export const useSettingsStore = defineStore('settings', () => {
             recall_enabled: recallEnabled,
             search_rounds: searchRounds,
             event_topk: eventTopk,
-            similarity_threshold: similarityThreshold
+            similarity_threshold: similarityThreshold,
+            active_embedding_config_id: activeEmbeddingConfigId
         })
 
     const saveMemorySettings = () =>
@@ -111,7 +118,8 @@ export const useSettingsStore = defineStore('settings', () => {
             recall_enabled: recallEnabled,
             search_rounds: searchRounds,
             event_topk: eventTopk,
-            similarity_threshold: similarityThreshold
+            similarity_threshold: similarityThreshold,
+            active_embedding_config_id: activeEmbeddingConfigId
         })
 
     /**
@@ -146,10 +154,12 @@ export const useSettingsStore = defineStore('settings', () => {
         // State
         passiveTimeout,
         enableThinking,
+        activeLlmConfigId,
         recallEnabled,
         searchRounds,
         eventTopk,
         similarityThreshold,
+        activeEmbeddingConfigId,
         userAvatar,
         isLoading,
         isSaving,

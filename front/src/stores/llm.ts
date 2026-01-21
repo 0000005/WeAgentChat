@@ -1,65 +1,106 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { getLlmConfig, updateLlmConfig, testLlmConfig, type LLMConfigUpdate, type LLMTestResult } from '@/api/llm'
+import {
+  getLlmConfigs,
+  createLlmConfig,
+  updateLlmConfig,
+  deleteLlmConfig,
+  testLlmConfig,
+  type LLMConfig,
+  type LLMConfigCreate,
+  type LLMConfigUpdate,
+  type LLMTestResult
+} from '@/api/llm'
 
 export const useLlmStore = defineStore('llm', () => {
-  const apiBaseUrl = ref('')
-  const apiKey = ref('')
-  const modelName = ref('gpt-3.5-turbo')
+  const configs = ref<LLMConfig[]>([])
   const isLoading = ref(false)
   const isTesting = ref(false)
   const error = ref<string | null>(null)
   const testResult = ref<LLMTestResult | null>(null)
 
-  async function fetchConfig() {
+  const upsertConfig = (config: LLMConfig) => {
+    const index = configs.value.findIndex(item => item.id === config.id)
+    if (index >= 0) {
+      configs.value.splice(index, 1, config)
+    } else {
+      configs.value.unshift(config)
+    }
+  }
+
+  async function fetchConfigs() {
     isLoading.value = true
     error.value = null
     try {
-      const config = await getLlmConfig()
-      apiBaseUrl.value = config.base_url || ''
-      apiKey.value = config.api_key || ''
-      modelName.value = config.model_name || 'gpt-3.5-turbo'
+      const list = await getLlmConfigs(0, 100)
+      configs.value = list
     } catch (e: any) {
-      console.error('Failed to fetch LLM config:', e)
+      console.error('Failed to fetch LLM configs:', e)
       error.value = e.message || 'Failed to fetch configuration'
     } finally {
       isLoading.value = false
     }
   }
 
-  async function saveConfig() {
+  function getConfigById(id: number | null) {
+    if (!id) return null
+    return configs.value.find(item => item.id === id) || null
+  }
+
+  async function createConfig(data: LLMConfigCreate) {
     isLoading.value = true
     error.value = null
     try {
-      const updateData: LLMConfigUpdate = {
-        base_url: apiBaseUrl.value || null, // Convert empty string to null if preferred, or keep as string
-        api_key: apiKey.value || null,
-        model_name: modelName.value || 'gpt-3.5-turbo'
-      }
-      const config = await updateLlmConfig(updateData)
-      // Update state with returned config
-      apiBaseUrl.value = config.base_url || ''
-      apiKey.value = config.api_key || ''
-      modelName.value = config.model_name || 'gpt-3.5-turbo'
+      const config = await createLlmConfig(data)
+      upsertConfig(config)
+      return config
     } catch (e: any) {
-      console.error('Failed to save LLM config:', e)
-      error.value = e.message || 'Failed to save configuration'
+      console.error('Failed to create LLM config:', e)
+      error.value = e.message || 'Failed to create configuration'
       throw e
     } finally {
       isLoading.value = false
     }
   }
 
-  async function testConfig(): Promise<LLMTestResult> {
+  async function updateConfig(id: number, data: LLMConfigUpdate) {
+    isLoading.value = true
+    error.value = null
+    try {
+      const config = await updateLlmConfig(id, data)
+      upsertConfig(config)
+      return config
+    } catch (e: any) {
+      console.error('Failed to update LLM config:', e)
+      error.value = e.message || 'Failed to update configuration'
+      throw e
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  async function removeConfig(id: number) {
+    isLoading.value = true
+    error.value = null
+    try {
+      const config = await deleteLlmConfig(id)
+      configs.value = configs.value.filter(item => item.id !== id)
+      return config
+    } catch (e: any) {
+      console.error('Failed to delete LLM config:', e)
+      error.value = e.message || 'Failed to delete configuration'
+      throw e
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  async function testConfig(payload: LLMConfigUpdate): Promise<LLMTestResult> {
     isTesting.value = true
     testResult.value = null
     error.value = null
     try {
-      const result = await testLlmConfig({
-        base_url: apiBaseUrl.value || null,
-        api_key: apiKey.value || null,
-        model_name: modelName.value || 'gpt-3.5-turbo'
-      })
+      const result = await testLlmConfig(payload)
       testResult.value = result
       return result
     } catch (e: any) {
@@ -71,21 +112,20 @@ export const useLlmStore = defineStore('llm', () => {
     }
   }
 
-  const isConfigured = computed(() => {
-    return !!apiBaseUrl.value && apiBaseUrl.value.trim().length > 0
-  })
+  const hasConfigs = computed(() => configs.value.length > 0)
 
   return {
-    apiBaseUrl,
-    apiKey,
-    modelName,
+    configs,
     isLoading,
     isTesting,
     error,
     testResult,
-    isConfigured,
-    fetchConfig,
-    saveConfig,
+    hasConfigs,
+    fetchConfigs,
+    getConfigById,
+    createConfig,
+    updateConfig,
+    removeConfig,
     testConfig
   }
 })

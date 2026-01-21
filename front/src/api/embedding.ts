@@ -2,33 +2,39 @@ import { withApiBase } from './base'
 
 export interface EmbeddingSetting {
     id: number
+    config_name: string | null
     embedding_provider: string | null
     embedding_api_key: string | null
     embedding_base_url: string | null
     embedding_dim: number | null
     embedding_model: string | null
     embedding_max_token_size: number | null
+    is_verified: boolean | null
     create_time: string
     update_time: string
     deleted: boolean
 }
 
 export interface EmbeddingSettingCreate {
+    config_name?: string | null
     embedding_provider?: string | null
     embedding_api_key?: string | null
     embedding_base_url?: string | null
     embedding_dim?: number | null
     embedding_model?: string | null
     embedding_max_token_size?: number | null
+    is_verified?: boolean | null
 }
 
 export interface EmbeddingSettingUpdate {
+    config_name?: string | null
     embedding_provider?: string | null
     embedding_api_key?: string | null
     embedding_base_url?: string | null
     embedding_dim?: number | null
     embedding_model?: string | null
     embedding_max_token_size?: number | null
+    is_verified?: boolean | null
 }
 
 export async function getEmbeddingSettings(skip: number = 0, limit: number = 100): Promise<EmbeddingSetting[]> {
@@ -59,6 +65,17 @@ export async function updateEmbeddingSetting(id: number, data: EmbeddingSettingU
     })
     if (!response.ok) {
         throw new Error('Failed to update embedding setting')
+    }
+    return response.json()
+}
+
+export async function deleteEmbeddingSetting(id: number): Promise<EmbeddingSetting> {
+    const response = await fetch(withApiBase(`/api/embedding-settings/${id}`), {
+        method: 'DELETE'
+    })
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ detail: 'Failed to delete embedding setting' }))
+        throw new Error(error.detail || 'Failed to delete embedding setting')
     }
     return response.json()
 }

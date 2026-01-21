@@ -92,7 +92,7 @@ async def test_recall_service_returns_events_from_seed_data():
             },
         )
 
-        async def fake_run(_agent, _messages):
+        async def fake_run(_agent, _messages, **_kwargs):
             return SimpleNamespace(
                 new_items=[
                     tool_call_item,
@@ -118,9 +118,11 @@ async def test_recall_service_returns_events_from_seed_data():
         finally:
             Runner.run = original_run  # type: ignore[assignment]
 
-        assert isinstance(result, list)
-        assert len(result) == 2
-        tool_call, tool_output = result
+        assert isinstance(result, dict)
+        assert "injected_messages" in result
+        injected = result["injected_messages"]
+        assert len(injected) == 2
+        tool_call, tool_output = injected
         assert tool_call.get("type") == "function_call"
         assert tool_call.get("name") == "recall_memory"
         assert tool_output.get("type") == "function_call_output"

@@ -8,13 +8,12 @@ import asyncio
 from asyncio import Queue
 from app.models.chat import ChatSession, Message
 from app.models.friend import Friend
-from app.models.llm import LLMConfig
-from app.models.embedding import EmbeddingSetting
 from app.schemas import chat as chat_schemas
 from datetime import datetime, timedelta, timezone
 from app.services.recall_service import RecallService
 from app.services.settings_service import SettingsService
 from app.services.llm_service import llm_service
+from app.services.embedding_service import embedding_service
 from app.services.memo.bridge import MemoService
 from app.services.memo.constants import DEFAULT_USER_ID, DEFAULT_SPACE_ID
 from app.prompt import get_prompt
@@ -530,8 +529,8 @@ def archive_session(db: Session, session_id: int):
         return
 
     # 检查向量化配置
-    embedding_config = db.query(EmbeddingSetting).filter(EmbeddingSetting.deleted == False).order_by(EmbeddingSetting.id.desc()).first()
-    if not embedding_config or not embedding_config.embedding_base_url:
+    embedding_config = embedding_service.get_active_setting(db)
+    if not embedding_config:
         session.memory_generated = 2
         session.memory_error = "向量化未设置，无法生成记忆"
         session.update_time = datetime.now(timezone.utc)
@@ -648,19 +647,22 @@ async def _run_chat_generation_task(
         friend = db.query(Friend).filter(Friend.id == friend_id).first()
         friend_name = friend.name if friend else "AI"
         
-        llm_config = db.query(LLMConfig).filter(LLMConfig.deleted == False).order_by(LLMConfig.id.desc()).first()
+        llm_config = llm_service.get_active_config(db)
         if not llm_config:
             await queue.put({"event": "error", "data": {"code": "config_error", "detail": "LLM Config missing in background task"}})
             return
+
+        if enable_thinking and not llm_config.capability_reasoning:
+            enable_thinking = False
 
         # 2. Prepare History & Recall
         enable_recall = SettingsService.get_setting(db, "memory", "recall_enabled", True)
 
         # Check for vectorization config
         if enable_recall:
-            embedding_config = db.query(EmbeddingSetting).filter(EmbeddingSetting.deleted == False).order_by(EmbeddingSetting.id.desc()).first()
-            if not embedding_config or not embedding_config.embedding_base_url:
-                logger.warning("[GenTask] Recall skipped: Embedding Base URL not configured.")
+            embedding_config = embedding_service.get_active_setting(db)
+            if not embedding_config:
+                logger.warning("[GenTask] Recall skipped: Embedding not configured.")
                 enable_recall = False
 
         show_thinking = enable_thinking
@@ -955,10 +957,11 @@ async def send_message_stream(db: Session, session_id: int, message_in: chat_sch
         yield {"event": "error", "data": {"code": "session_not_found", "detail": "Session not found"}}
         return
 
-    llm_config = db.query(LLMConfig).filter(LLMConfig.deleted == False).order_by(LLMConfig.id.desc()).first()
+    llm_config = llm_service.get_active_config(db)
     if not llm_config:
         yield {"event": "error", "data": {"code": "config_not_found", "detail": "LLM configuration not found"}}
         return
+    effective_enable_thinking = message_in.enable_thinking and bool(llm_config.capability_reasoning)
 
     # 1. Save User Message
     user_msg = Message(session_id=session_id, role="user", content=message_in.content)
@@ -980,7 +983,7 @@ async def send_message_stream(db: Session, session_id: int, message_in: chat_sch
         user_msg_id=user_msg.id,
         ai_msg_id=ai_msg.id,
         message_content=message_in.content,
-        enable_thinking=message_in.enable_thinking,
+        enable_thinking=effective_enable_thinking,
         queue=queue
     ))
 
@@ -1061,7 +1064,7 @@ async def regenerate_message_stream(db: Session, session_id: int, ai_message_id:
          yield {"event": "error", "data": {"code": "no_context", "detail": "No user message found to reply to"}}
          return
 
-    llm_config = db.query(LLMConfig).filter(LLMConfig.deleted == False).order_by(LLMConfig.id.desc()).first()
+    llm_config = llm_service.get_active_config(db)
     if not llm_config:
         yield {"event": "error", "data": {"code": "config_not_found", "detail": "LLM configuration not found"}}
         return
@@ -1076,7 +1079,9 @@ async def regenerate_message_stream(db: Session, session_id: int, ai_message_id:
     queue = asyncio.Queue()
     
     # Get thinking mode from global settings (frontend handles UI toggle state)
-    enable_thinking = SettingsService.get_setting(db, "chat", "thinking_enabled", False) 
+    enable_thinking = SettingsService.get_setting(db, "chat", "enable_thinking", False) 
+    if enable_thinking and not llm_config.capability_reasoning:
+        enable_thinking = False
 
     
     asyncio.create_task(_run_chat_generation_task(

@@ -11,7 +11,6 @@ from sqlalchemy.orm import Session
 from agents.items import MessageOutputItem
 from agents.stream_events import RunItemStreamEvent
 
-from app.models.llm import LLMConfig
 from app.prompt import get_prompt
 from app.schemas.persona_generator import PersonaGenerateRequest, PersonaGenerateResponse
 from app.services.llm_service import llm_service
@@ -26,12 +25,7 @@ class PersonaGeneratorService:
         request: PersonaGenerateRequest
     ) -> PersonaGenerateResponse:
         # 1. 获取 LLM 配置
-        llm_config = (
-            db.query(LLMConfig)
-            .filter(LLMConfig.deleted == False)
-            .order_by(LLMConfig.id.desc())
-            .first()
-        )
+        llm_config = llm_service.get_active_config(db)
         if not llm_config:
             raise HTTPException(
                 status_code=500,
@@ -112,12 +106,7 @@ class PersonaGeneratorService:
         db: Session,
         request: PersonaGenerateRequest
     ):
-        llm_config = (
-            db.query(LLMConfig)
-            .filter(LLMConfig.deleted == False)
-            .order_by(LLMConfig.id.desc())
-            .first()
-        )
+        llm_config = llm_service.get_active_config(db)
         if not llm_config:
             yield {
                 "event": "error",

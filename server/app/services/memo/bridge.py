@@ -5,6 +5,8 @@ from app.core.config import settings
 from app.db.session import SessionLocal
 from app.models.llm import LLMConfig
 from app.models.embedding import EmbeddingSetting
+from app.services.settings_service import SettingsService
+from app.prompt.loader import load_prompt
 from app.vendor.memobase_server.connectors import init_db, Session
 from app.vendor.memobase_server.env import reinitialize_config, CONFIG
 from app.vendor.memobase_server.controllers.buffer_background import start_memobase_worker
@@ -70,19 +72,40 @@ def reload_sdk_config():
     embedding_model = settings.MEMOBASE_EMBEDDING_MODEL
     embedding_dim = settings.MEMOBASE_EMBEDDING_DIM
 
+    reasoning_hint = ""
+    try:
+        reasoning_hint = load_prompt("memory/summary_reasoning_hint.txt").strip()
+    except Exception:
+        reasoning_hint = ""
+
+    llm_config_db = None
+    embedding_config_db = None
+
     # Override with Database Configurations if available
     try:
         # Use a new session scope
         with SessionLocal() as db:
             # 1.1 LLM Config
-            llm_config_db = db.query(LLMConfig).filter(LLMConfig.deleted == False).first()
+            active_llm_id = SettingsService.get_setting(db, "chat", "active_llm_config_id", None)
+            if active_llm_id is not None:
+                llm_config_db = (
+                    db.query(LLMConfig)
+                    .filter(LLMConfig.id == active_llm_id, LLMConfig.deleted == False)
+                    .first()
+                )
             if llm_config_db:
                 if llm_config_db.api_key: llm_api_key = llm_config_db.api_key
                 if llm_config_db.base_url: llm_base_url = llm_config_db.base_url
                 if llm_config_db.model_name: best_llm_model = llm_config_db.model_name
             
             # 1.2 Embedding Config
-            embedding_config_db = db.query(EmbeddingSetting).filter(EmbeddingSetting.deleted == False).first()
+            active_embedding_id = SettingsService.get_setting(db, "memory", "active_embedding_config_id", None)
+            if active_embedding_id is not None:
+                embedding_config_db = (
+                    db.query(EmbeddingSetting)
+                    .filter(EmbeddingSetting.id == active_embedding_id, EmbeddingSetting.deleted == False)
+                    .first()
+                )
             if embedding_config_db:
                 if embedding_config_db.embedding_provider: embedding_provider = embedding_config_db.embedding_provider
                 if embedding_config_db.embedding_api_key: embedding_api_key = embedding_config_db.embedding_api_key
@@ -93,6 +116,15 @@ def reload_sdk_config():
     except Exception as e:
         logger = logging.getLogger(__name__)
         logger.warning(f"Error loading Memobase config from DB: {e}. Using environment defaults.")
+
+    event_theme_requirement = CONFIG.event_theme_requirement or ""
+    if reasoning_hint:
+        event_theme_requirement = event_theme_requirement.replace(reasoning_hint, "").strip()
+    if llm_config_db and llm_config_db.capability_reasoning and reasoning_hint:
+        if event_theme_requirement:
+            event_theme_requirement = f"{event_theme_requirement}\n{reasoning_hint}"
+        else:
+            event_theme_requirement = reasoning_hint
 
     memo_config = {
         "llm_api_key": llm_api_key,
@@ -105,6 +137,7 @@ def reload_sdk_config():
         "embedding_base_url": embedding_base_url,
         "embedding_model": embedding_model,
         "embedding_dim": embedding_dim,
+        "event_theme_requirement": event_theme_requirement,
     }
     
     # 2. Reinitialize the global CONFIG object in SDK

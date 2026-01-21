@@ -9,11 +9,35 @@ from app.services.chat_service import (
 )
 from app.models.chat import ChatSession, Message
 from app.models.friend import Friend
+from app.models.embedding import EmbeddingSetting
 from app.schemas.chat import ChatSessionCreate
+from app.services.settings_service import SettingsService
 import asyncio
+
+def activate_embedding_config(db: Session):
+    config = EmbeddingSetting(
+        embedding_provider="openai",
+        embedding_api_key="test-key",
+        embedding_base_url="https://api.openai.com/v1",
+        embedding_model="text-embedding-3-small",
+        embedding_dim=1536,
+    )
+    db.add(config)
+    db.commit()
+    db.refresh(config)
+    SettingsService.set_setting(
+        db,
+        "memory",
+        "active_embedding_config_id",
+        config.id,
+        "int",
+        "当前向量模型配置ID",
+    )
+    return config
 
 @pytest.mark.asyncio
 async def test_session_auto_archive_and_queue(db: Session):
+    activate_embedding_config(db)
     # 1. Setup: Create a friend
     friend = Friend(name="Test Friend", description="Test Description", system_prompt="You are a test AI.")
     db.add(friend)
@@ -40,9 +64,9 @@ async def test_session_auto_archive_and_queue(db: Session):
     session_in_2 = ChatSessionCreate(friend_id=friend.id, title="Session 2")
     s2 = create_session(db, session_in_2)
     
-    # 4. Assert: s1 should be marked as memory_generated=True
+    # 4. Assert: s1 should be marked as memory_generated=3 (processing)
     db.refresh(s1)
-    assert s1.memory_generated == 1
+    assert s1.memory_generated == 3
     
     # 5. Assert: s1.id might have been removed if directly scheduled, or still in queue
     # In the test environment, we expect it to be EITHER in queue OR already dispatched
@@ -87,7 +111,7 @@ async def test_skip_short_session(db: Session):
     archive_session(db, s_short.id)
     
     db.refresh(s_short)
-    # Should be marked True (processed) but NOT queued
+    # Should be marked processed but NOT queued
     assert s_short.memory_generated == 1
     assert s_short.id not in _memory_generation_queue
     print("[Test] Short session skipped as expected.")

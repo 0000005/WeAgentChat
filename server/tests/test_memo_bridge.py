@@ -126,22 +126,25 @@ class TestMemoServiceIngestion:
         # Use a valid UUID for IdData
         test_uuid = uuid.uuid4()
         
-        with patch('app.services.memo.bridge.insert_blob', new_callable=AsyncMock) as mock_insert:
+        with patch('app.services.memo.bridge.insert_blob', new_callable=AsyncMock) as mock_insert, \
+             patch('app.services.memo.bridge.insert_blob_to_buffer', new_callable=AsyncMock) as mock_buffer:
             mock_insert.return_value = Promise.resolve(IdData(id=test_uuid))
-            
+            mock_buffer.return_value = Promise.resolve(None)
+
             messages = [
                 OpenAICompatibleMessage(role="user", content="Hello!"),
                 OpenAICompatibleMessage(role="assistant", content="Hi there!")
             ]
-            
+
             result = await MemoService.insert_chat(
-                user_id="user-123",
+                user_id=str(uuid.uuid4()),
                 space_id="space-1",
                 messages=messages
             )
             
             assert result.id == test_uuid
             mock_insert.assert_called_once()
+            mock_buffer.assert_called_once()
 
 
 
@@ -183,93 +186,30 @@ class TestMemoServiceRecallExtensions:
     """Tests for memory recall extension functions."""
 
     @pytest.mark.asyncio
-    async def test_search_profiles_semantic_returns_filtered_profiles(self):
-        """Test search_profiles_semantic uses LLM to filter profiles."""
+    async def test_recall_memory_returns_events_only(self):
+        """Test recall_memory returns event summaries from gists."""
         from app.services.memo.bridge import MemoService
-        from app.vendor.memobase_server.models.utils import Promise
-        from app.vendor.memobase_server.models.response import UserProfilesData, ProfileData
+        from app.vendor.memobase_server.models.response import UserEventGistsData, UserEventGistData, EventGistData
         from datetime import datetime
         
-        # Mock profile data using ProfileData (Pydantic model)
-        mock_profiles = UserProfilesData(profiles=[
-            ProfileData(
+        mock_events = UserEventGistsData(gists=[
+            UserEventGistData(
                 id=uuid.uuid4(),
-                content="User loves Python programming",
-                attributes={"topic": "skills", "sub_topic": "programming"},
+                gist_data=EventGistData(content="User is a developer"),
                 created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow()
+                updated_at=datetime.utcnow(),
+                similarity=0.9
             ),
-            ProfileData(
+            UserEventGistData(
                 id=uuid.uuid4(),
-                content="User prefers dark mode",
-                attributes={"topic": "preferences", "sub_topic": "ui"},
+                gist_data=EventGistData(content="User likes Python"),
                 created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow()
+                updated_at=datetime.utcnow(),
+                similarity=0.8
             )
-        ])
+        ], events=[])
         
-        # Mock filter result - simulate LLM selecting the Python profile
-        mock_filter_result = {
-            "reason": "User is asking about programming",
-            "profiles": [mock_profiles.profiles[0]]
-        }
-        
-        with patch.object(MemoService, 'get_user_profiles', new_callable=AsyncMock) as mock_get, \
-             patch('app.services.memo.bridge.filter_profiles_with_chats', new_callable=AsyncMock) as mock_filter:
-            
-            mock_get.return_value = mock_profiles
-            mock_filter.return_value = Promise.resolve(mock_filter_result)
-            
-            result = await MemoService.search_profiles_semantic(
-                user_id="user-123",
-                space_id="space-1",
-                query="What programming languages does the user know?",
-                topk=5
-            )
-            
-            assert len(result.profiles) == 1
-            assert "Python" in result.profiles[0].content
-            mock_filter.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_search_profiles_semantic_returns_empty_when_no_profiles(self):
-        """Test search_profiles_semantic returns empty when user has no profiles."""
-        from app.services.memo.bridge import MemoService
-        from app.vendor.memobase_server.models.response import UserProfilesData
-        
-        with patch.object(MemoService, 'get_user_profiles', new_callable=AsyncMock) as mock_get:
-            mock_get.return_value = UserProfilesData(profiles=[])
-            
-            result = await MemoService.search_profiles_semantic(
-                user_id="user-123",
-                space_id="space-1",
-                query="test query"
-            )
-            
-            assert len(result.profiles) == 0
-
-    @pytest.mark.asyncio
-    async def test_recall_memory_returns_both_profiles_and_events(self):
-        """Test recall_memory returns combined results from both searches."""
-        from app.services.memo.bridge import MemoService
-        from app.vendor.memobase_server.models.response import UserProfilesData, UserEventGistsData, ProfileData
-        from datetime import datetime
-        
-        # Create mock profile using ProfileData (Pydantic model)
-        mock_profile = ProfileData(
-            id=uuid.uuid4(),
-            content="User is a developer",
-            attributes={"topic": "job", "sub_topic": "role"},
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
-        )
-        mock_profiles = UserProfilesData(profiles=[mock_profile])
-        mock_events = UserEventGistsData(gists=[], events=[])
-        
-        with patch.object(MemoService, 'search_profiles_semantic', new_callable=AsyncMock) as mock_profile_search, \
-             patch.object(MemoService, 'search_memories_with_tags', new_callable=AsyncMock) as mock_event_search:
-            
-            mock_profile_search.return_value = mock_profiles
+        with patch.object(MemoService, 'search_memories_with_tags', new_callable=AsyncMock) as mock_event_search:
             mock_event_search.return_value = mock_events
             
             result = await MemoService.recall_memory(
@@ -280,11 +220,11 @@ class TestMemoServiceRecallExtensions:
                 timeout=5.0
             )
             
-            assert "profiles" in result
             assert "events" in result
-            assert len(result["profiles"]) == 1
-            assert result["profiles"][0]["topic"] == "job"
-            assert result["profiles"][0]["content"] == "User is a developer"
+            assert len(result["events"]) == 2
+            contents = [event["content"] for event in result["events"]]
+            assert "User is a developer" in contents
+            assert "User likes Python" in contents
 
     @pytest.mark.asyncio
     async def test_recall_memory_handles_timeout(self):
@@ -296,8 +236,7 @@ class TestMemoServiceRecallExtensions:
             await asyncio.sleep(10)  # Simulate slow search
             return None
         
-        with patch.object(MemoService, 'search_profiles_semantic', side_effect=slow_search), \
-             patch.object(MemoService, 'search_memories_with_tags', side_effect=slow_search):
+        with patch.object(MemoService, 'search_memories_with_tags', side_effect=slow_search):
             
             result = await MemoService.recall_memory(
                 user_id="user-123",
@@ -307,40 +246,21 @@ class TestMemoServiceRecallExtensions:
                 timeout=0.1  # Very short timeout
             )
             
-            assert result == {"profiles": [], "events": []}
+            assert result == {"events": []}
 
     @pytest.mark.asyncio
-    async def test_recall_memory_handles_partial_failure(self):
-        """Test recall_memory continues when one search fails."""
-        from app.services.memo.bridge import MemoService
-        from app.vendor.memobase_server.models.response import UserProfilesData, UserEventGistsData, ProfileData
-        from datetime import datetime
-        
-        mock_profile = ProfileData(
-            id=uuid.uuid4(),
-            content="Test content",
-            attributes={"topic": "test", "sub_topic": "test"},
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
-        )
-        mock_profiles = UserProfilesData(profiles=[mock_profile])
-        
-        with patch.object(MemoService, 'search_profiles_semantic', new_callable=AsyncMock) as mock_profile_search, \
-             patch.object(MemoService, 'search_memories_with_tags', new_callable=AsyncMock) as mock_event_search:
-            
-            mock_profile_search.return_value = mock_profiles
-            mock_event_search.side_effect = Exception("Event search failed")
-            
-            result = await MemoService.recall_memory(
-                user_id="user-123",
-                space_id="space-1",
-                query="test",
-                friend_id=1
-            )
-            
-            # Should still return profiles even if events fail
-            assert len(result["profiles"]) == 1
-            assert len(result["events"]) == 0
+    async def test_recall_memory_handles_failure(self):
+        """Test recall_memory raises when event search fails."""
+        from app.services.memo.bridge import MemoService, MemoServiceException
+
+        with patch.object(MemoService, 'search_memories_with_tags', side_effect=Exception("Event search failed")):
+            with pytest.raises(MemoServiceException):
+                await MemoService.recall_memory(
+                    user_id="user-123",
+                    space_id="space-1",
+                    query="test",
+                    friend_id=1
+                )
 
 
 if __name__ == "__main__":

@@ -20,6 +20,7 @@ from app.db.base import Base
 from app.models.llm import LLMConfig
 from app.schemas.persona_generator import PersonaGenerateRequest, PersonaGenerateResponse
 from app.services.persona_generator_service import PersonaGeneratorService, persona_generator_service
+from app.services.settings_service import SettingsService
 
 
 pytest_plugins = ("pytest_asyncio",)
@@ -44,6 +45,20 @@ def db():
     finally:
         db.close()
         Base.metadata.drop_all(bind=engine)
+
+def activate_llm_config(db, llm_config):
+    db.add(llm_config)
+    db.commit()
+    db.refresh(llm_config)
+    SettingsService.set_setting(
+        db,
+        "chat",
+        "active_llm_config_id",
+        llm_config.id,
+        "int",
+        "当前聊天模型配置ID",
+    )
+    return llm_config
 
 
 @pytest.mark.asyncio
@@ -72,8 +87,7 @@ class TestPersonaGeneratorService:
             api_key="test-key",
             model_name="gpt-4"
         )
-        db.add(llm_config)
-        db.commit()
+        activate_llm_config(db, llm_config)
         
         # Mock LLM response - 返回纯 JSON 字符串
         mock_json_response = json.dumps({
@@ -106,8 +120,7 @@ class TestPersonaGeneratorService:
             api_key="test-key",
             model_name="gpt-4"
         )
-        db.add(llm_config)
-        db.commit()
+        activate_llm_config(db, llm_config)
         
         # Mock LLM response - Markdown 代码块包裹的 JSON
         mock_json = {
@@ -137,8 +150,7 @@ class TestPersonaGeneratorService:
             api_key="test-key",
             model_name="gpt-4"
         )
-        db.add(llm_config)
-        db.commit()
+        activate_llm_config(db, llm_config)
         
         with patch("app.services.persona_generator_service.Runner.run", new_callable=AsyncMock) as mock_run:
             mock_run.side_effect = Exception("LLM API error")
@@ -162,8 +174,7 @@ class TestPersonaGeneratorService:
             api_key="test-key",
             model_name="gpt-4"
         )
-        db.add(llm_config)
-        db.commit()
+        activate_llm_config(db, llm_config)
         
         mock_result = SimpleNamespace(final_output="This is not valid JSON at all")
         
@@ -186,8 +197,7 @@ class TestPersonaGeneratorService:
             api_key="test-key",
             model_name="gpt-4"
         )
-        db.add(llm_config)
-        db.commit()
+        activate_llm_config(db, llm_config)
         
         mock_result = SimpleNamespace(final_output="")
         
@@ -209,8 +219,7 @@ class TestPersonaGeneratorService:
             api_key="test-key",
             model_name="gpt-4"
         )
-        db.add(llm_config)
-        db.commit()
+        activate_llm_config(db, llm_config)
 
         mock_json_response = json.dumps({
             "name": "未完成角色",

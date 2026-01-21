@@ -7,11 +7,13 @@ from sqlalchemy.orm import Session
 from app.api import deps
 from app.schemas.embedding import EmbeddingSetting, EmbeddingSettingCreate, EmbeddingSettingUpdate
 from app.services.embedding_service import embedding_service
+from app.services.settings_service import SettingsService
 from app.prompt import get_prompt
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+MAX_EMBEDDING_CONFIGS = 20
 
 @router.get("/", response_model=List[EmbeddingSetting])
 def read_embedding_settings(
@@ -34,7 +36,20 @@ def create_embedding_setting(
     """
     Create new embedding setting.
     """
+    if embedding_service.count_settings(db) >= MAX_EMBEDDING_CONFIGS:
+        raise HTTPException(status_code=400, detail="Embedding 配置数量已达上限（20）")
     item = embedding_service.create_setting(db=db, obj_in=item_in)
+
+    active_id = SettingsService.get_setting(db, "memory", "active_embedding_config_id", None)
+    if active_id is None:
+        SettingsService.set_setting(
+            db,
+            "memory",
+            "active_embedding_config_id",
+            item.id,
+            "int",
+            "当前向量模型配置ID",
+        )
     
     # Reload Memobase SDK config
     try:
@@ -92,6 +107,10 @@ def delete_embedding_setting(
     """
     Delete an embedding setting.
     """
+    active_id = SettingsService.get_setting(db, "memory", "active_embedding_config_id", None)
+    if active_id == id:
+        raise HTTPException(status_code=400, detail="该配置当前正在被记忆模块使用，请先切换到其他配置后再删除。")
+
     item = embedding_service.get_setting(db=db, setting_id=id)
     if not item:
         raise HTTPException(status_code=404, detail="Embedding setting not found")

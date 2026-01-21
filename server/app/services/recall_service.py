@@ -9,7 +9,6 @@ from agents.items import ReasoningItem, ToolCallItem, ToolCallOutputItem
 from openai import AsyncOpenAI
 from sqlalchemy.orm import Session
 
-from app.models.llm import LLMConfig
 from app.services.memo.bridge import MemoService
 from app.services.llm_service import llm_service
 from app.services.settings_service import SettingsService
@@ -125,12 +124,7 @@ class RecallService:
             }
         """
         # 1. 获取 LLM 配置和系统设置
-        llm_config = (
-            db.query(LLMConfig)
-            .filter(LLMConfig.deleted == False)
-            .order_by(LLMConfig.id.desc())
-            .first()
-        )
+        llm_config = llm_service.get_active_config(db)
         if not llm_config:
             raise Exception("LLM configuration not found in database")
 

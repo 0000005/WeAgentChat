@@ -65,18 +65,24 @@ const llmStore = useLlmStore()
 const embeddingStore = useEmbeddingStore()
 
 onMounted(async () => {
-  // Ensure LLM config is loaded to check isConfigured status
-  if (!llmStore.apiKey) {
-    await llmStore.fetchConfig()
-  }
-  // Load embedding config
-  await embeddingStore.fetchConfig()
+  await Promise.all([
+    llmStore.fetchConfigs(),
+    embeddingStore.fetchConfigs(),
+    settingsStore.fetchChatSettings(),
+    settingsStore.fetchMemorySettings()
+  ])
 })
 
 const showNoLlmDialog = ref(false)
 
+const activeLlmConfig = computed(() => llmStore.getConfigById(settingsStore.activeLlmConfigId))
+const isLlmConfigured = computed(() => {
+  if (!activeLlmConfig.value) return false
+  return !!activeLlmConfig.value.api_key
+})
+
 const checkLlmConfigAndSubmit = (e?: any) => {
-  if (!llmStore.isConfigured) {
+  if (!isLlmConfigured.value) {
     showNoLlmDialog.value = true
     return
   }
@@ -92,7 +98,8 @@ const handleOpenEmbeddingSettings = () => {
   emit('open-settings', 'embedding')
 }
 
-const isEmbeddingConfigured = computed(() => embeddingStore.isConfigured)
+const activeEmbeddingConfig = computed(() => embeddingStore.getConfigById(settingsStore.activeEmbeddingConfigId))
+const isEmbeddingConfigured = computed(() => !!activeEmbeddingConfig.value)
 
 // Get current friend metadata
 const currentFriend = computed(() => {

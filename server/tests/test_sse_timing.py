@@ -8,24 +8,35 @@ import sqlite3
 import httpx
 import json
 from datetime import datetime
+from pathlib import Path
+import os
+import pytest
 
 
 def get_llm_config():
     """从数据库读取 LLM 配置"""
-    conn = sqlite3.connect("data/doudou.db")
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT base_url, api_key, model_name FROM llm_configs WHERE deleted = 0 ORDER BY id DESC LIMIT 1"
-    )
-    row = cursor.fetchone()
-    conn.close()
-    if row:
-        return {
-            "base_url": row[0],
-            "api_key": row[1],
-            "model_name": row[2],
-        }
-    raise Exception("No LLM config found in database")
+    db_path = Path(__file__).resolve().parents[1] / "data" / "doudou.db"
+    if db_path.exists():
+        conn = sqlite3.connect(str(db_path))
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT base_url, api_key, model_name FROM llm_configs WHERE deleted = 0 ORDER BY id DESC LIMIT 1"
+        )
+        row = cursor.fetchone()
+        conn.close()
+        if row and row[0] and row[1] and row[2]:
+            return {
+                "base_url": row[0],
+                "api_key": row[1],
+                "model_name": row[2],
+            }
+
+    base_url = os.getenv("SSE_LLM_BASE_URL") or os.getenv("MEMOBASE_LLM_BASE_URL")
+    api_key = os.getenv("SSE_LLM_API_KEY") or os.getenv("MEMOBASE_LLM_API_KEY")
+    model_name = os.getenv("SSE_LLM_MODEL") or os.getenv("MEMOBASE_BEST_LLM_MODEL")
+    if base_url and api_key and model_name:
+        return {"base_url": base_url, "api_key": api_key, "model_name": model_name}
+    pytest.skip("Missing LLM config for SSE test (DB or SSE_LLM_* env vars).")
 
 
 def test_raw_sse():

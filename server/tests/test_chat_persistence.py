@@ -5,6 +5,7 @@ from unittest.mock import patch, MagicMock, AsyncMock
 from app.models.llm import LLMConfig
 from app.models.chat import Message
 from tests.conftest import engine
+from app.services.settings_service import SettingsService
 from sqlalchemy.orm import sessionmaker
 
 # 必须启用 pytest-asyncio
@@ -26,6 +27,20 @@ def create_mock_event(delta, index):
     )
     return mock_event
 
+def activate_llm_config(db, llm_config):
+    db.add(llm_config)
+    db.commit()
+    db.refresh(llm_config)
+    SettingsService.set_setting(
+        db,
+        "chat",
+        "active_llm_config_id",
+        llm_config.id,
+        "int",
+        "当前聊天模型配置ID",
+    )
+    return llm_config
+
 @pytest.mark.asyncio
 async def test_chat_persistence_after_disconnect(client, db):
     """
@@ -37,8 +52,7 @@ async def test_chat_persistence_after_disconnect(client, db):
         api_key="mock_key",
         model_name="mock-model"
     )
-    db.add(llm_config)
-    db.commit()
+    activate_llm_config(db, llm_config)
 
     # 1. 创建好友和会话
     friend_data = {"name": "Assistant", "is_preset": False}

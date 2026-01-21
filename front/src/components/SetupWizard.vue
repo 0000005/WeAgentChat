@@ -29,6 +29,7 @@ import {
 } from 'lucide-vue-next'
 import { useLlmStore } from '@/stores/llm'
 import { useEmbeddingStore } from '@/stores/embedding'
+import { useSettingsStore } from '@/stores/settings'
 import { useMemoryStore } from '@/stores/memory'
 import { useFriendStore } from '@/stores/friend'
 import { getFriendTemplates } from '@/api/friend-template'
@@ -44,6 +45,7 @@ const emit = defineEmits(['update:open', 'complete'])
 const toast = useToast()
 const llmStore = useLlmStore()
 const embeddingStore = useEmbeddingStore()
+const settingsStore = useSettingsStore()
 const memoryStore = useMemoryStore()
 const friendStore = useFriendStore()
 
@@ -52,6 +54,25 @@ const isTesting = ref(false)
 const isSaving = ref(false)
 const gender = ref<'男' | '女' | ''>('')
 const isGenderInitialized = ref(false)
+const llmConfigId = ref<number | null>(null)
+const embeddingConfigId = ref<number | null>(null)
+
+const llmDraft = ref({
+  provider: 'openai',
+  config_name: 'OpenAI',
+  base_url: 'https://api.openai.com/v1',
+  api_key: '',
+  model_name: 'gpt-4o-mini'
+})
+
+const embeddingDraft = ref({
+  config_name: 'OpenAI',
+  embedding_provider: 'openai',
+  embedding_api_key: '',
+  embedding_base_url: '',
+  embedding_dim: 1536,
+  embedding_model: 'text-embedding-3-small'
+})
 
 // Step transitions logic
 const nextStep = async () => {
@@ -79,7 +100,11 @@ const prevStep = () => {
 const testLlm = async () => {
   isTesting.value = true
   try {
-    const res = await llmStore.testConfig()
+    const res = await llmStore.testConfig({
+      base_url: llmDraft.value.base_url || null,
+      api_key: llmDraft.value.api_key || null,
+      model_name: llmDraft.value.model_name || 'gpt-3.5-turbo'
+    })
     if (res.success) {
       toast.success('LLM 连接测试成功！')
     } else {
@@ -96,7 +121,14 @@ const testLlm = async () => {
 const testEmbedding = async () => {
   isTesting.value = true
   try {
-    const res = await embeddingStore.testConfig()
+    const res = await embeddingStore.testConfig({
+      embedding_provider: embeddingDraft.value.embedding_provider,
+      embedding_api_key: embeddingDraft.value.embedding_api_key || null,
+      embedding_base_url: embeddingDraft.value.embedding_base_url || null,
+      embedding_dim: embeddingDraft.value.embedding_dim,
+      embedding_model: embeddingDraft.value.embedding_model,
+      embedding_max_token_size: 8000
+    })
     if (res.success) {
       toast.success('Embedding 连接测试成功！')
     } else {
@@ -150,9 +182,56 @@ const hydrateGenderFromProfile = async () => {
 const completeSetup = async () => {
   isSaving.value = true
   try {
-    // Save both configs
-    await llmStore.saveConfig()
-    await embeddingStore.saveConfig()
+    if (llmConfigId.value) {
+      await llmStore.updateConfig(llmConfigId.value, {
+        provider: llmDraft.value.provider,
+        config_name: llmDraft.value.config_name,
+        base_url: llmDraft.value.base_url || null,
+        api_key: llmDraft.value.api_key || null,
+        model_name: llmDraft.value.model_name || 'gpt-3.5-turbo'
+      })
+    } else {
+      const created = await llmStore.createConfig({
+        provider: llmDraft.value.provider,
+        config_name: llmDraft.value.config_name,
+        base_url: llmDraft.value.base_url || null,
+        api_key: llmDraft.value.api_key || null,
+        model_name: llmDraft.value.model_name || 'gpt-3.5-turbo'
+      })
+      llmConfigId.value = created.id ?? null
+    }
+
+    if (embeddingConfigId.value) {
+      await embeddingStore.updateConfig(embeddingConfigId.value, {
+        config_name: embeddingDraft.value.config_name,
+        embedding_provider: embeddingDraft.value.embedding_provider,
+        embedding_api_key: embeddingDraft.value.embedding_api_key || null,
+        embedding_base_url: embeddingDraft.value.embedding_base_url || null,
+        embedding_dim: embeddingDraft.value.embedding_dim,
+        embedding_model: embeddingDraft.value.embedding_model,
+        embedding_max_token_size: 8000
+      })
+    } else {
+      const created = await embeddingStore.createConfig({
+        config_name: embeddingDraft.value.config_name,
+        embedding_provider: embeddingDraft.value.embedding_provider,
+        embedding_api_key: embeddingDraft.value.embedding_api_key || null,
+        embedding_base_url: embeddingDraft.value.embedding_base_url || null,
+        embedding_dim: embeddingDraft.value.embedding_dim,
+        embedding_model: embeddingDraft.value.embedding_model,
+        embedding_max_token_size: 8000
+      })
+      embeddingConfigId.value = created.id ?? null
+    }
+
+    if (llmConfigId.value) {
+      settingsStore.activeLlmConfigId = llmConfigId.value
+      await settingsStore.saveChatSettings()
+    }
+    if (embeddingConfigId.value) {
+      settingsStore.activeEmbeddingConfigId = embeddingConfigId.value
+      await settingsStore.saveMemorySettings()
+    }
     await ensureGenderProfile()
     await ensureDefaultFriend()
 
@@ -171,18 +250,48 @@ const canGoNext = computed(() => {
     return !!gender.value && !isSaving.value
   }
   if (step.value === 2) {
-    return !!llmStore.apiKey && !!llmStore.modelName
+    return !!llmDraft.value.api_key && !!llmDraft.value.model_name
   }
   if (step.value === 3) {
-    return !!embeddingStore.apiKey && !!embeddingStore.model
+    return !!embeddingDraft.value.embedding_api_key && !!embeddingDraft.value.embedding_model
   }
   return true
 })
 
 onMounted(async () => {
   // Try to load existing configs if any
-  await llmStore.fetchConfig()
-  await embeddingStore.fetchConfig()
+  await Promise.all([
+    llmStore.fetchConfigs(),
+    embeddingStore.fetchConfigs(),
+    settingsStore.fetchChatSettings(),
+    settingsStore.fetchMemorySettings()
+  ])
+
+  const activeLlm = llmStore.getConfigById(settingsStore.activeLlmConfigId) || llmStore.configs[0] || null
+  const activeEmbedding = embeddingStore.getConfigById(settingsStore.activeEmbeddingConfigId) || embeddingStore.configs[0] || null
+
+  if (activeLlm) {
+    llmConfigId.value = activeLlm.id ?? null
+    llmDraft.value = {
+      provider: activeLlm.provider || 'openai',
+      config_name: activeLlm.config_name || 'OpenAI',
+      base_url: activeLlm.base_url || 'https://api.openai.com/v1',
+      api_key: activeLlm.api_key || '',
+      model_name: activeLlm.model_name || 'gpt-3.5-turbo'
+    }
+  }
+
+  if (activeEmbedding) {
+    embeddingConfigId.value = activeEmbedding.id ?? null
+    embeddingDraft.value = {
+      config_name: activeEmbedding.config_name || 'OpenAI',
+      embedding_provider: activeEmbedding.embedding_provider || 'openai',
+      embedding_api_key: activeEmbedding.embedding_api_key || '',
+      embedding_base_url: activeEmbedding.embedding_base_url || '',
+      embedding_dim: activeEmbedding.embedding_dim || 1536,
+      embedding_model: activeEmbedding.embedding_model || 'text-embedding-3-small'
+    }
+  }
   await hydrateGenderFromProfile()
   if (isGenderInitialized.value) {
     step.value = 2
@@ -279,7 +388,7 @@ const openTutorial = () => {
         <div v-if="step === 2" class="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
           <div class="space-y-2">
             <label class="text-sm font-semibold text-gray-700">API Key</label>
-            <Input v-model="llmStore.apiKey" type="password" placeholder="sk-..."
+            <Input v-model="llmDraft.api_key" type="password" placeholder="sk-..."
               class="border-gray-200 focus:ring-green-500" />
             <p class="text-[10px] text-gray-400">目前仅支持 OpenAI 兼容接口</p>
           </div>
@@ -290,15 +399,15 @@ const openTutorial = () => {
           </div>
           <div class="space-y-2">
             <label class="text-sm font-semibold text-gray-700">Base URL (可选)</label>
-            <Input v-model="llmStore.apiBaseUrl" placeholder="https://api.openai.com/v1" class="border-gray-200" />
+            <Input v-model="llmDraft.base_url" placeholder="https://api.openai.com/v1" class="border-gray-200" />
             <p class="text-[10px] text-gray-400">如果使用代理或国内厂商，请填入相应的接口地址</p>
           </div>
           <div class="space-y-2">
             <label class="text-sm font-semibold text-gray-700">模型名称</label>
-            <Input v-model="llmStore.modelName" placeholder="gpt-4o-mini" class="border-gray-200" />
+            <Input v-model="llmDraft.model_name" placeholder="gpt-4o-mini" class="border-gray-200" />
           </div>
           <div class="pt-2">
-            <Button variant="outline" size="sm" @click="testLlm" :disabled="isTesting || !llmStore.apiKey"
+            <Button variant="outline" size="sm" @click="testLlm" :disabled="isTesting || !llmDraft.api_key"
               class="w-full text-xs h-9 border-dashed border-gray-300 hover:border-green-500 hover:text-green-600 transition-colors">
               <Loader v-if="isTesting" class="mr-2 h-3 w-3" />
               <Zap v-else class="mr-2 h-3 w-3" />
@@ -320,7 +429,7 @@ const openTutorial = () => {
           </div>
           <div class="space-y-2">
             <label class="text-sm font-semibold text-gray-700">Provider 服务商</label>
-            <Select v-model="embeddingStore.provider">
+            <Select v-model="embeddingDraft.embedding_provider">
               <SelectTrigger class="border-gray-200">
                 <SelectValue placeholder="选择服务商" />
               </SelectTrigger>
@@ -333,24 +442,29 @@ const openTutorial = () => {
           </div>
           <div class="space-y-2">
             <label class="text-sm font-semibold text-gray-700">API Key</label>
-            <Input v-model="embeddingStore.apiKey" type="password" placeholder="sk-..." class="border-gray-200" />
+            <Input v-model="embeddingDraft.embedding_api_key" type="password" placeholder="sk-..."
+              class="border-gray-200" />
           </div>
           <div class="space-y-2">
             <label class="text-sm font-semibold text-gray-700">Base URL (可选)</label>
-            <Input v-model="embeddingStore.baseUrl" placeholder="https://api.openai.com/v1" class="border-gray-200" />
+            <Input v-model="embeddingDraft.embedding_base_url" placeholder="https://api.openai.com/v1"
+              class="border-gray-200" />
           </div>
           <div class="grid grid-cols-2 gap-4">
             <div class="space-y-2">
               <label class="text-sm font-semibold text-gray-700">模型名称</label>
-              <Input v-model="embeddingStore.model" placeholder="text-embedding-3-small" class="border-gray-200" />
+              <Input v-model="embeddingDraft.embedding_model" placeholder="text-embedding-3-small"
+                class="border-gray-200" />
             </div>
             <div class="space-y-2">
               <label class="text-sm font-semibold text-gray-700">维度 (Dimensions)</label>
-              <Input v-model.number="embeddingStore.dim" placeholder="1536" type="number" class="border-gray-200" />
+              <Input v-model.number="embeddingDraft.embedding_dim" placeholder="1536" type="number"
+                class="border-gray-200" />
             </div>
           </div>
           <div class="pt-2">
-            <Button variant="outline" size="sm" @click="testEmbedding" :disabled="isTesting || !embeddingStore.apiKey"
+            <Button variant="outline" size="sm" @click="testEmbedding"
+              :disabled="isTesting || !embeddingDraft.embedding_api_key"
               class="w-full text-xs h-9 border-dashed border-gray-300 hover:border-green-500 hover:text-green-600 transition-colors">
               <Loader v-if="isTesting" class="mr-2 h-3 w-3" />
               <Zap v-else class="mr-2 h-3 w-3" />
@@ -376,13 +490,13 @@ const openTutorial = () => {
               <span class="flex items-center">
                 <CheckCircle2 class="w-3 h-3 text-green-500 mr-1" /> LLM 对话模型
               </span>
-              <span class="font-mono">{{ llmStore.modelName }}</span>
+              <span class="font-mono">{{ llmDraft.model_name }}</span>
             </div>
             <div class="flex items-center justify-between text-xs text-gray-500 px-2">
               <span class="flex items-center">
                 <CheckCircle2 class="w-3 h-3 text-green-500 mr-1" /> Embedding 记忆模型
               </span>
-              <span class="font-mono">{{ embeddingStore.model }}</span>
+              <span class="font-mono">{{ embeddingDraft.embedding_model }}</span>
             </div>
           </div>
         </div>

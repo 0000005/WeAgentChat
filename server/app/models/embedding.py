@@ -8,6 +8,7 @@ class EmbeddingSetting(Base):
     __tablename__ = "embedding_settings"
 
     id = Column(Integer, primary_key=True, index=True)
+    config_name = Column(String, nullable=True)
     # 提供商："openai" (默认)、"jina"、"lmstudio"、"ollama"
     embedding_provider = Column(String, default="openai")
     # 密钥
@@ -20,6 +21,7 @@ class EmbeddingSetting(Base):
     embedding_model = Column(String, default="BAAI/bge-m3")
     # 最大token数
     embedding_max_token_size = Column(Integer, default=8000)
+    is_verified = Column(Boolean, default=False)
 
     create_time = Column(UTCDateTime, default=utc_now)
     update_time = Column(UTCDateTime, default=utc_now, onupdate=utc_now)
