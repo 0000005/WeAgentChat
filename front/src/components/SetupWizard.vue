@@ -245,6 +245,10 @@ const completeSetup = async () => {
   }
 }
 
+const embeddingKeyRequired = computed(() => {
+  return ['openai', 'jina'].includes(embeddingDraft.value.embedding_provider)
+})
+
 const canGoNext = computed(() => {
   if (step.value === 1) {
     return !!gender.value && !isSaving.value
@@ -253,7 +257,7 @@ const canGoNext = computed(() => {
     return !!llmDraft.value.api_key && !!llmDraft.value.model_name
   }
   if (step.value === 3) {
-    return !!embeddingDraft.value.embedding_api_key && !!embeddingDraft.value.embedding_model
+    return !!embeddingDraft.value.embedding_model && (!embeddingKeyRequired.value || !!embeddingDraft.value.embedding_api_key)
   }
   return true
 })
@@ -464,7 +468,7 @@ const openTutorial = () => {
           </div>
           <div class="pt-2">
             <Button variant="outline" size="sm" @click="testEmbedding"
-              :disabled="isTesting || !embeddingDraft.embedding_api_key"
+              :disabled="isTesting || (embeddingKeyRequired && !embeddingDraft.embedding_api_key)"
               class="w-full text-xs h-9 border-dashed border-gray-300 hover:border-green-500 hover:text-green-600 transition-colors">
               <Loader v-if="isTesting" class="mr-2 h-3 w-3" />
               <Zap v-else class="mr-2 h-3 w-3" />

@@ -38,6 +38,90 @@ def _model_base_name(model_name: Optional[str]) -> str:
 def _supports_sampling(model_name: Optional[str]) -> bool:
     return not _model_base_name(model_name).startswith("gpt-5")
 
+def _is_gemini_model(llm_config, model_name: Optional[str]) -> bool:
+    provider = (getattr(llm_config, "provider", "") or "").lower()
+    base_url = (getattr(llm_config, "base_url", "") or "").lower()
+    if provider == "gemini":
+        return True
+    if "generativelanguage.googleapis.com" in base_url:
+        return True
+    return "gemini" in _model_base_name(model_name)
+
+def _normalize_gemini_litellm_model_name(model_name: Optional[str]) -> str:
+    raw = (model_name or "").strip()
+    if not raw:
+        return "gemini/gemini-3-pro-preview"
+    if "/" in raw:
+        prefix, rest = raw.split("/", 1)
+        if prefix in ("gemini", "vertex_ai", "google"):
+            return raw
+        return f"gemini/{rest}"
+    return f"gemini/{raw}"
+
+def _normalize_gemini_base_url(base_url: Optional[str]) -> Optional[str]:
+    raw = (base_url or "").strip()
+    if not raw:
+        return None
+    trimmed = raw.rstrip("/")
+    if trimmed.endswith("/openai"):
+        return trimmed[: -len("/openai")]
+    return raw
+
+def _supports_reasoning_effort(llm_config) -> bool:
+    provider = (getattr(llm_config, "provider", "") or "").lower()
+    base_url = (getattr(llm_config, "base_url", "") or "").lower()
+    if provider in ("openai", "deepseek"):
+        return True
+    if provider == "openai_compatible":
+        if "openai.com" in base_url or "deepseek" in base_url:
+            return True
+        return False
+    if "deepseek" in base_url:
+        return True
+    return False
+
+def _extract_reasoning_text(raw: object) -> str:
+    if raw is None:
+        return ""
+    if isinstance(raw, str):
+        return raw
+
+    def _collect_text(value: object) -> List[str]:
+        texts: List[str] = []
+        if not value:
+            return texts
+        if isinstance(value, (list, tuple)):
+            for entry in value:
+                texts.extend(_collect_text(entry))
+            return texts
+        if isinstance(value, dict):
+            text = value.get("text") or value.get("content")
+            if text:
+                texts.append(str(text))
+            return texts
+        text = getattr(value, "text", None) or getattr(value, "content", None)
+        if text:
+            texts.append(str(text))
+        return texts
+
+    if isinstance(raw, dict):
+        text = raw.get("reasoning_content") or raw.get("reasoning") or raw.get("text")
+        if text:
+            return str(text)
+        content = raw.get("content")
+        summary = raw.get("summary")
+    else:
+        text = getattr(raw, "reasoning_content", None) or getattr(raw, "reasoning", None) or getattr(raw, "text", None)
+        if text:
+            return str(text)
+        content = getattr(raw, "content", None)
+        summary = getattr(raw, "summary", None)
+
+    texts = _collect_text(content)
+    if not texts:
+        texts = _collect_text(summary)
+    return "\n".join([t for t in texts if t])
+
 # Initialize logger for this module
 logger = logging.getLogger(__name__)
 
@@ -660,7 +744,10 @@ async def _run_chat_generation_task(
             await queue.put({"event": "error", "data": {"code": "config_error", "detail": "LLM Config missing in background task"}})
             return
 
-        if enable_thinking and not llm_config.capability_reasoning:
+        raw_model_name = llm_config.model_name
+        model_name = llm_service.normalize_model_name(raw_model_name)
+        force_thinking = _is_gemini_model(llm_config, raw_model_name)
+        if enable_thinking and not llm_config.capability_reasoning and not force_thinking:
             enable_thinking = False
 
         # 2. Prepare History & Recall
@@ -788,9 +875,15 @@ async def _run_chat_generation_task(
 
         # 4. Run LLM
         agent_messages = [{"role": m.role, "content": m.content} for m in history]
-        if injected_recall_messages:
+        inject_as_tool = any(
+            isinstance(msg, dict) and msg.get("type") in ("function_call", "function_call_output")
+            for msg in injected_recall_messages
+        )
+        if injected_recall_messages and not inject_as_tool:
             agent_messages.extend(injected_recall_messages)
         agent_messages.append({"role": "user", "content": message_content})
+        if injected_recall_messages and inject_as_tool:
+            agent_messages.extend(injected_recall_messages)
 
         client = AsyncOpenAI(base_url=llm_config.base_url, api_key=llm_config.api_key)
         set_default_openai_client(client, use_for_tracing=True)
@@ -799,20 +892,34 @@ async def _run_chat_generation_task(
         temperature = friend.temperature if friend and friend.temperature is not None else 0.8
         top_p = friend.top_p if friend and friend.top_p is not None else 0.9
 
-        model_name = llm_service.normalize_model_name(llm_config.model_name)
+        use_litellm = force_thinking
         model_settings_kwargs = {}
         if _supports_sampling(model_name):
             model_settings_kwargs["temperature"] = temperature
             model_settings_kwargs["top_p"] = top_p
-        if llm_config.capability_reasoning:
+        if llm_config.capability_reasoning and not use_litellm and _supports_reasoning_effort(llm_config):
             model_settings_kwargs["reasoning"] = Reasoning(
                 effort="low" if enable_thinking else "none"
             )
+        if use_litellm and enable_thinking:
+            model_settings_kwargs["reasoning"] = Reasoning(effort="low")
         model_settings = ModelSettings(**model_settings_kwargs)
+        if use_litellm:
+            from agents.extensions.models.litellm_model import LitellmModel
+
+            gemini_model_name = _normalize_gemini_litellm_model_name(raw_model_name)
+            gemini_base_url = _normalize_gemini_base_url(llm_config.base_url)
+            agent_model = LitellmModel(
+                model=gemini_model_name,
+                base_url=gemini_base_url,
+                api_key=llm_config.api_key,
+            )
+        else:
+            agent_model = model_name
         agent = Agent(
             name=friend_name,
             instructions=final_instructions,
-            model=model_name,
+            model=agent_model,
             model_settings=model_settings,
         )
 
@@ -839,7 +946,7 @@ async def _run_chat_generation_task(
                 if enable_thinking and isinstance(event.item, ReasoningItem):
                     has_reasoning_item = True
                     raw = event.item.raw_item
-                    text = getattr(raw, 'content', '') or str(getattr(raw, 'summary', ''))
+                    text = _extract_reasoning_text(raw)
                     if text:
                         await queue.put({"event": "model_thinking", "data": {"delta": text}})
                 continue
@@ -974,7 +1081,11 @@ async def send_message_stream(db: Session, session_id: int, message_in: chat_sch
     if not llm_config:
         yield {"event": "error", "data": {"code": "config_not_found", "detail": "LLM configuration not found"}}
         return
-    effective_enable_thinking = message_in.enable_thinking and bool(llm_config.capability_reasoning)
+    model_name = llm_config.model_name
+    force_thinking = _is_gemini_model(llm_config, model_name)
+    effective_enable_thinking = message_in.enable_thinking and (
+        bool(llm_config.capability_reasoning) or force_thinking
+    )
 
     # 1. Save User Message
     user_msg = Message(session_id=session_id, role="user", content=message_in.content)
@@ -1092,8 +1203,10 @@ async def regenerate_message_stream(db: Session, session_id: int, ai_message_id:
     queue = asyncio.Queue()
     
     # Get thinking mode from global settings (frontend handles UI toggle state)
-    enable_thinking = SettingsService.get_setting(db, "chat", "enable_thinking", False) 
-    if enable_thinking and not llm_config.capability_reasoning:
+    enable_thinking = SettingsService.get_setting(db, "chat", "enable_thinking", False)
+    model_name = llm_config.model_name
+    force_thinking = _is_gemini_model(llm_config, model_name)
+    if enable_thinking and not llm_config.capability_reasoning and not force_thinking:
         enable_thinking = False
 
     

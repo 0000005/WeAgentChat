@@ -1,6 +1,7 @@
 # Memobase LLM 兼容性测试执行情况（阶段性总结）
 
 日期：2026-01-21
+更新日期：2026-01-22
 
 ## 已完成
 - 新增 Memobase 多供应商 LLM 兼容性测试：`server/tests/test_memobase_llm_providers.py`
@@ -18,18 +19,53 @@
   - 典型日志：`Error in llm_complete: Connection error.`
   - 各供应商都未连通：OpenAI / Gemini / ModelScope / Minimax / Zhipu / DeepSeek
 
+## 2026-01-22 复测（使用实际配置）
+- 环境变量（仅 base_url + model，API Key 已注入但不记录）：
+  - OpenAI：`https://api.openai.com/v1`，`gpt-5.2` / `gpt-4.1-nano`
+  - Gemini：`https://generativelanguage.googleapis.com/v1beta`，`models/gemini-3-flash-preview`
+  - ModelScope：`https://api-inference.modelscope.cn/v1`，`Qwen/Qwen3-235B-A22B-Instruct-2507`
+  - Minimax：`https://api.minimaxi.com/v1`，`MiniMax-M2.1`
+  - Zhipu：`https://api.z.ai/api/coding/paas/v4/`，`glm-4.7`
+  - DeepSeek：`https://api.deepseek.com/v1`，`deepseek-chat`
+- 结果：4 通过 / 3 失败
+  - 通过：`openai_gpt_4_1_nano` / `modelscope_qwen3_235b_a22b` / `minimax_m2_1` / `deepseek_chat`
+  - 失败：
+    - `openai_gpt_5_2`：400，提示 `max_tokens` 不支持，需改用 `max_completion_tokens`
+    - `gemini_3_flash_preview`：请求 200，但返回内容为空（`content=None`），断言失败
+    - `zhipu_glm_4_7`：请求 200，`result.data()` 为空字符串导致断言失败（返回 `reasoning_content`）
+- 额外日志：`project_cost_token_billing` 在测试环境无 DB bind，触发 `UnboundExecutionError`（不影响断言但会污染日志）
+
+## 2026-01-22 复测（修复后）
+- 关键修复：
+  - GPT-5.2：`max_tokens` -> `max_completion_tokens`
+  - Gemini：OpenAI base_url 自动补 `/openai`；消息 `content` 包装为多段文本；`max_tokens` 下限提升到 64
+  - Zhipu：超时提高到 600s；空内容时回退 `reasoning_content`
+- 结果：7/7 通过（仍有测试环境 billing 异步报错噪音）
+
+## 2026-01-22 记忆生成链路验证（多供应商）
+- 方法：基于 `server/tests/data/memory_test/scenario1_mixed.txt`，调用 `MemoService.insert_chat` + `flush_buffer`，再拉取 `get_user_profiles`/`get_recent_memories`。
+- 配置：`MEMOBASE_ENABLE_EVENT_EMBEDDING=false`（仅验证抽取，不含向量化）；project_id 使用 `__root__`。
+- 结果：各供应商均生成 Profile 与 Event（数量不代表质量，仅证明链路可用）
+  - OpenAI (`gpt-4.1-nano`)：profiles=3，events=3
+  - Gemini (`models/gemini-3-flash-preview`)：profiles=3，events=3
+  - ModelScope (`Qwen/Qwen3-235B-A22B-Instruct-2507`)：profiles=3，events=3
+  - Minimax (`MiniMax-M2.1`)：profiles=3，events=3
+  - Zhipu (`glm-4.7`)：profiles=3，events=3
+  - DeepSeek (`deepseek-chat`)：profiles=3，events=3
+- 备注：此验证覆盖“记忆抽取/入库”，不覆盖向量检索与召回效果评估。
+
 ## 结论（当前阶段）
-- 不是模型报错或鉴权问题，而是 Python 客户端在本环境无法连通到外部 API。
-- 需要先解决网络/代理/证书/防火墙等连通性问题，再验证模型兼容性。
+- 连通性问题已解除，所有供应商最小化调用通过。
+- 记忆抽取链路在 `scenario1_mixed` 下多供应商验证通过（embedding 关闭）。
+- 仍有测试环境噪音：
+  - `project_cost_token_billing` 在测试环境无 DB bind 的异步报错
 
 ## 待办建议（下次恢复时）
-1) 先做连通性诊断（DNS + 443 端口测试）或确认是否必须设置 `HTTP_PROXY/HTTPS_PROXY`。
-2) 如需按 OpenAI 兼容接口测试，推荐确认 base_url 是否应使用：
-   - Gemini：`https://generativelanguage.googleapis.com/v1beta/openai`
-   - Minimax：`https://api.minimax.chat/v1`
-   - Zhipu：`https://open.bigmodel.cn/api/paas/v4`
-3) 重新运行 `server/tests/test_memobase_llm_providers.py` 并定位具体供应商错误。
+1) 评估 Gemini 最小 `max_tokens` 下限（当前强制 >= 64），确认是否需要更细分的阈值或可配置化。
+2) Zhipu：确认 `reasoning_content` 回退是否符合产品预期（思考/非思考模式的统一输出策略）。
+3) 测试环境可临时禁用 `project_cost_token_billing` 或补齐 DB bind，避免异步报错噪音。
 
 ## 变更文件
 - `server/tests/test_memobase_llm_providers.py`
 - `server/app/vendor/memobase_server/llms/openai_model_llm.py`
+- `server/app/vendor/memobase_server/llms/utils.py`

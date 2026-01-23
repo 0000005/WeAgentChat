@@ -85,7 +85,7 @@ const LLM_PROVIDER_PRESETS: Record<string, { label: string; baseUrl: string }> =
     zhipu: { label: '智谱 AI', baseUrl: 'https://open.bigmodel.cn/api/paas/v4' },
     modelscope: { label: '魔搭社区', baseUrl: 'https://api-inference.modelscope.cn/v1' },
     minimax: { label: 'MiniMax', baseUrl: 'https://api.minimax.chat/v1' },
-    gemini: { label: 'Google Gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai' },
+    gemini: { label: 'Google Gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta' },
     openai_compatible: { label: 'OpenAI (兼容)', baseUrl: '' }
 }
 
@@ -394,7 +394,6 @@ const handleSave = async () => {
         }
 
         console.log('[SettingsDialog] Settings saved successfully')
-        emit('update:open', false)
     } catch (error) {
         console.error('[SettingsDialog] Failed to save settings', error)
     }
@@ -812,11 +811,11 @@ const openTutorial = () => {
 
 <template>
     <Dialog :open="open" @update:open="$emit('update:open', $event)">
-        <DialogContent class="sm:max-w-[750px] p-0 overflow-hidden flex h-[600px] gap-0">
+        <DialogContent class="sm:max-w-[800px] p-0 overflow-hidden flex h-[600px] gap-0">
             <DialogTitle class="sr-only">设置</DialogTitle>
             <DialogDescription class="sr-only">应用配置界面</DialogDescription>
 
-            <div class="w-[200px] bg-gray-50 border-r border-gray-200 p-4 flex flex-col gap-1">
+            <div class="w-[140px] bg-gray-50 border-r border-gray-200 p-2 flex flex-col gap-1">
                 <h3 class="font-semibold mb-4 px-2 text-lg">设置</h3>
                 <button class="w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors"
                     :class="activeTab === 'llm' ? 'bg-white shadow-sm text-black' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-200/50'"

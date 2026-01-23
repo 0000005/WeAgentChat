@@ -304,6 +304,7 @@ export const useSessionStore = defineStore('session', () => {
         let toolCallsBuffer: ToolCall[] = []
         const assistantMsgId = Date.now() + 1
         let capturedSessionId: number | undefined = undefined // Capture session_id from start event
+        let capturedAssistantMsgId: number | undefined = undefined // Capture assistant msg id from start event
 
         try {
             // 如果当前正在查看特定会话，则按会话 ID 发送消息；否则按好友 ID 发送（由后端自动寻址）
@@ -319,6 +320,7 @@ export const useSessionStore = defineStore('session', () => {
 
                     // Capture session_id for later use
                     capturedSessionId = data.session_id
+                    capturedAssistantMsgId = data.message_id
 
                     // Update local user message with real database ID
                     if (data.user_message_id && messagesMap.value[friendId]) {
@@ -365,7 +367,7 @@ export const useSessionStore = defineStore('session', () => {
                         : `[错误: ${errorDetail}]`
 
                     const errorMsg: Message = {
-                        id: Date.now() + 2,
+                        id: capturedAssistantMsgId ?? Date.now() + 2,
                         role: 'assistant',
                         content: errorContent,
                         thinkingContent: modelThinkingBuffer || undefined,

@@ -1,6 +1,6 @@
 import asyncio
 from .utils import exclude_special_kwargs, get_openai_async_client_instance
-from ..env import LOG
+from ..env import LOG, CONFIG
 
 
 async def openai_complete(
@@ -17,19 +17,46 @@ async def openai_complete(
     if not _supports_sampling(model):
         kwargs.pop("temperature", None)
         kwargs.pop("top_p", None)
+        if "max_tokens" in kwargs and "max_completion_tokens" not in kwargs:
+            kwargs["max_completion_tokens"] = kwargs.pop("max_tokens")
 
     openai_async_client = get_openai_async_client_instance()
     messages = []
+    base_url = (CONFIG.llm_base_url or "").lower()
+    is_gemini = "generativelanguage.googleapis.com" in base_url
+
+    def _wrap_text_content(value):
+        if isinstance(value, str):
+            return [{"type": "text", "text": value}]
+        return value
+
     if system_prompt:
-        messages.append({"role": "system", "content": system_prompt})
-    messages.extend(history_messages)
-    messages.append({"role": "user", "content": prompt})
+        content = _wrap_text_content(system_prompt) if is_gemini else system_prompt
+        messages.append({"role": "system", "content": content})
+    if is_gemini:
+        for msg in history_messages:
+            content = _wrap_text_content(msg.get("content"))
+            messages.append({**msg, "content": content})
+    else:
+        messages.extend(history_messages)
+    user_content = _wrap_text_content(prompt) if is_gemini else prompt
+    messages.append({"role": "user", "content": user_content})
+
+    if is_gemini and "max_tokens" in kwargs:
+        try:
+            kwargs["max_tokens"] = max(int(kwargs["max_tokens"]), 64)
+        except (TypeError, ValueError):
+            pass
 
     last_error = None
+    timeout = kwargs.pop("timeout", 300)
+    if base_url:
+        if "z.ai" in base_url or "bigmodel.cn" in base_url:
+            timeout = max(timeout, 600)
     for attempt in range(3):
         try:
             response = await openai_async_client.chat.completions.create(
-                model=model, messages=messages, timeout=300, **kwargs
+                model=model, messages=messages, timeout=timeout, **kwargs
             )
             break
         except Exception as exc:
@@ -44,4 +71,29 @@ async def openai_complete(
     LOG.info(
         f"Cached {prompt_id} {model} {cached_tokens}/{response.usage.prompt_tokens}"
     )
-    return response.choices[0].message.content
+
+    def _coerce_content(value) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value
+        if isinstance(value, dict):
+            if isinstance(value.get("text"), str):
+                return value["text"]
+            if "content" in value:
+                return _coerce_content(value["content"])
+            if "parts" in value:
+                return _coerce_content(value["parts"])
+            return ""
+        if isinstance(value, list):
+            parts = [_coerce_content(item) for item in value]
+            return "".join([part for part in parts if part])
+        return str(value)
+
+    message = response.choices[0].message
+    content = _coerce_content(getattr(message, "content", None))
+    if not content:
+        content = _coerce_content(getattr(message, "reasoning_content", None))
+    if not content:
+        content = _coerce_content(getattr(response.choices[0], "text", None))
+    return content

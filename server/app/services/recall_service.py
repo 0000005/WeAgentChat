@@ -1,12 +1,14 @@
 import json
+import json
 import logging
 import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from agents import Agent, Runner, RunConfig, function_tool, set_default_openai_api, set_default_openai_client
+from agents import Agent, ModelSettings, Runner, RunConfig, function_tool, set_default_openai_api, set_default_openai_client
 from agents.items import ReasoningItem, ToolCallItem, ToolCallOutputItem
 from openai import AsyncOpenAI
+from openai.types.shared import Reasoning
 from sqlalchemy.orm import Session
 
 from app.services.memo.bridge import MemoService
@@ -99,6 +101,64 @@ class RecallService:
             return merged_events[:max_events]
         return merged_events
 
+    @staticmethod
+    def _is_gemini_model(llm_config, model_name: Optional[str]) -> bool:
+        provider = (getattr(llm_config, "provider", "") or "").lower()
+        base_url = (getattr(llm_config, "base_url", "") or "").lower()
+        if provider == "gemini":
+            return True
+        if "generativelanguage.googleapis.com" in base_url:
+            return True
+        if model_name:
+            return "gemini" in model_name.lower()
+        return False
+
+    @staticmethod
+    def _is_deepseek_model(llm_config, model_name: Optional[str]) -> bool:
+        provider = (getattr(llm_config, "provider", "") or "").lower()
+        base_url = (getattr(llm_config, "base_url", "") or "").lower()
+        if provider == "deepseek":
+            return True
+        if "deepseek" in base_url:
+            return True
+        return "deepseek" in (model_name or "").lower()
+
+    @staticmethod
+    def _supports_reasoning_effort(llm_config) -> bool:
+        provider = (getattr(llm_config, "provider", "") or "").lower()
+        base_url = (getattr(llm_config, "base_url", "") or "").lower()
+        if provider in ("openai", "deepseek"):
+            return True
+        if provider == "openai_compatible":
+            if "openai.com" in base_url or "deepseek" in base_url:
+                return True
+            return False
+        if "deepseek" in base_url:
+            return True
+        return False
+
+    @staticmethod
+    def _normalize_gemini_litellm_model_name(model_name: Optional[str]) -> str:
+        raw = (model_name or "").strip()
+        if not raw:
+            return "gemini/gemini-3-pro-preview"
+        if "/" in raw:
+            prefix, rest = raw.split("/", 1)
+            if prefix in ("gemini", "vertex_ai", "google"):
+                return raw
+            return f"gemini/{rest}"
+        return f"gemini/{raw}"
+
+    @staticmethod
+    def _normalize_gemini_base_url(base_url: Optional[str]) -> Optional[str]:
+        raw = (base_url or "").strip()
+        if not raw:
+            return None
+        trimmed = raw.rstrip("/")
+        if trimmed.endswith("/openai"):
+            return trimmed[: -len("/openai")]
+        return raw
+
     @classmethod
     async def perform_recall(
         cls,
@@ -131,6 +191,9 @@ class RecallService:
         search_rounds = SettingsService.get_setting(db, "memory", "search_rounds", 3)
         event_topk = SettingsService.get_setting(db, "memory", "event_topk", 5)
         threshold = SettingsService.get_setting(db, "memory", "similarity_threshold", 0.5)
+
+        messages_list = list(messages)
+        raw_model_name = llm_config.model_name
 
         # 2. 定义 Agent 手里的“召回工具”
         tool_description = get_prompt("recall/recall_tool_description.txt").strip()
@@ -169,16 +232,36 @@ class RecallService:
             current_time=current_time,
         ).strip()
 
-        model_name = llm_service.normalize_model_name(llm_config.model_name)
+        model_name = llm_service.normalize_model_name(raw_model_name)
+        use_litellm = cls._is_gemini_model(llm_config, raw_model_name)
+        model_settings_kwargs: Dict[str, Any] = {}
+        if llm_config.capability_reasoning and not use_litellm and cls._supports_reasoning_effort(llm_config):
+            model_settings_kwargs["reasoning"] = Reasoning(
+                effort="low"
+            )
+        model_settings = ModelSettings(**model_settings_kwargs)
+        if use_litellm:
+            from agents.extensions.models.litellm_model import LitellmModel
+
+            gemini_model_name = cls._normalize_gemini_litellm_model_name(raw_model_name)
+            gemini_base_url = cls._normalize_gemini_base_url(llm_config.base_url)
+            agent_model = LitellmModel(
+                model=gemini_model_name,
+                base_url=gemini_base_url,
+                api_key=llm_config.api_key,
+            )
+        else:
+            agent_model = model_name
         agent = Agent(
             name="RecallAgent",
             instructions=instructions,
-            model=model_name,
+            model=agent_model,
             tools=[tool_recall],
+            model_settings=model_settings,
         )
 
         # 5. 准备对话上下文并运行 Agent
-        agent_messages = cls._normalize_messages(messages)
+        agent_messages = cls._normalize_messages(messages_list)
         if not agent_messages:
             return {"injected_messages": [], "footprints": []}
 
@@ -249,6 +332,8 @@ class RecallService:
             "name": "recall_memory",
             "arguments": last_tool_call_args,
         }
+        if cls._is_gemini_model(llm_config, model_name):
+            tool_call_item["provider_data"] = {"thought_signature": "skip_thought_signature_validator"}
         # 伪造该 Function Call 的返回结果（即我们合规后的记忆事件）
         tool_result_item = {
             "type": "function_call_output",
@@ -259,7 +344,18 @@ class RecallService:
         logger.info("RecallService merged %s events, generated %s footprints", len(merged_events), len(footprints))
 
         return {
-            "injected_messages": [tool_call_item, tool_result_item],
+            "injected_messages": [
+                *(
+                    [{
+                        "type": "reasoning",
+                        "summary": [{"text": "正在检索相关记忆。", "type": "summary_text"}],
+                    }]
+                    if cls._is_deepseek_model(llm_config, model_name)
+                    else []
+                ),
+                tool_call_item,
+                tool_result_item
+            ],
             "footprints": footprints
         }
 

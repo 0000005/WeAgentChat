@@ -146,6 +146,13 @@ def reload_sdk_config():
         "embedding_dim": embedding_dim,
         "event_theme_requirement": event_theme_requirement,
     }
+
+    if embedding_provider == "ollama" and embedding_base_url:
+        normalized = embedding_base_url.rstrip("/")
+        if normalized.endswith("/api"):
+            memo_config["embedding_base_url"] = normalized[:-4]
+        else:
+            memo_config["embedding_base_url"] = normalized
     
     # 2. Reinitialize the global CONFIG object in SDK
     reinitialize_config(memo_config)

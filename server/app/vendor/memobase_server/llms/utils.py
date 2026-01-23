@@ -6,11 +6,23 @@ _global_openai_async_client = None
 _global_doubao_async_client = None
 
 
+def _normalize_openai_base_url(base_url: str | None) -> str | None:
+    if not base_url:
+        return base_url
+    trimmed = base_url.rstrip("/")
+    if "generativelanguage.googleapis.com/v1beta" in trimmed and not trimmed.endswith(
+        "/openai"
+    ):
+        return f"{trimmed}/openai"
+    return base_url
+
+
 def get_openai_async_client_instance() -> AsyncOpenAI:
     global _global_openai_async_client
     if _global_openai_async_client is None:
+        base_url = _normalize_openai_base_url(CONFIG.llm_base_url)
         _global_openai_async_client = AsyncOpenAI(
-            base_url=CONFIG.llm_base_url,
+            base_url=base_url,
             api_key=CONFIG.llm_api_key,
             default_query=CONFIG.llm_openai_default_query,
             default_headers=CONFIG.llm_openai_default_header,

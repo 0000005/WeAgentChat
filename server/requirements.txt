@@ -5,7 +5,8 @@ pydantic-settings
 sqlalchemy
 httpx
 openai
-openai-agents
+openai-agents==0.6.9
+litellm==1.81.1
 python-multipart
 alembic
 jinja2
