@@ -154,6 +154,7 @@ def reload_sdk_config():
         else:
             memo_config["embedding_base_url"] = normalized
     
+    
     # 2. Reinitialize the global CONFIG object in SDK
     reinitialize_config(memo_config)
     return memo_config

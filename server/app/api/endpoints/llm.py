@@ -180,22 +180,55 @@ def _test_llm_config_payload(base_url: str | None, api_key: str | None, model_na
             base_url=base_url if base_url else None
         )
 
-        test_message = get_prompt("tests/llm_test_user_message.txt").strip()
+        test_message = "请调用 'get_weather' 工具查询 '北京' 的天气。注：你只需要调用工具，不需要输出文本。"
+        
+        tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_weather",
+                    "description": "Get the current weather in a given location",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "location": {
+                                "type": "string",
+                                "description": "The city and state, e.g. San Francisco, CA",
+                            },
+                            "unit": {"type": "string", "enum": ["celsius", "fahrenheit"]},
+                        },
+                        "required": ["location"],
+                    },
+                },
+            }
+        ]
 
         response = client.chat.completions.create(
             model=model_name or "gpt-3.5-turbo",
-            messages=[{"role": "user", "content": test_message}]
+            messages=[{"role": "user", "content": test_message}],
+            tools=tools,
+            tool_choice={"type": "function", "function": {"name": "get_weather"}}
         )
+
+        # 验证是否实际生成了工具调用
+        has_tool_call = False
+        if response.choices and response.choices[0].message.tool_calls:
+            tool_call = response.choices[0].message.tool_calls[0]
+            if tool_call.function.name == "get_weather":
+                has_tool_call = True
+
+        if not has_tool_call:
+             raise Exception("模型未能按预期触发工具调用。本应用要求模型必须支持 Tool Calling 能力。")
 
         return {
             "success": True,
-            "message": "LLM connection test successful!",
+            "message": "LLM 连接与工具调用测试成功！",
             "model": response.model,
-            "response": response.choices[0].message.content if response.choices else None
+            "response": "Tool call verified: get_weather"
         }
     except Exception as e:
         logger.error(f"LLM test failed: {e}")
-        raise HTTPException(status_code=400, detail=f"LLM test failed: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"LLM 测试失败（必须支持 Tool Calling）: {str(e)}")
 
 
 @router.post("/config/test")

@@ -21,6 +21,7 @@ def _normalize_base_url(base_url: str | None) -> str | None:
         return None
     return base_url.rstrip("/")
 
+
 def _normalize_ollama_base_url(base_url: str | None) -> str:
     normalized = _normalize_base_url(base_url) or "http://127.0.0.1:11434"
     if normalized.endswith("/api"):
@@ -158,12 +159,32 @@ def test_embedding_config(config_in: EmbeddingSettingCreate) -> dict:
             if not config_in.embedding_api_key:
                 raise HTTPException(status_code=400, detail="API Key is required for testing.")
 
+            # Pre-check: Warn if base_url looks incomplete (missing /v1 path for known providers)
+            base_url = _normalize_base_url(config_in.embedding_base_url)
+            if base_url:
+                from urllib.parse import urlparse
+                parsed = urlparse(base_url)
+                path = parsed.path.strip("/")
+                known_providers_requiring_path = {
+                    "api.siliconflow.cn": "/v1",
+                    "open.bigmodel.cn": "/api/paas/v4",
+                    "api.openai.com": "/v1",
+                }
+                for host, expected_path in known_providers_requiring_path.items():
+                    if host in (parsed.netloc or ""):
+                        if not path or path == "":
+                            raise HTTPException(
+                                status_code=400,
+                                detail=f"Base URL 格式不完整。对于 {host}，请使用完整路径，例如：https://{host}{expected_path}"
+                            )
+
             from openai import OpenAI
 
             client = OpenAI(
                 api_key=config_in.embedding_api_key,
-                base_url=config_in.embedding_base_url if config_in.embedding_base_url else None
+                base_url=base_url
             )
+
 
             response = client.embeddings.create(
                 model=model_name,

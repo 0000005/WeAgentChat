@@ -102,6 +102,7 @@ class LLMService:
         data["config_name"] = LLMService._normalize_config_name(
             db, data.get("provider"), data.get("config_name")
         )
+        data["capability_function_call"] = True
         db_obj = LLMConfig(**data)
         db.add(db_obj)
         db.commit()
@@ -122,6 +123,8 @@ class LLMService:
             if field == "config_name" and value is not None and not value.strip():
                 value = None
             setattr(existing_config, field, value)
+        
+        existing_config.capability_function_call = True
 
         existing_config.config_name = LLMService._normalize_config_name(
             db,

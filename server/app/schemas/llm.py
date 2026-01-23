@@ -13,7 +13,7 @@ class LLMConfigBase(BaseModel):
     capability_vision: Optional[bool] = False
     capability_search: Optional[bool] = False
     capability_reasoning: Optional[bool] = False
-    capability_function_call: Optional[bool] = False
+    capability_function_call: Optional[bool] = True
 
 class LLMConfigCreate(LLMConfigBase):
     pass

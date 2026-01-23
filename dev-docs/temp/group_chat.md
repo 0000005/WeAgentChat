@@ -24,7 +24,39 @@
 - 被提及名字时强制发言。
 
 ## 4、上下文管理
+AI群成员发言时，我们会伪造 function tool调用，将其他群成员的消息封装到 tool调用的参数中，这样AI就能了解到群聊的上下文。
+例如：
+```
+---system prompt---
+you are a ....
+---system prompt---
 
+---user message---
+今天茅台又涨了
+---user message---
+
+---mock---
+invoke function tool call : get_other_members_messages
+---mock---
+
+---mock---
+function tool result:
+张三：哈哈，预料之中，后面应该还会涨
+李四：诶呀，抛早了
+---mock---
+
+---群成员发言---
+assistant message：我觉得马上就是下行了，大家拭目以待吧
+---群成员发言---
+
+## 5、消息发送
+- 普通消息
+- @消息
+
+规则：用户发送完消息之后，要等待所有的AI好友（由Manager指定，或被提及）回复之后，才能继续发送消息。
+
+
+```
 
 
 ##

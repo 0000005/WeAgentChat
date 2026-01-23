@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import {
   Dialog,
   DialogContent,
@@ -25,8 +25,13 @@ import {
   Sparkles,
   ShieldCheck,
   Zap,
-  AlertCircle
+  AlertCircle,
+  Eye,
+  EyeOff,
+  Search,
+  Wrench
 } from 'lucide-vue-next'
+import { Switch } from '@/components/ui/switch'
 import { useLlmStore } from '@/stores/llm'
 import { useEmbeddingStore } from '@/stores/embedding'
 import { useSettingsStore } from '@/stores/settings'
@@ -35,11 +40,34 @@ import { useFriendStore } from '@/stores/friend'
 import { getFriendTemplates } from '@/api/friend-template'
 import { useToast } from '@/composables/useToast'
 
+const LLM_PROVIDER_PRESETS: Record<string, { label: string; baseUrl: string }> = {
+  openai: { label: 'OpenAI', baseUrl: 'https://api.openai.com/v1' },
+  zhipu: { label: '智谱 AI', baseUrl: 'https://open.bigmodel.cn/api/paas/v4' },
+  modelscope: { label: '魔搭社区', baseUrl: 'https://api-inference.modelscope.cn/v1' },
+  minimax: { label: 'MiniMax', baseUrl: 'https://api.minimax.chat/v1' },
+  gemini: { label: 'Google Gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta' },
+  openai_compatible: { label: 'OpenAI (兼容)', baseUrl: '' }
+}
+
+const EMBEDDING_PROVIDER_PRESETS: Record<string, { label: string; provider: string; baseUrl: string; model: string; dim: number }> = {
+  openai: { label: 'OpenAI (官方)', provider: 'openai', baseUrl: 'https://api.openai.com/v1', model: 'text-embedding-3-small', dim: 1536 },
+  siliconflow: { label: 'SiliconFlow', provider: 'openai', baseUrl: 'https://api.siliconflow.cn/v1', model: 'BAAI/bge-m3', dim: 1024 },
+  zhipu: { label: '智谱 AI', provider: 'openai', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', model: 'embedding-3', dim: 2048 },
+  jina: { label: 'Jina', provider: 'jina', baseUrl: 'https://api.jina.ai/v1', model: 'jina-embeddings-v2-base-en', dim: 768 },
+  ollama: { label: 'Ollama', provider: 'ollama', baseUrl: 'http://127.0.0.1:11434', model: 'bge-m3', dim: 1024 },
+}
+
+const EMBEDDING_PROTOCOL_OPTIONS = [
+  { value: 'openai', label: 'OpenAI 协议' },
+  { value: 'jina', label: 'Jina 协议' },
+  { value: 'ollama', label: 'Ollama 协议' }
+]
+
 interface Props {
   open: boolean
 }
 
-const props = defineProps<Props>()
+defineProps<Props>()
 const emit = defineEmits(['update:open', 'complete'])
 
 const toast = useToast()
@@ -56,13 +84,17 @@ const gender = ref<'男' | '女' | ''>('')
 const isGenderInitialized = ref(false)
 const llmConfigId = ref<number | null>(null)
 const embeddingConfigId = ref<number | null>(null)
-
+const showApiKey = ref(false)
 const llmDraft = ref({
   provider: 'openai',
   config_name: 'OpenAI',
   base_url: 'https://api.openai.com/v1',
   api_key: '',
-  model_name: 'gpt-4o-mini'
+  model_name: 'gpt-4o-mini',
+  capability_vision: false,
+  capability_search: false,
+  capability_reasoning: false,
+  capability_function_call: true,
 })
 
 const embeddingDraft = ref({
@@ -71,8 +103,77 @@ const embeddingDraft = ref({
   embedding_api_key: '',
   embedding_base_url: '',
   embedding_dim: 1536,
-  embedding_model: 'text-embedding-3-small'
+  embedding_model: 'text-embedding-3-small',
+  embedding_max_token_size: 8000
 })
+
+const toggleApiKeyVisibility = () => {
+  showApiKey.value = !showApiKey.value
+}
+
+const buildUniqueName = (base: string, names: string[]) => {
+  if (!names.includes(base)) return base
+  let index = 2
+  while (names.includes(`${base} #${index}`)) {
+    index += 1
+  }
+  return `${base} #${index}`
+}
+
+
+
+watch(
+  () => llmDraft.value.provider,
+  (newProvider, oldProvider) => {
+    const newPreset = LLM_PROVIDER_PRESETS[newProvider] || LLM_PROVIDER_PRESETS.openai
+    const oldPreset = oldProvider ? LLM_PROVIDER_PRESETS[oldProvider] : null
+    const isBaseUrlDefault = !llmDraft.value.base_url || (oldPreset && llmDraft.value.base_url === oldPreset.baseUrl)
+    if (isBaseUrlDefault) {
+      llmDraft.value.base_url = newPreset.baseUrl
+    }
+    if (!llmConfigId.value) {
+      const existingNames = llmStore.configs.map(item => item.config_name).filter(Boolean) as string[]
+      const shouldReplaceName = !llmDraft.value.config_name || (oldPreset && llmDraft.value.config_name === oldPreset.label)
+      if (shouldReplaceName) {
+        llmDraft.value.config_name = buildUniqueName(newPreset.label, existingNames)
+      }
+    }
+  }
+)
+
+watch(
+  () => embeddingDraft.value.embedding_provider,
+  (newProvider) => {
+    // When provider changes, we only clear fields if it's not OpenAI (to avoid overwriting custom base URLs)
+    // or provide defaults for Jina/Ollama
+    if (newProvider === 'jina') {
+      const preset = EMBEDDING_PROVIDER_PRESETS.jina
+      embeddingDraft.value.embedding_base_url = preset.baseUrl
+      embeddingDraft.value.embedding_model = preset.model
+      embeddingDraft.value.embedding_dim = preset.dim
+    } else if (newProvider === 'ollama') {
+      const preset = EMBEDDING_PROVIDER_PRESETS.ollama
+      embeddingDraft.value.embedding_base_url = preset.baseUrl
+      embeddingDraft.value.embedding_model = preset.model
+      embeddingDraft.value.embedding_dim = preset.dim
+    } else if (newProvider === 'openai' && !embeddingDraft.value.embedding_base_url) {
+      const preset = EMBEDDING_PROVIDER_PRESETS.openai
+      embeddingDraft.value.embedding_base_url = preset.baseUrl
+      embeddingDraft.value.embedding_model = preset.model
+      embeddingDraft.value.embedding_dim = preset.dim
+    }
+  }
+)
+
+const applyEmbeddingPreset = (presetKey: string) => {
+  const preset = EMBEDDING_PROVIDER_PRESETS[presetKey]
+  if (!preset) return
+  embeddingDraft.value.embedding_provider = preset.provider
+  embeddingDraft.value.embedding_base_url = preset.baseUrl
+  embeddingDraft.value.embedding_model = preset.model
+  embeddingDraft.value.embedding_dim = preset.dim
+  embeddingDraft.value.config_name = buildUniqueName(preset.label, embeddingStore.configs.map(c => c.config_name).filter(Boolean) as string[])
+}
 
 // Step transitions logic
 const nextStep = async () => {
@@ -106,7 +207,7 @@ const testLlm = async () => {
       model_name: llmDraft.value.model_name || 'gpt-3.5-turbo'
     })
     if (res.success) {
-      toast.success('LLM 连接测试成功！')
+      toast.success(`LLM 连接测试成功！(${res.model})`)
     } else {
       toast.error('LLM 连接测试失败')
     }
@@ -127,10 +228,10 @@ const testEmbedding = async () => {
       embedding_base_url: embeddingDraft.value.embedding_base_url || null,
       embedding_dim: embeddingDraft.value.embedding_dim,
       embedding_model: embeddingDraft.value.embedding_model,
-      embedding_max_token_size: 8000
+      embedding_max_token_size: embeddingDraft.value.embedding_max_token_size
     })
     if (res.success) {
-      toast.success('Embedding 连接测试成功！')
+      toast.success(`Embedding 连接测试成功！(维度: ${res.dimension})`)
     } else {
       toast.error('Embedding 连接测试失败')
     }
@@ -188,7 +289,11 @@ const completeSetup = async () => {
         config_name: llmDraft.value.config_name,
         base_url: llmDraft.value.base_url || null,
         api_key: llmDraft.value.api_key || null,
-        model_name: llmDraft.value.model_name || 'gpt-3.5-turbo'
+        model_name: llmDraft.value.model_name || 'gpt-3.5-turbo',
+        capability_vision: llmDraft.value.capability_vision,
+        capability_search: llmDraft.value.capability_search,
+        capability_reasoning: llmDraft.value.capability_reasoning,
+        capability_function_call: llmDraft.value.capability_function_call,
       })
     } else {
       const created = await llmStore.createConfig({
@@ -196,7 +301,11 @@ const completeSetup = async () => {
         config_name: llmDraft.value.config_name,
         base_url: llmDraft.value.base_url || null,
         api_key: llmDraft.value.api_key || null,
-        model_name: llmDraft.value.model_name || 'gpt-3.5-turbo'
+        model_name: llmDraft.value.model_name || 'gpt-3.5-turbo',
+        capability_vision: llmDraft.value.capability_vision,
+        capability_search: llmDraft.value.capability_search,
+        capability_reasoning: llmDraft.value.capability_reasoning,
+        capability_function_call: llmDraft.value.capability_function_call,
       })
       llmConfigId.value = created.id ?? null
     }
@@ -209,7 +318,7 @@ const completeSetup = async () => {
         embedding_base_url: embeddingDraft.value.embedding_base_url || null,
         embedding_dim: embeddingDraft.value.embedding_dim,
         embedding_model: embeddingDraft.value.embedding_model,
-        embedding_max_token_size: 8000
+        embedding_max_token_size: embeddingDraft.value.embedding_max_token_size
       })
     } else {
       const created = await embeddingStore.createConfig({
@@ -219,7 +328,7 @@ const completeSetup = async () => {
         embedding_base_url: embeddingDraft.value.embedding_base_url || null,
         embedding_dim: embeddingDraft.value.embedding_dim,
         embedding_model: embeddingDraft.value.embedding_model,
-        embedding_max_token_size: 8000
+        embedding_max_token_size: embeddingDraft.value.embedding_max_token_size
       })
       embeddingConfigId.value = created.id ?? null
     }
@@ -281,7 +390,11 @@ onMounted(async () => {
       config_name: activeLlm.config_name || 'OpenAI',
       base_url: activeLlm.base_url || 'https://api.openai.com/v1',
       api_key: activeLlm.api_key || '',
-      model_name: activeLlm.model_name || 'gpt-3.5-turbo'
+      model_name: activeLlm.model_name || 'gpt-3.5-turbo',
+      capability_vision: !!activeLlm.capability_vision,
+      capability_search: !!activeLlm.capability_search,
+      capability_reasoning: !!activeLlm.capability_reasoning,
+      capability_function_call: true,
     }
   }
 
@@ -293,7 +406,8 @@ onMounted(async () => {
       embedding_api_key: activeEmbedding.embedding_api_key || '',
       embedding_base_url: activeEmbedding.embedding_base_url || '',
       embedding_dim: activeEmbedding.embedding_dim || 1536,
-      embedding_model: activeEmbedding.embedding_model || 'text-embedding-3-small'
+      embedding_model: activeEmbedding.embedding_model || 'text-embedding-3-small',
+      embedding_max_token_size: activeEmbedding.embedding_max_token_size || 8000
     }
   }
   await hydrateGenderFromProfile()
@@ -316,7 +430,8 @@ const openTutorial = () => {
 </script>
 
 <template>
-  <Dialog :open="open" @update:open="(val) => (isSaving || !isGenderInitialized) ? null : emit('update:open', val)">
+  <Dialog :open="open"
+    @update:open="(val) => (isSaving || isTesting || (step === 1 && !isGenderInitialized)) ? null : emit('update:open', val)">
     <DialogContent class="max-w-[500px] p-0 gap-0 overflow-hidden border-none shadow-2xl">
       <!-- Gradient Header Area -->
       <div class="h-32 bg-gradient-to-br from-green-600 to-emerald-700 p-8 flex items-end relative overflow-hidden">
@@ -390,26 +505,92 @@ const openTutorial = () => {
 
         <!-- Step 2: LLM Config -->
         <div v-if="step === 2" class="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+          <div class="grid grid-cols-2 gap-4">
+            <div class="space-y-2">
+              <label class="text-sm font-semibold text-gray-700">供应商</label>
+              <Select v-model="llmDraft.provider">
+                <SelectTrigger class="border-gray-200">
+                  <SelectValue placeholder="选择供应商" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem v-for="(preset, key) in LLM_PROVIDER_PRESETS" :key="key" :value="key">
+                    {{ preset.label }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div class="space-y-2">
+              <label class="text-sm font-semibold text-gray-700">配置名称</label>
+              <Input v-model="llmDraft.config_name" placeholder="例如：我的 OpenAI" class="border-gray-200" />
+            </div>
+          </div>
+
           <div class="space-y-2">
             <label class="text-sm font-semibold text-gray-700">API Key</label>
-            <Input v-model="llmDraft.api_key" type="password" placeholder="sk-..."
-              class="border-gray-200 focus:ring-green-500" />
-            <p class="text-[10px] text-gray-400">目前仅支持 OpenAI 兼容接口</p>
+            <div class="relative">
+              <Input v-model="llmDraft.api_key" :type="showApiKey ? 'text' : 'password'" placeholder="sk-..."
+                class="border-gray-200 focus:ring-green-500 pr-10" />
+              <button type="button" @click="toggleApiKeyVisibility"
+                class="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent text-gray-500 hover:text-gray-900 flex items-center justify-center">
+                <Eye v-if="!showApiKey" :size="16" />
+                <EyeOff v-else :size="16" />
+              </button>
+            </div>
           </div>
+
           <div class="flex justify-end">
             <button class="text-xs text-green-600 hover:underline flex items-center" @click="openTutorial">
               <span class="mr-1">👉</span> 不知道如何配置？查看教程
             </button>
           </div>
+
           <div class="space-y-2">
             <label class="text-sm font-semibold text-gray-700">Base URL (可选)</label>
             <Input v-model="llmDraft.base_url" placeholder="https://api.openai.com/v1" class="border-gray-200" />
-            <p class="text-[10px] text-gray-400">如果使用代理或国内厂商，请填入相应的接口地址</p>
           </div>
+
           <div class="space-y-2">
             <label class="text-sm font-semibold text-gray-700">模型名称</label>
             <Input v-model="llmDraft.model_name" placeholder="gpt-4o-mini" class="border-gray-200" />
           </div>
+
+          <div class="space-y-2">
+            <label class="text-sm font-semibold text-gray-700">模型能力</label>
+            <div class="grid grid-cols-2 gap-2">
+              <div class="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50/50 px-3 py-2">
+                <div class="flex items-center gap-2">
+                  <Eye class="w-3.5 h-3.5 text-gray-500" />
+                  <span class="text-xs text-gray-600">视觉</span>
+                </div>
+                <Switch v-model="llmDraft.capability_vision" />
+              </div>
+              <div class="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50/50 px-3 py-2">
+                <div class="flex items-center gap-2">
+                  <Search class="w-3.5 h-3.5 text-gray-500" />
+                  <span class="text-xs text-gray-600">联网</span>
+                </div>
+                <Switch v-model="llmDraft.capability_search" />
+              </div>
+              <div class="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50/50 px-3 py-2">
+                <div class="flex items-center gap-2">
+                  <BrainCircuit class="w-3.5 h-3.5 text-gray-500" />
+                  <span class="text-xs text-gray-600">推理</span>
+                </div>
+                <Switch v-model="llmDraft.capability_reasoning" />
+              </div>
+              <div
+                class="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50/50 px-3 py-2 opacity-70">
+                <div class="flex items-center gap-2">
+                  <Wrench class="w-3.5 h-3.5 text-gray-500" />
+                  <span class="text-xs text-gray-600">工具调用 (必选)</span>
+                </div>
+                <div class="w-8 h-4 bg-green-500 rounded-full relative">
+                  <div class="absolute right-0.5 top-0.5 w-3 h-3 bg-white rounded-full"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div class="pt-2">
             <Button variant="outline" size="sm" @click="testLlm" :disabled="isTesting || !llmDraft.api_key"
               class="w-full text-xs h-9 border-dashed border-gray-300 hover:border-green-500 hover:text-green-600 transition-colors">
@@ -431,41 +612,75 @@ const openTutorial = () => {
               <span class="mr-1">👉</span> 查看配置教程
             </button>
           </div>
-          <div class="space-y-2">
-            <label class="text-sm font-semibold text-gray-700">Provider 服务商</label>
-            <Select v-model="embeddingDraft.embedding_provider">
-              <SelectTrigger class="border-gray-200">
-                <SelectValue placeholder="选择服务商" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="openai">OpenAI (兼容)</SelectItem>
-                <SelectItem value="jina">Jina AI</SelectItem>
-                <SelectItem value="ollama">Ollama (本地)</SelectItem>
-              </SelectContent>
-            </Select>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div class="space-y-2">
+              <label class="text-sm font-semibold text-gray-700">配置名称</label>
+              <Input v-model="embeddingDraft.config_name" placeholder="例如：我的 Embedding" class="border-gray-200" />
+            </div>
+            <div class="space-y-2">
+              <label class="text-sm font-semibold text-gray-700">供应商</label>
+              <Select v-model="embeddingDraft.embedding_provider">
+                <SelectTrigger class="border-gray-200">
+                  <SelectValue placeholder="选择协议类型" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem v-for="opt in EMBEDDING_PROTOCOL_OPTIONS" :key="opt.value" :value="opt.value">
+                    {{ opt.label }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
+
+          <div v-if="embeddingDraft.embedding_provider === 'openai'" class="space-y-2">
+            <label class="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">常用预设</label>
+            <div class="flex flex-wrap gap-2">
+              <button v-for="(preset, key) in EMBEDDING_PROVIDER_PRESETS" :key="key"
+                v-show="preset.provider === 'openai'" @click="applyEmbeddingPreset(key)"
+                class="px-2.5 py-1 text-xs rounded-full border border-gray-200 bg-white hover:border-green-500 hover:text-green-600 transition-colors">
+                {{ preset.label }}
+              </button>
+            </div>
+          </div>
+
           <div class="space-y-2">
             <label class="text-sm font-semibold text-gray-700">API Key</label>
-            <Input v-model="embeddingDraft.embedding_api_key" type="password" placeholder="sk-..."
-              class="border-gray-200" />
+            <div class="relative">
+              <Input v-model="embeddingDraft.embedding_api_key" :type="showApiKey ? 'text' : 'password'"
+                placeholder="sk-..." class="border-gray-200 pr-10" />
+              <button type="button" @click="toggleApiKeyVisibility"
+                class="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent text-gray-500 hover:text-gray-900 flex items-center justify-center">
+                <Eye v-if="!showApiKey" :size="16" />
+                <EyeOff v-else :size="16" />
+              </button>
+            </div>
           </div>
+
           <div class="space-y-2">
             <label class="text-sm font-semibold text-gray-700">Base URL (可选)</label>
             <Input v-model="embeddingDraft.embedding_base_url" placeholder="https://api.openai.com/v1"
               class="border-gray-200" />
           </div>
+
           <div class="grid grid-cols-2 gap-4">
             <div class="space-y-2">
               <label class="text-sm font-semibold text-gray-700">模型名称</label>
-              <Input v-model="embeddingDraft.embedding_model" placeholder="text-embedding-3-small"
-                class="border-gray-200" />
+              <Input v-model="embeddingDraft.embedding_model" placeholder="BAAI/bge-m3" class="border-gray-200" />
             </div>
             <div class="space-y-2">
               <label class="text-sm font-semibold text-gray-700">维度 (Dimensions)</label>
-              <Input v-model.number="embeddingDraft.embedding_dim" placeholder="1536" type="number"
+              <Input v-model.number="embeddingDraft.embedding_dim" placeholder="1024" type="number"
                 class="border-gray-200" />
             </div>
           </div>
+
+          <div class="space-y-2">
+            <label class="text-sm font-semibold text-gray-700">最大 Token 数 (Max Token Size)</label>
+            <Input v-model.number="embeddingDraft.embedding_max_token_size" placeholder="8000" type="number"
+              class="border-gray-200" />
+          </div>
+
           <div class="pt-2">
             <Button variant="outline" size="sm" @click="testEmbedding"
               :disabled="isTesting || (embeddingKeyRequired && !embeddingDraft.embedding_api_key)"
@@ -494,13 +709,19 @@ const openTutorial = () => {
               <span class="flex items-center">
                 <CheckCircle2 class="w-3 h-3 text-green-500 mr-1" /> LLM 对话模型
               </span>
-              <span class="font-mono">{{ llmDraft.model_name }}</span>
+              <span class="font-mono text-right">
+                <span class="text-gray-700">{{ llmDraft.config_name }}</span>
+                <span class="text-gray-400 ml-1">({{ llmDraft.model_name }})</span>
+              </span>
             </div>
             <div class="flex items-center justify-between text-xs text-gray-500 px-2">
               <span class="flex items-center">
                 <CheckCircle2 class="w-3 h-3 text-green-500 mr-1" /> Embedding 记忆模型
               </span>
-              <span class="font-mono">{{ embeddingDraft.embedding_model }}</span>
+              <span class="font-mono text-right">
+                <span class="text-gray-700">{{ embeddingDraft.config_name }}</span>
+                <span class="text-gray-400 ml-1">({{ embeddingDraft.embedding_model }})</span>
+              </span>
             </div>
           </div>
         </div>

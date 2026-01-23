@@ -89,12 +89,23 @@ const LLM_PROVIDER_PRESETS: Record<string, { label: string; baseUrl: string }> =
     openai_compatible: { label: 'OpenAI (兼容)', baseUrl: '' }
 }
 
-const EMBEDDING_PROVIDER_LABELS: Record<string, string> = {
-    openai: 'OpenAI',
-    jina: 'Jina',
-    lmstudio: 'LMStudio',
-    ollama: 'Ollama'
+const EMBEDDING_PROVIDER_PRESETS: Record<string, { label: string; provider: string; baseUrl: string; model: string; dim: number }> = {
+    openai: { label: 'OpenAI (官方)', provider: 'openai', baseUrl: 'https://api.openai.com/v1', model: 'text-embedding-3-small', dim: 1536 },
+    siliconflow: { label: 'SiliconFlow', provider: 'openai', baseUrl: 'https://api.siliconflow.cn/v1', model: 'BAAI/bge-m3', dim: 1024 },
+    zhipu: { label: '智谱 AI', provider: 'openai', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', model: 'embedding-3', dim: 2048 },
+    jina: { label: 'Jina', provider: 'jina', baseUrl: 'https://api.jina.ai/v1', model: 'jina-embeddings-v2-base-en', dim: 768 },
+    ollama: { label: 'Ollama', provider: 'ollama', baseUrl: 'http://127.0.0.1:11434', model: 'bge-m3', dim: 1024 }
 }
+
+const EMBEDDING_PROTOCOL_OPTIONS = [
+    { value: 'openai', label: 'OpenAI 协议' },
+    { value: 'jina', label: 'Jina 协议' },
+    { value: 'ollama', label: 'Ollama 协议' }
+]
+
+const EMBEDDING_PROVIDER_LABELS: Record<string, string> = Object.fromEntries(
+    EMBEDDING_PROTOCOL_OPTIONS.map(opt => [opt.value, opt.label])
+)
 
 const MAX_CONFIGS = 20
 const DRAFT_LLM_ID = -1
@@ -177,24 +188,35 @@ const buildDefaultLlmForm = (provider: string): LlmFormState => {
         capability_vision: false,
         capability_search: false,
         capability_reasoning: false,
-        capability_function_call: false,
+        capability_function_call: true,
     }
 }
 
 const buildDefaultEmbeddingForm = (provider: string): EmbeddingFormState => {
-    const label = EMBEDDING_PROVIDER_LABELS[provider] || 'Embedding'
+    const preset = EMBEDDING_PROVIDER_PRESETS[provider] || EMBEDDING_PROVIDER_PRESETS.openai
     const existingNames = embeddingConfigs.value.map(item => item.config_name).filter(Boolean) as string[]
     return {
-        id: null,
-        config_name: buildUniqueName(label, existingNames),
-        embedding_provider: provider,
+        id: null as any,
+        config_name: buildUniqueName(preset.label, existingNames),
+        embedding_provider: preset.provider,
         embedding_api_key: '',
-        embedding_base_url: '',
-        embedding_dim: 1024,
-        embedding_model: 'BAAI/bge-m3',
+        embedding_base_url: preset.baseUrl,
+        embedding_dim: preset.dim || 1024,
+        embedding_model: preset.model || 'BAAI/bge-m3',
         embedding_max_token_size: 8000,
         is_verified: false,
     }
+}
+
+const applyEmbeddingPreset = (presetKey: string) => {
+    const preset = EMBEDDING_PROVIDER_PRESETS[presetKey]
+    if (!preset) return
+    embeddingForm.value.embedding_provider = preset.provider
+    embeddingForm.value.embedding_base_url = preset.baseUrl
+    embeddingForm.value.embedding_model = preset.model
+    embeddingForm.value.embedding_dim = preset.dim
+    const existingNames = embeddingConfigs.value.map(c => c.config_name).filter(Boolean) as string[]
+    embeddingForm.value.config_name = buildUniqueName(preset.label, existingNames)
 }
 
 const llmForm = ref<LlmFormState>(buildDefaultLlmForm('openai'))
@@ -229,18 +251,14 @@ const draftEmbeddingItem = computed<EmbeddingListItem | null>(() => {
     }
 })
 
-const llmListItems = computed(() => {
-    if (draftLlmItem.value) {
-        return [draftLlmItem.value, ...llmConfigs.value]
-    }
-    return llmConfigs.value
+const llmListItems = computed<LlmListItem[]>(() => {
+    const list = draftLlmItem.value ? [draftLlmItem.value, ...llmConfigs.value] : llmConfigs.value
+    return list as LlmListItem[]
 })
 
-const embeddingListItems = computed(() => {
-    if (draftEmbeddingItem.value) {
-        return [draftEmbeddingItem.value, ...embeddingConfigs.value]
-    }
-    return embeddingConfigs.value
+const embeddingListItems = computed<EmbeddingListItem[]>(() => {
+    const list = draftEmbeddingItem.value ? [draftEmbeddingItem.value, ...embeddingConfigs.value] : embeddingConfigs.value
+    return list as EmbeddingListItem[]
 })
 
 // Confirmation Dialog State
@@ -329,7 +347,7 @@ const handleSave = async () => {
                 capability_vision: llmForm.value.capability_vision,
                 capability_search: llmForm.value.capability_search,
                 capability_reasoning: llmForm.value.capability_reasoning,
-                capability_function_call: llmForm.value.capability_function_call,
+                capability_function_call: true,
                 is_verified: llmTestStatus.value === 'success' ? true : llmTestStatus.value === 'error' ? false : llmForm.value.is_verified
             }
 
@@ -375,7 +393,7 @@ const handleSave = async () => {
 
         if (activeTab.value === 'memory') {
             if (!activeEmbeddingConfigId.value) {
-                showConfirmDialog('请先选择向量模型', '记忆系统必须绑定一个向量模型配置。请先在「向量化设置」中创建并选择配置。', () => {}, { confirmText: '知道了', showCancel: false })
+                showConfirmDialog('请先选择向量模型', '记忆系统必须绑定一个向量模型配置。请先在「向量化设置」中创建并选择配置。', () => { }, { confirmText: '知道了', showCancel: false })
                 return
             }
             await Promise.all([
@@ -387,7 +405,7 @@ const handleSave = async () => {
 
         if (activeTab.value === 'chat') {
             if (!activeLlmConfigId.value) {
-                showConfirmDialog('请先选择聊天模型', '聊天设置需要绑定一个 LLM 配置，请先在「LLM 设置」中创建并选择配置。', () => {}, { confirmText: '知道了', showCancel: false })
+                showConfirmDialog('请先选择聊天模型', '聊天设置需要绑定一个 LLM 配置，请先在「LLM 设置」中创建并选择配置。', () => { }, { confirmText: '知道了', showCancel: false })
                 return
             }
             await settingsStore.saveChatSettings()
@@ -463,7 +481,7 @@ const setLlmFormFromConfig = (config: any | null) => {
             capability_vision: !!config.capability_vision,
             capability_search: !!config.capability_search,
             capability_reasoning: !!config.capability_reasoning,
-            capability_function_call: !!config.capability_function_call,
+            capability_function_call: true,
         }
         selectedLlmId.value = config.id ?? null
     }
@@ -578,7 +596,7 @@ const handleDeleteLlmConfig = () => {
         showConfirmDialog(
             '无法删除',
             '该配置当前正在被聊天模块使用，请先切换到其他配置后再删除。',
-            () => {},
+            () => { },
             { confirmText: '知道了', showCancel: false }
         )
         return
@@ -587,7 +605,7 @@ const handleDeleteLlmConfig = () => {
         showConfirmDialog(
             '无法删除',
             '该配置当前正在被记忆模块使用，请先切换到其他配置后再删除。',
-            () => {},
+            () => { },
             { confirmText: '知道了', showCancel: false }
         )
         return
@@ -612,7 +630,7 @@ const handleDeleteEmbeddingConfig = () => {
         showConfirmDialog(
             '无法删除',
             '该配置当前正在被记忆模块使用，请先切换到其他配置后再删除。',
-            () => {},
+            () => { },
             { confirmText: '知道了', showCancel: false }
         )
         return
@@ -742,6 +760,38 @@ watch(
         }
     },
     { deep: true }
+)
+
+watch(
+    () => embeddingForm.value.embedding_provider,
+    (newProvider) => {
+        if (isSettingEmbeddingForm.value) return
+
+        // Provide defaults for Jina/Ollama, but for OpenAI we don't overwrite if it already has values 
+        // unless it's a completely new form without a Base URL.
+        if (newProvider === 'jina') {
+            const preset = EMBEDDING_PROVIDER_PRESETS.jina
+            embeddingForm.value.embedding_base_url = preset.baseUrl
+            embeddingForm.value.embedding_model = preset.model
+            embeddingForm.value.embedding_dim = preset.dim
+        } else if (newProvider === 'ollama') {
+            const preset = EMBEDDING_PROVIDER_PRESETS.ollama
+            embeddingForm.value.embedding_base_url = preset.baseUrl
+            embeddingForm.value.embedding_model = preset.model
+            embeddingForm.value.embedding_dim = preset.dim
+        } else if (newProvider === 'openai' && !embeddingForm.value.embedding_base_url) {
+            const preset = EMBEDDING_PROVIDER_PRESETS.openai
+            embeddingForm.value.embedding_base_url = preset.baseUrl
+            embeddingForm.value.embedding_model = preset.model
+            embeddingForm.value.embedding_dim = preset.dim
+        }
+
+        if (!embeddingForm.value.id) {
+            const label = EMBEDDING_PROVIDER_LABELS[newProvider] || 'Embedding'
+            const existingNames = embeddingConfigs.value.map(item => item.config_name).filter(Boolean) as string[]
+            embeddingForm.value.config_name = buildUniqueName(label, existingNames)
+        }
+    }
 )
 
 watch(
@@ -879,7 +929,7 @@ const openTutorial = () => {
                                             @click="config.__draft ? selectLlmDraft() : setLlmFormFromConfig(config)">
                                             <div class="flex items-center justify-between">
                                                 <span class="font-medium text-gray-800">{{ config.config_name || '未命名配置'
-                                                }}</span>
+                                                    }}</span>
                                                 <div class="flex items-center gap-1">
                                                     <span v-if="config.__draft"
                                                         class="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">未保存</span>
@@ -888,7 +938,8 @@ const openTutorial = () => {
                                                         @click.stop="discardLlmDraft">
                                                         <X class="w-3.5 h-3.5" />
                                                     </button>
-                                                    <span v-else-if="config.id === activeLlmConfigId && config.id === activeMemoryLlmConfigId"
+                                                    <span
+                                                        v-else-if="config.id === activeLlmConfigId && config.id === activeMemoryLlmConfigId"
                                                         class="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 whitespace-nowrap">聊天/记忆使用中</span>
                                                     <span v-else-if="config.id === activeLlmConfigId"
                                                         class="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 whitespace-nowrap">聊天使用中</span>
@@ -896,12 +947,13 @@ const openTutorial = () => {
                                                         class="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 whitespace-nowrap">记忆使用中</span>
                                                     <CheckCircle2 v-if="!config.__draft && config.is_verified"
                                                         class="w-3.5 h-3.5 text-emerald-500" />
-                                                    <XCircle v-else-if="!config.__draft" class="w-3.5 h-3.5 text-gray-300" />
+                                                    <XCircle v-else-if="!config.__draft"
+                                                        class="w-3.5 h-3.5 text-gray-300" />
                                                 </div>
                                             </div>
                                             <div class="text-xs text-gray-500 mt-0.5">
                                                 {{ LLM_PROVIDER_PRESETS[config.provider || 'openai']?.label ||
-                                                config.provider }}
+                                                    config.provider }}
                                             </div>
                                             <div class="mt-1 flex items-center gap-1 text-gray-400">
                                                 <Eye v-if="config.capability_vision" class="w-3.5 h-3.5" />
@@ -988,9 +1040,13 @@ const openTutorial = () => {
                                                 <Switch v-model="llmForm.capability_reasoning" />
                                             </div>
                                             <div
-                                                class="flex items-center justify-between rounded-md border border-gray-200 px-3 py-2">
-                                                <span class="text-xs text-gray-600">工具调用</span>
-                                                <Switch v-model="llmForm.capability_function_call" />
+                                                class="flex items-center justify-between rounded-md border border-gray-200 px-3 py-2 bg-gray-50/50 opacity-70">
+                                                <span class="text-xs text-gray-600">工具调用 (必选)</span>
+                                                <div class="w-8 h-4 bg-green-500 rounded-full relative">
+                                                    <div
+                                                        class="absolute right-0.5 top-0.5 w-3 h-3 bg-white rounded-full">
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -1021,8 +1077,7 @@ const openTutorial = () => {
                                         <h4 class="text-sm font-semibold text-gray-700">已保存配置</h4>
                                         <Button variant="ghost" size="sm"
                                             class="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
-                                            :disabled="embeddingAddDisabled"
-                                            @click="handleAddEmbeddingConfig">
+                                            :disabled="embeddingAddDisabled" @click="handleAddEmbeddingConfig">
                                             <Plus class="w-4 h-4 mr-1" />
                                             新增
                                         </Button>
@@ -1040,7 +1095,7 @@ const openTutorial = () => {
                                             @click="config.__draft ? selectEmbeddingDraft() : setEmbeddingFormFromConfig(config)">
                                             <div class="flex items-center justify-between">
                                                 <span class="font-medium text-gray-800">{{ config.config_name || '未命名配置'
-                                                }}</span>
+                                                    }}</span>
                                                 <div class="flex items-center gap-1">
                                                     <span v-if="config.__draft"
                                                         class="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">未保存</span>
@@ -1053,12 +1108,13 @@ const openTutorial = () => {
                                                         class="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 whitespace-nowrap">使用中</span>
                                                     <CheckCircle2 v-if="!config.__draft && config.is_verified"
                                                         class="w-3.5 h-3.5 text-emerald-500" />
-                                                    <XCircle v-else-if="!config.__draft" class="w-3.5 h-3.5 text-gray-300" />
+                                                    <XCircle v-else-if="!config.__draft"
+                                                        class="w-3.5 h-3.5 text-gray-300" />
                                                 </div>
                                             </div>
                                             <div class="text-xs text-gray-500 mt-0.5">
                                                 {{ EMBEDDING_PROVIDER_LABELS[config.embedding_provider || 'openai'] ||
-                                                config.embedding_provider }}
+                                                    config.embedding_provider }}
                                             </div>
                                         </button>
                                     </div>
@@ -1085,15 +1141,27 @@ const openTutorial = () => {
                                         <label class="text-sm font-medium leading-none">Provider</label>
                                         <Select v-model="embeddingForm.embedding_provider">
                                             <SelectTrigger>
-                                                <SelectValue placeholder="选择提供商" />
+                                                <SelectValue placeholder="选择协议类型" />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem value="openai">OpenAI</SelectItem>
-                                                <SelectItem value="jina">Jina</SelectItem>
-                                                <SelectItem value="lmstudio">LMStudio</SelectItem>
-                                                <SelectItem value="ollama">Ollama</SelectItem>
+                                                <SelectItem v-for="opt in EMBEDDING_PROTOCOL_OPTIONS" :key="opt.value"
+                                                    :value="opt.value">
+                                                    {{ opt.label }}
+                                                </SelectItem>
                                             </SelectContent>
                                         </Select>
+                                    </div>
+
+                                    <div v-if="embeddingForm.embedding_provider === 'openai'" class="grid gap-2">
+                                        <label
+                                            class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">常用预设</label>
+                                        <div class="flex flex-wrap gap-2">
+                                            <button v-for="(preset, key) in EMBEDDING_PROVIDER_PRESETS" :key="key"
+                                                v-show="preset.provider === 'openai'" @click="applyEmbeddingPreset(key)"
+                                                class="px-2 py-0.5 text-[11px] rounded-full border border-gray-200 bg-white hover:border-emerald-500 hover:text-emerald-600 transition-colors">
+                                                {{ preset.label }}
+                                            </button>
+                                        </div>
                                     </div>
 
                                     <div class="grid gap-2">
@@ -1155,7 +1223,8 @@ const openTutorial = () => {
                                     <SelectContent>
                                         <SelectItem v-for="config in llmConfigs" :key="config.id"
                                             :value="String(config.id)">
-                                            {{ config.config_name || LLM_PROVIDER_PRESETS[config.provider || 'openai']?.label || config.provider }}
+                                            {{ config.config_name || LLM_PROVIDER_PRESETS[config.provider ||
+                                                'openai']?.label || config.provider }}
                                         </SelectItem>
                                     </SelectContent>
                                 </Select>
@@ -1168,7 +1237,8 @@ const openTutorial = () => {
                                 <div v-else-if="activeMemoryLlmConfig"
                                     class="rounded-md border border-gray-200 bg-gray-50/60 px-3 py-2 text-xs text-gray-600">
                                     <div>模型：{{ activeMemoryLlmConfig.model_name || '未设置' }}</div>
-                                    <div>供应商：{{ LLM_PROVIDER_PRESETS[activeMemoryLlmConfig.provider || 'openai']?.label ||
+                                    <div>供应商：{{ LLM_PROVIDER_PRESETS[activeMemoryLlmConfig.provider || 'openai']?.label
+                                        ||
                                         activeMemoryLlmConfig.provider }}</div>
                                 </div>
                                 <p class="text-xs text-gray-500">未选择时将使用聊天模型配置。</p>
@@ -1183,14 +1253,16 @@ const openTutorial = () => {
                                     <SelectContent>
                                         <SelectItem v-for="config in embeddingConfigs" :key="config.id"
                                             :value="String(config.id)">
-                                            {{ config.config_name || EMBEDDING_PROVIDER_LABELS[config.embedding_provider || 'openai'] ||
-                                            config.embedding_provider }}
+                                            {{ config.config_name || EMBEDDING_PROVIDER_LABELS[config.embedding_provider
+                                                || 'openai'] ||
+                                                config.embedding_provider }}
                                         </SelectItem>
                                     </SelectContent>
                                 </Select>
                                 <div v-if="!embeddingConfigs.length" class="text-xs text-gray-400">
                                     请先在「向量化设置」中添加配置，
-                                    <button class="text-emerald-600 hover:underline" @click="originalSetTab('embedding')">
+                                    <button class="text-emerald-600 hover:underline"
+                                        @click="originalSetTab('embedding')">
                                         立即前往
                                     </button>
                                 </div>
@@ -1358,7 +1430,8 @@ const openTutorial = () => {
                                         <SelectContent>
                                             <SelectItem v-for="config in llmConfigs" :key="config.id"
                                                 :value="String(config.id)">
-                                                {{ config.config_name || LLM_PROVIDER_PRESETS[config.provider || 'openai']?.label || config.provider }}
+                                                {{ config.config_name || LLM_PROVIDER_PRESETS[config.provider ||
+                                                    'openai']?.label || config.provider }}
                                             </SelectItem>
                                         </SelectContent>
                                     </Select>
@@ -1406,8 +1479,7 @@ const openTutorial = () => {
                     <div class="flex justify-end gap-2">
                         <Button variant="outline" @click="$emit('update:open', false)">取消</Button>
                         <Button v-if="activeTab === 'llm' || activeTab === 'embedding'" variant="outline"
-                            @click="handleTest"
-                            :disabled="activeTab === 'llm' ? isLlmTesting : isEmbedTesting">
+                            @click="handleTest" :disabled="activeTab === 'llm' ? isLlmTesting : isEmbedTesting">
                             <Loader2 v-if="activeTab === 'llm' ? isLlmTesting : isEmbedTesting"
                                 class="w-4 h-4 mr-2 animate-spin" />
                             测试
@@ -1426,7 +1498,8 @@ const openTutorial = () => {
 
     <!-- Confirmation Dialog -->
     <Dialog :open="confirmDialog.open" @update:open="(val) => confirmDialog.open = val">
-        <DialogContent class="sm:max-w-md rounded-2xl border border-[#e6e6e6] shadow-[0_18px_50px_-20px_rgba(0,0,0,0.35)]">
+        <DialogContent
+            class="sm:max-w-md rounded-2xl border border-[#e6e6e6] shadow-[0_18px_50px_-20px_rgba(0,0,0,0.35)]">
             <DialogHeader class="pb-2">
                 <DialogTitle class="text-base font-semibold text-[#111]">{{ confirmDialog.title }}</DialogTitle>
             </DialogHeader>
