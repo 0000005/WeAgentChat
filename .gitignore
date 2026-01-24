@@ -22,11 +22,35 @@ Thumbs.db
 # Project specific
 front/node_modules/
 front/dist/
-server/venv/
-server/__pycache__/
-.shared/ui-ux-pro-max/scripts/__pycache__/
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+.venv/
+venv/
+ENV/
+env/
+
+# Project specific
 server/data/*.db
-*.pyc
 
 
 # log
