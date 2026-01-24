@@ -17,5 +17,8 @@
       flash: () => void
       stopFlash: () => void
     }
+    system?: {
+      setAutoLaunch: (enabled: boolean) => Promise<void>
+    }
   }
 }

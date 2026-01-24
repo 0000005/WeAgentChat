@@ -150,6 +150,11 @@ function createSplashWindow() {
   return splash
 }
 
+function shouldStartHidden() {
+  const settings = app.getLoginItemSettings()
+  return Boolean(settings.wasOpenedAtLogin || settings.wasOpenedAsHidden)
+}
+
 function createMainWindow() {
   const windowIcon = resolveAppIconPath('icon.ico')
   mainWindow = new BrowserWindow({
@@ -528,12 +533,20 @@ function registerIpcHandlers() {
   ipcMain.on('notification:stop-flash', () => {
     stopTrayFlash()
   })
+
+  ipcMain.handle('system:set-auto-launch', (_event, enabled) => {
+    app.setLoginItemSettings({
+      openAtLogin: Boolean(enabled),
+      openAsHidden: true,
+    })
+  })
 }
 
 async function bootstrap() {
   if (isBootstrapping) return
   isBootstrapping = true
-  const splash = createSplashWindow()
+  const startHidden = shouldStartHidden()
+  const splash = startHidden ? null : createSplashWindow()
 
   try {
     const port = await startBackend()
@@ -543,7 +556,14 @@ async function bootstrap() {
     const mainWindow = createMainWindow()
     createTray()
     mainWindow.once('ready-to-show', () => {
-      splash.close()
+      if (splash) {
+        splash.close()
+      }
+      if (startHidden) {
+        mainWindow.setSkipTaskbar(true)
+        mainWindow.hide()
+        return
+      }
       mainWindow.show()
     })
   } catch (error) {

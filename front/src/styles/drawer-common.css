@@ -1,0 +1,151 @@
+/**
+ * 抽屉组件共享样式
+ * 用于 ChatDrawerMenu.vue 和 GroupChatDrawer.vue
+ */
+
+/* 抽屉内容容器 */
+[data-radix-vue-dialog-content] {
+    max-width: 360px !important;
+    -webkit-app-region: no-drag;
+}
+
+/* Header 样式 */
+.drawer-content {
+    -webkit-app-region: no-drag;
+}
+
+.drawer-header {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 16px;
+    border-bottom: 1px solid #e5e5e5;
+    background: #f5f5f5;
+    transition: background 0.3s;
+    -webkit-app-region: no-drag;
+}
+
+.drawer-header.header-white {
+    background: #fff;
+}
+
+.drawer-header .friend-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+}
+
+.drawer-header .header-back {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+}
+
+.drawer-header .back-btn {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    color: #07c160;
+    font-size: 15px;
+    cursor: pointer;
+    background: none;
+    border: none;
+    padding: 0;
+    margin-right: 8px;
+}
+
+.drawer-header .header-title {
+    font-size: 16px;
+    font-weight: 600;
+}
+
+/* Avatar 样式 */
+.drawer-header .friend-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 6px;
+    overflow: hidden;
+    background: #e5e5e5;
+    flex-shrink: 0;
+}
+
+.drawer-header .friend-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    -webkit-app-region: no-drag;
+}
+
+.drawer-header .friend-name {
+    font-size: 16px;
+    font-weight: 500;
+    color: #333;
+    margin: 0;
+}
+
+/* Menu List */
+.menu-list {
+    flex: 1;
+    background: #fff;
+    padding: 8px 0;
+    overflow-y: auto;
+}
+
+.menu-item {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 16px;
+    border: none;
+    background: transparent;
+    color: #333;
+    cursor: pointer;
+    transition: background 0.15s;
+    text-align: left;
+    -webkit-app-region: no-drag;
+}
+
+.menu-item:hover {
+    background: #f5f5f5;
+}
+
+.menu-item:active {
+    background: #ececec;
+}
+
+.menu-icon {
+    flex-shrink: 0;
+    color: #666;
+}
+
+.menu-label {
+    font-size: 15px;
+    color: #333;
+}
+
+/* 危险操作样式 */
+.menu-item-danger .menu-label,
+.menu-item-danger .menu-icon {
+    color: #fa5151;
+}
+
+.menu-item-danger:hover {
+    background: #fff5f5;
+}
+
+/* Override default sheet styles */
+.sheet-content {
+    padding: 0 !important;
+}
+
+/* 移动端适配 */
+@media (max-width: 640px) {
+    [data-radix-vue-dialog-content] {
+        max-width: 100% !important;
+        width: 100% !important;
+    }
+}

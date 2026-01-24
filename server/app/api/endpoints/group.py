@@ -9,7 +9,7 @@ from app.services.memo.constants import DEFAULT_USER_ID
 
 router = APIRouter()
 
-@router.get("/groups", response_model=List[group_schemas.GroupRead])
+@router.get("/groups", response_model=List[group_schemas.GroupReadWithMembers])
 def read_user_groups(
     db: Session = Depends(deps.get_db),
 ):

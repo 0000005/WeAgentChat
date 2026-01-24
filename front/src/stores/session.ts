@@ -20,6 +20,7 @@ export interface Message {
     toolCalls?: ToolCall[]
     createdAt: number
     sessionId?: number
+    senderId?: string
 }
 
 /**
@@ -77,6 +78,8 @@ export const useSessionStore = defineStore('session', () => {
 
     // Current selected friend ID (WeChat-style: contact list)
     const currentFriendId = ref<number | null>(null)
+    const currentGroupId = ref<number | null>(null)
+    const chatType = ref<'friend' | 'group'>('friend')
 
     // Unread counts map: friendId -> count
     const unreadCounts = ref<Record<number, number>>({})
@@ -93,8 +96,14 @@ export const useSessionStore = defineStore('session', () => {
     const currentSessions = ref<ChatAPI.ChatSession[]>([])
     const fetchError = ref<string | null>(null)
 
-    // Get messages for current friend
+    // Get messages for current friend or group
     const currentMessages = computed(() => {
+        if (chatType.value === 'group') {
+            if (!currentGroupId.value) return []
+            // For now groups use the same messagesMap but we should probably separate them
+            // if we expect overlapping IDs. If IDs are global, it's fine.
+            return messagesMap.value[currentGroupId.value] || []
+        }
         if (!currentFriendId.value) return []
         return messagesMap.value[currentFriendId.value] || []
     })
@@ -249,6 +258,9 @@ export const useSessionStore = defineStore('session', () => {
 
     const selectFriend = async (friendId: number) => {
         currentFriendId.value = friendId
+        currentGroupId.value = null
+        chatType.value = 'friend'
+
         // Clear unread count when entering chat
         if (unreadCounts.value[friendId]) {
             unreadCounts.value[friendId] = 0
@@ -273,6 +285,16 @@ export const useSessionStore = defineStore('session', () => {
         } finally {
             isLoading.value = false
         }
+    }
+
+    const selectGroup = (groupId: number) => {
+        currentGroupId.value = groupId
+        currentFriendId.value = null
+        chatType.value = 'group'
+        currentSessionId.value = null
+
+        // TODO: Fetch group messages when backend follows up with group chat logic
+        // For now, it's a skeleton for UI 09-03
     }
 
     // Send message to current friend
@@ -653,7 +675,10 @@ export const useSessionStore = defineStore('session', () => {
         isLoadingMore,
         INITIAL_MESSAGE_LIMIT,
         isStreaming,
+        chatType,
+        currentGroupId,
         selectFriend,
+        selectGroup,
         sendMessage,
         fetchFriendMessages,
         loadMoreMessages,

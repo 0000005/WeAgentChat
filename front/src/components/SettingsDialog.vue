@@ -139,6 +139,7 @@ const {
     activeLlmConfigId,
     activeEmbeddingConfigId,
     activeMemoryLlmConfigId,
+    autoLaunch,
     isSaving: isSettingsSaving
 } = storeToRefs(settingsStore)
 
@@ -331,6 +332,7 @@ onMounted(() => {
     settingsStore.fetchSessionSettings()
     settingsStore.fetchChatSettings()
     settingsStore.fetchMemorySettings()
+    settingsStore.fetchSystemSettings()
     memoryStore.fetchConfig()
 })
 
@@ -409,6 +411,13 @@ const handleSave = async () => {
                 return
             }
             await settingsStore.saveChatSettings()
+        }
+
+        if (activeTab.value === 'system') {
+            await settingsStore.saveSystemSettings()
+            if ((window as any).WeAgentChat?.system?.setAutoLaunch) {
+                await (window as any).WeAgentChat.system.setAutoLaunch(autoLaunch.value)
+            }
         }
 
         console.log('[SettingsDialog] Settings saved successfully')
@@ -839,6 +848,7 @@ const currentTestMessage = computed(() => {
     if (activeTab.value === 'embedding') return embeddingTestMessage.value
     return llmTestMessage.value
 })
+const isElectron = computed(() => !!(window as any).WeAgentChat?.isElectron)
 
 watch(activeLlmConfig, (config) => {
     if (config && !config.capability_reasoning && enableThinking.value) {
@@ -886,6 +896,11 @@ const openTutorial = () => {
                     :class="activeTab === 'chat' ? 'bg-white shadow-sm text-black' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-200/50'"
                     @click="originalSetTab('chat')">
                     聊天设置
+                </button>
+                <button class="w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors"
+                    :class="activeTab === 'system' ? 'bg-white shadow-sm text-black' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-200/50'"
+                    @click="originalSetTab('system')">
+                    系统设置
                 </button>
             </div>
 
@@ -1460,6 +1475,28 @@ const openTutorial = () => {
                                     当前模型未标记推理能力，深度思考已禁用。
                                 </p>
                             </div>
+                        </div>
+                    </template>
+
+                    <template v-if="activeTab === 'system'">
+                        <div class="space-y-6">
+                            <div>
+                                <h3 class="text-lg font-medium">系统设置</h3>
+                                <p class="text-sm text-gray-500">管理应用的启动行为。</p>
+                            </div>
+
+                            <div class="flex items-center justify-between">
+                                <div class="space-y-0.5">
+                                    <label class="text-sm font-medium">开机自启并最小化</label>
+                                    <p class="text-xs text-gray-500">
+                                        开启后，系统启动时自动运行并最小化到托盘。
+                                    </p>
+                                </div>
+                                <Switch v-model="autoLaunch" :disabled="!isElectron" />
+                            </div>
+                            <p v-if="!isElectron" class="text-xs text-gray-400">
+                                当前为非桌面端环境，自启设置仅在桌面端生效。
+                            </p>
                         </div>
                     </template>
                 </div>

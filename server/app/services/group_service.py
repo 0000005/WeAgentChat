@@ -1,8 +1,9 @@
 import logging
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
-from typing import List, Optional
+from typing import List, Optional, Any
 from app.models.group import Group, GroupMember
+from app.models.friend import Friend
 from app.schemas.group import GroupCreate, GroupUpdate
 from app.services.memo.constants import DEFAULT_USER_ID
 
@@ -10,17 +11,66 @@ logger = logging.getLogger(__name__)
 
 
 class GroupService:
+    DEFAULT_USER_AVATAR = "default_avatar.svg"
+
+    @staticmethod
+    def _get_user_avatar(db: Session) -> str:
+        """
+        Get user avatar from system settings.
+        Returns DEFAULT_USER_AVATAR if not set.
+        """
+        from app.models.system_setting import SystemSetting
+        setting = db.query(SystemSetting).filter_by(group_name="user", key="avatar").first()
+        if setting and setting.value:
+            return setting.value
+        return GroupService.DEFAULT_USER_AVATAR
+
+    @staticmethod
+    def _populate_group_members(db: Session, group: Group) -> None:
+        """
+        Populate member names, avatars and count for a group.
+        Modifies the group object in place.
+        """
+        group.member_count = len(group.members)
+        
+        # Batch fetch friend info
+        friend_ids = [m.member_id for m in group.members if m.member_type == "friend"]
+        friends_map = {}
+        if friend_ids:
+            friends_map = {str(f.id): f for f in db.query(Friend).filter(Friend.id.in_(friend_ids)).all()}
+        
+        # Get user avatar once
+        user_avatar = GroupService._get_user_avatar(db)
+        
+        for m in group.members:
+            if m.member_type == "friend":
+                f = friends_map.get(m.member_id)
+                if f:
+                    m.name = f.name
+                    m.avatar = f.avatar
+                else:
+                    m.name = "Unknown"
+                    m.avatar = None
+            else:
+                m.name = "我"
+                m.avatar = user_avatar
+
     @staticmethod
     def get_user_groups(db: Session, user_id: str = DEFAULT_USER_ID) -> List[Group]:
         """
-        Get all groups the user belongs to.
+        Get all groups the user belongs to with member count and populated members.
         """
-        return db.query(Group).join(GroupMember).filter(
+        groups = db.query(Group).join(GroupMember).filter(
             and_(
                 GroupMember.member_id == user_id,
                 GroupMember.member_type == "user"
             )
         ).all()
+        
+        for g in groups:
+            GroupService._populate_group_members(db, g)
+        
+        return groups
 
     @staticmethod
     def create_group(db: Session, group_in: GroupCreate, owner_id: str = DEFAULT_USER_ID) -> Group:
@@ -72,9 +122,14 @@ class GroupService:
     @staticmethod
     def get_group(db: Session, group_id: int) -> Optional[Group]:
         """
-        Get group by ID.
+        Get group by ID with members populated with name and avatar.
         """
-        return db.query(Group).filter(Group.id == group_id).first()
+        db_group = db.query(Group).filter(Group.id == group_id).first()
+        if not db_group:
+            return None
+        
+        GroupService._populate_group_members(db, db_group)
+        return db_group
 
     @staticmethod
     def is_member(db: Session, group_id: int, member_id: str, member_type: str = "user") -> bool:
@@ -142,23 +197,24 @@ class GroupService:
     def exit_group(db: Session, group_id: int, user_id: str = DEFAULT_USER_ID) -> bool:
         """
         Let user exit a group.
-        Note: Owner cannot exit (must transfer ownership first in future iterations).
+        If owner exits, group is dissolved.
         """
         db_group = GroupService.get_group(db, group_id)
         if not db_group:
             return False
         
-        # Prevent owner from exiting (per best practice, avoid orphan groups)
+        # If owner exits, delete the whole group (dissolve)
+        # In this single-human sandbox, if the user exits, the group is gone
         if db_group.owner_id == user_id:
-            logger.warning(f"Owner {user_id} attempted to exit group {group_id} - not allowed")
-            return False
+            db.delete(db_group)
+            db.commit()
+            logger.info(f"Owner {user_id} exited group {group_id} - dissolved group")
+            return True
         
         member = db.query(GroupMember).filter(
-            and_(
                 GroupMember.group_id == group_id,
                 GroupMember.member_id == user_id,
                 GroupMember.member_type == "user"
-            )
         ).first()
 
         if not member:

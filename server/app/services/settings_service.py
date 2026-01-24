@@ -97,6 +97,7 @@ class SettingsService:
             defaults = [
                 ("session", "passive_timeout", 1800, "int", "会话判定过期的非活跃时长 (秒)"),
                 ("chat", "enable_thinking", False, "bool", "是否启用深度思考模式"),
+                ("system", "auto_launch", False, "bool", "是否开机自启并最小化"),
                 ("memory", "recall_enabled", True, "bool", "是否启用记忆召回功能"),
                 ("memory", "search_rounds", 3, "int", "记忆检索的最大轮数"),
                 ("memory", "event_topk", 5, "int", "事件记忆召回的数量"),

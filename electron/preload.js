@@ -28,6 +28,9 @@ contextBridge.exposeInMainWorld('WeAgentChat', {
     flash: () => ipcRenderer.send('notification:flash'),
     stopFlash: () => ipcRenderer.send('notification:stop-flash'),
   },
+  system: {
+    setAutoLaunch: (enabled) => ipcRenderer.invoke('system:set-auto-launch', Boolean(enabled)),
+  },
   debug: {
     toggleDevTools: () => ipcRenderer.send('debug:toggle-devtools'),
   },

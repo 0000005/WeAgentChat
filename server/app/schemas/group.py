@@ -17,6 +17,8 @@ class GroupMemberCreate(GroupMemberBase):
 class GroupMemberRead(GroupMemberBase):
     id: int
     group_id: int
+    name: Optional[str] = None
+    avatar: Optional[str] = None
     join_time: datetime
 
     class Config:
@@ -61,6 +63,7 @@ class GroupUpdate(BaseModel):
 class GroupRead(GroupBase):
     id: int
     owner_id: str
+    member_count: int = 0
     create_time: datetime
     update_time: datetime
 

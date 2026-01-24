@@ -2,6 +2,7 @@
 import { computed, ref, onMounted } from 'vue'
 import { useSessionStore } from '@/stores/session'
 import { useFriendStore } from '@/stores/friend'
+import { useGroupStore } from '@/stores/group'
 import { storeToRefs } from 'pinia'
 import {
   Search,
@@ -9,10 +10,12 @@ import {
   MoreVertical,
   Trash2,
   UserPlus,
+  Users,
   Pencil,
   LayoutGrid,
   Sparkles,
 } from 'lucide-vue-next'
+import GroupAvatar from './common/GroupAvatar.vue'
 // FriendComposeDialog is now managed globally in App.vue
 
 
@@ -38,13 +41,16 @@ const emit = defineEmits<{
   (e: 'open-gallery'): void
   (e: 'add-friend'): void
   (e: 'edit-friend', id: number): void
+  (e: 'create-group'): void
 }>()
 
 
 const sessionStore = useSessionStore()
 const friendStore = useFriendStore()
-const { currentFriendId, unreadCounts } = storeToRefs(sessionStore)
+const groupStore = useGroupStore()
+const { currentFriendId, currentGroupId, unreadCounts } = storeToRefs(sessionStore)
 const { friends, isLoading: friendsLoading } = storeToRefs(friendStore)
+const { groups, isLoading: groupsLoading } = storeToRefs(groupStore)
 
 const searchQuery = ref('')
 
@@ -88,15 +94,44 @@ const getFriendAvatar = (friend: any): string => {
   return `https://api.dicebear.com/7.x/shapes/svg?seed=${friend.id}`
 }
 
-const filteredFriends = computed(() => {
-  if (!searchQuery.value) return friends.value
+// Combine friends and groups for a unified conversation list
+const unifiedConversations = computed(() => {
+  const list: any[] = []
+  
+  // Add single chats
+  friends.value.forEach(f => {
+    list.push({
+      ...f,
+      type: 'friend',
+      sortTime: new Date(f.last_message_time || f.update_time).getTime()
+    })
+  })
+  
+  // Add group chats
+  groups.value.forEach(g => {
+    list.push({
+      ...g,
+      type: 'group',
+      sortTime: new Date(g.update_time).getTime() // Groups use update_time for now
+    })
+  })
+  
+  // Sort by time descending
+  list.sort((a, b) => b.sortTime - a.sortTime)
+  
+  if (!searchQuery.value) return list
   const query = searchQuery.value.toLowerCase()
-  return friends.value.filter((f: any) => f.name.toLowerCase().includes(query))
+  return list.filter((item: any) => item.name.toLowerCase().includes(query))
 })
 
-const onSelectFriend = (friendId: number) => {
-  sessionStore.selectFriend(friendId)
+const onSelectConversation = (item: any) => {
+  if (item.type === 'friend') {
+    sessionStore.selectFriend(item.id)
+  } else {
+    sessionStore.selectGroup(item.id)
+  }
 }
+
 
 const isWizardOpen = ref(false)
 
@@ -135,15 +170,17 @@ const openEditFriendDialog = (id: number) => {
 }
 
 
-// Initialize: select first friend if none selected
+// Initialize: select first chat if none selected
 onMounted(async () => {
-  // Wait for friends to load if not already
-  if (friends.value.length === 0) {
-    await friendStore.fetchFriends()
-  }
-  // Select first friend if no friend is selected
-  if (currentFriendId.value === null && friends.value.length > 0) {
-    sessionStore.selectFriend(friends.value[0].id)
+  // Wait for data to load
+  await Promise.all([
+    friendStore.friends.length === 0 ? friendStore.fetchFriends() : Promise.resolve(),
+    groupStore.groups.length === 0 ? groupStore.fetchGroups() : Promise.resolve()
+  ])
+  
+  // Select first item if nothing is selected
+  if (currentFriendId.value === null && currentGroupId.value === null && unifiedConversations.value.length > 0) {
+    onSelectConversation(unifiedConversations.value[0])
   }
 })
 </script>
@@ -175,6 +212,10 @@ onMounted(async () => {
             <LayoutGrid class="mr-2 h-4 w-4" />
             好友库
           </DropdownMenuItem>
+          <DropdownMenuItem @click="emit('create-group')" class="cursor-pointer">
+            <Users class="mr-2 h-4 w-4 text-blue-600" />
+            发起群聊
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
@@ -186,16 +227,24 @@ onMounted(async () => {
         <p>加载中...</p>
       </div>
 
-      <!-- Friend Items -->
-      <div v-else v-for="friend in filteredFriends" :key="friend.id" class="friend-item"
-        :class="{ active: friend.id === currentFriendId, pinned: !!friend.pinned_at }"
-        @click="onSelectFriend(friend.id)">
+      <!-- Conversation Items -->
+      <div v-else v-for="item in unifiedConversations" :key="item.type + item.id" class="friend-item"
+        :class="{ 
+          active: (item.type === 'friend' && item.id === currentFriendId) || (item.type === 'group' && item.id === currentGroupId),
+          pinned: !!item.pinned_at 
+        }"
+        @click="onSelectConversation(item)">
         <div class="avatar-wrapper relative">
-          <div class="friend-avatar">
-            <img :src="getFriendAvatar(friend)" :alt="friend.name" />
+          <div class="friend-avatar" :class="{ 'group-avatar-grid': item.type === 'group' }">
+            <template v-if="item.type === 'friend'">
+              <img :src="getFriendAvatar(item)" :alt="item.name" />
+            </template>
+            <template v-else>
+              <GroupAvatar :members="item.members" :avatar="item.avatar" />
+            </template>
           </div>
-          <div v-if="unreadCounts[friend.id] > 0" class="unread-badge">
-            {{ unreadCounts[friend.id] }}
+          <div v-if="unreadCounts[item.id] > 0 && item.type === 'friend'" class="unread-badge">
+            {{ unreadCounts[item.id] }}
           </div>
         </div>
 
@@ -203,17 +252,17 @@ onMounted(async () => {
         <div class="friend-content">
           <div class="friend-header">
             <div class="friend-name-wrapper">
-              <Pin v-if="friend.pinned_at" :size="12" class="pin-icon" />
-              <span class="friend-name">{{ friend.name }}</span>
+              <Pin v-if="item.pinned_at" :size="12" class="pin-icon" />
+              <span class="friend-name">{{ item.name }}</span>
             </div>
-            <span class="friend-time">{{ getLastActiveTime(friend) }}</span>
+            <span class="friend-time">{{ getLastActiveTime(item) }}</span>
           </div>
           <div class="friend-preview">
-            <template v-if="sessionStore.streamingMap[friend.id]">
+            <template v-if="item.type === 'friend' && sessionStore.streamingMap[item.id]">
               <span class="text-emerald-600 font-medium">对方正在输入...</span>
             </template>
             <template v-else>
-              {{ getLastMessagePreview(friend) }}
+              {{ item.type === 'friend' ? getLastMessagePreview(item) : (item.description || '点击进入群聊') }}
             </template>
           </div>
         </div>
@@ -226,21 +275,26 @@ onMounted(async () => {
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem @click.stop="openEditFriendDialog(friend.id)" class="cursor-pointer">
+            <DropdownMenuItem v-if="item.type === 'friend'" @click.stop="openEditFriendDialog(item.id)" class="cursor-pointer">
               <Pencil class="mr-2 h-4 w-4" />
               编辑好友
             </DropdownMenuItem>
-            <DropdownMenuItem v-if="!friend.is_preset" @click.stop="openDeleteFriendDialog(friend.id)"
+            <DropdownMenuItem v-if="item.type === 'friend' && !item.is_preset" @click.stop="openDeleteFriendDialog(item.id)"
               class="text-red-600 focus:text-red-600 cursor-pointer">
               <Trash2 class="mr-2 h-4 w-4" />
               删除好友
+            </DropdownMenuItem>
+            <DropdownMenuItem v-if="item.type === 'group'" @click.stop="groupStore.exitGroup(item.id)"
+              class="text-red-600 focus:text-red-600 cursor-pointer">
+              <Trash2 class="mr-2 h-4 w-4" />
+              退出群聊
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
 
       <!-- Empty State -->
-      <div v-if="!friendsLoading && filteredFriends.length === 0" class="empty-state">
+      <div v-if="!friendsLoading && !groupsLoading && unifiedConversations.length === 0" class="empty-state">
         <p>暂无好友</p>
         <button class="add-friend-btn" @click="onAddFriend">添加好友</button>
       </div>

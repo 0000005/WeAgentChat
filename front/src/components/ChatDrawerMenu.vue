@@ -189,12 +189,6 @@ const menuItems = computed<MenuItem[]>(() => [
         icon: Brain,
         action: () => handleMenuClick('memories')
     },
-    /* {
-        id: 'pin',
-        label: '顶置聊天',
-        icon: Pin,
-        action: () => handleMenuClick('pin')
-    }, */
     {
         id: 'clear',
         label: '清空聊天记录',
@@ -265,12 +259,8 @@ const handleSelectSession = async (sessionId: number) => {
     handleClose() // 选择会话后关闭抽屉
 }
 
-
-
 const formatTime = (dateStr?: string) => {
     if (!dateStr) return ''
-    // Fix: Backend might return naive UTC string (e.g. from memobase), treat as UTC
-    // Only append Z if no timezone info is present (no Z and no offset)
     let dateString = dateStr
     if (!dateString.endsWith('Z') && !/[+-]\d{2}:?\d{2}$/.test(dateString)) {
         dateString += 'Z'
@@ -334,7 +324,7 @@ const handleExecuteDeleteSession = async () => {
             </SheetHeader>
 
             <!-- Main Menu View -->
-            <div v-if="viewState === 'menu'" class="menu-list">
+            <div v-if="viewState === 'menu'" class="menu-list overflow-y-auto flex-1">
                 <button v-for="item in menuItems" :key="item.id" class="menu-item"
                     :class="{ 'menu-item-danger': item.danger }" @click="item.action">
                     <component :is="item.icon" :size="20" class="menu-icon" />
@@ -342,7 +332,7 @@ const handleExecuteDeleteSession = async () => {
                 </button>
 
                 <!-- 置顶聊天开关 -->
-                <div class="menu-item flex justify-between items-center">
+                <div class="menu-item flex justify-between items-center border-t mt-4">
                     <div class="flex items-center gap-4">
                         <Pin :size="20" class="menu-icon" />
                         <span class="menu-label">顶置聊天</span>
@@ -353,39 +343,35 @@ const handleExecuteDeleteSession = async () => {
 
             <!-- Sessions List View -->
             <div v-else-if="viewState === 'sessions'" class="session-history-list">
-                <div v-if="sessionStore.isLoading" class="list-loading">
+                <div v-if="sessionStore.isLoading" class="list-loading p-8 text-center text-gray-400">
                     <RefreshCw class="animate-spin mr-2 h-4 w-4 inline" />
                     <span>加载中...</span>
                 </div>
-                <div v-else-if="sessionStore.fetchError" class="list-error">
-                    <p>{{ sessionStore.fetchError }}</p>
-                    <button class="retry-btn"
+                <div v-else-if="sessionStore.fetchError" class="list-error p-8 text-center">
+                    <p class="text-red-500 mb-2">{{ sessionStore.fetchError }}</p>
+                    <button class="retry-btn text-emerald-600"
                         @click="sessionStore.fetchFriendSessions(sessionStore.currentFriendId!)">重试</button>
                 </div>
-                <div v-else-if="sessionStore.currentSessions.length === 0" class="list-empty">
-                    <MessageSquare :size="48" class="empty-icon" />
+                <div v-else-if="sessionStore.currentSessions.length === 0" class="list-empty p-8 text-center text-gray-400">
+                    <MessageSquare :size="48" class="mx-auto mb-2 opacity-20" />
                     <p>暂无历史会话</p>
                 </div>
                 <template v-else>
-
-
-                    <button v-for="session in sessionStore.currentSessions" :key="session.id" class="session-item group"
-                        :class="{ 'active': session.id === sessionStore.currentSessionId }"
+                    <button v-for="session in sessionStore.currentSessions" :key="session.id" class="session-item group w-full text-left p-4 border-b hover:bg-gray-50 flex flex-col gap-1 transition-colors"
+                        :class="{ 'bg-emerald-50': session.id === sessionStore.currentSessionId }"
                         @click="handleSelectSession(session.id)">
-                        <div class="session-item-header justify-end">
-                            <div class="flex items-center gap-2">
-                                <span class="session-time">{{ formatTime(session.create_time) }}</span>
-                                <div class="w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-gray-200 rounded-full"
-                                    @click.stop="handleConfirmDeleteSession(session.id)" title="删除会话">
-                                    <Trash2 :size="12" class="text-gray-500 hover:text-red-500" />
-                                </div>
+                        <div class="session-item-header flex justify-between">
+                            <span class="session-time text-xs text-gray-400">{{ formatTime(session.create_time) }}</span>
+                            <div class="w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-gray-200 rounded-full"
+                                @click.stop="handleConfirmDeleteSession(session.id)" title="删除会话">
+                                <Trash2 :size="12" class="text-gray-500 hover:text-red-500" />
                             </div>
                         </div>
                         <div class="session-item-content">
-                            <p class="session-preview text-ellipsis overflow-hidden whitespace-nowrap">{{
+                            <p class="session-preview text-sm text-gray-600 text-ellipsis overflow-hidden whitespace-nowrap">{{
                                 session.last_message_preview || '无预览内容' }}</p>
                             <div class="session-meta mt-1 flex items-center gap-2">
-                                <span class="msg-count text-xs text-gray-500">{{ session.message_count }} 条消息</span>
+                                <span class="msg-count text-[10px] text-gray-400">{{ session.message_count }} 条消息</span>
                                 <span v-if="session.memory_generated === 1"
                                     class="status-tag archived flex items-center gap-1 text-[10px] bg-gray-100 text-gray-500 px-1 rounded">
                                     <CheckCircle2 :size="10" /> 已归档
@@ -399,10 +385,6 @@ const handleExecuteDeleteSession = async () => {
                                     class="status-tag processing flex items-center gap-1 text-[10px] bg-blue-50 text-blue-500 px-1 rounded">
                                     <Loader2 :size="10" class="animate-spin" /> 生成中
                                 </span>
-                                <span v-else-if="session.is_active"
-                                    class="status-tag active text-[10px] bg-emerald-50 text-emerald-600 px-1 rounded">
-                                    当前活跃
-                                </span>
                             </div>
                         </div>
                     </button>
@@ -410,39 +392,39 @@ const handleExecuteDeleteSession = async () => {
             </div>
 
             <!-- Memories List View -->
-            <div v-else-if="viewState === 'memories'" class="memory-history-list">
-                <div v-if="isLoadingMemories" class="list-loading">
+            <div v-else-if="viewState === 'memories'" class="memory-history-list overflow-y-auto flex-1 p-4">
+                <div v-if="isLoadingMemories" class="list-loading text-center py-8 text-gray-400">
                     <RefreshCw class="animate-spin mr-2 h-4 w-4 inline" />
                     <span>加载中...</span>
                 </div>
-                <div v-else-if="fetchMemoriesError" class="list-error">
-                    <p>{{ fetchMemoriesError }}</p>
-                    <button class="retry-btn" @click="fetchMemories">重试</button>
+                <div v-else-if="fetchMemoriesError" class="list-error text-center py-8">
+                    <p class="text-red-500 mb-2">{{ fetchMemoriesError }}</p>
+                    <button class="retry-btn text-emerald-600" @click="fetchMemories">重试</button>
                 </div>
-                <div v-else-if="memories.length === 0" class="list-empty">
-                    <Brain :size="48" class="empty-icon" />
+                <div v-else-if="memories.length === 0" class="list-empty text-center py-12 text-gray-400">
+                    <Brain :size="48" class="mx-auto mb-4 opacity-10" />
                     <p>暂无相关记忆</p>
-                    <span class="text-xs text-gray-400 mt-2">AI 会根据对话自动整理记忆</span>
+                    <span class="text-xs text-gray-400 mt-2 block">AI 会根据对话自动整理记忆</span>
                 </div>
-                <div v-else class="memory-items">
-                    <div v-if="memoryActionError" class="list-error memory-action-error">
+                <div v-else class="memory-items space-y-4">
+                    <div v-if="memoryActionError" class="list-error p-3 bg-red-50 text-red-500 text-sm rounded-lg mb-4">
                         <p>{{ memoryActionError }}</p>
                     </div>
-                    <div v-for="memory in memories" :key="memory.id" class="memory-card">
-                        <div class="memory-content">
+                    <div v-for="memory in memories" :key="memory.id" class="memory-card bg-gray-50 p-3 rounded-lg border hover:border-emerald-200 transition-colors">
+                        <div class="memory-content text-sm text-gray-700 leading-relaxed mb-3">
                             {{ cleanGistContent(memory.gist_data.content) }}
                         </div>
-                        <div class="memory-footer">
-                            <div class="memory-actions">
-                                <button class="memory-action-btn" @click="handleEditMemory(memory)">
+                        <div class="memory-footer flex justify-between items-center border-t pt-2">
+                            <div class="memory-actions flex gap-2">
+                                <button class="memory-action-btn hover:text-emerald-600 transition-colors" @click="handleEditMemory(memory)">
                                     <Pencil :size="14" />
                                 </button>
-                                <button class="memory-action-btn memory-action-danger"
+                                <button class="memory-action-btn hover:text-red-500 transition-colors"
                                     @click="handleConfirmDelete(memory)">
                                     <Trash2 :size="14" />
                                 </button>
                             </div>
-                            <span class="memory-time">{{ formatTime(memory.created_at) }}</span>
+                            <span class="memory-time text-[10px] text-gray-400">{{ formatTime(memory.created_at) }}</span>
                         </div>
                     </div>
                 </div>
@@ -460,14 +442,14 @@ const handleExecuteDeleteSession = async () => {
                     </div>
                     <DialogTitle>确认清空聊天记录？</DialogTitle>
                 </div>
-                <DialogDescription class="text-gray-600 space-y-2 py-2">
+                <div class="text-gray-600 space-y-2 py-2 text-sm leading-relaxed">
                     <p>这将执行以下操作：</p>
-                    <ul class="list-disc list-inside text-sm pl-2">
+                    <ul class="list-disc list-inside pl-2">
                         <li>删除与 <b>{{ currentFriendName }}</b> 的所有历史聊天记录</li>
                         <li>自动将当前未归档的对话整理为记忆摘要</li>
                         <li><b>注意：</b>此操作不可撤销，但已生成的“记忆列表”将保留。</li>
                     </ul>
-                </DialogDescription>
+                </div>
             </DialogHeader>
             <div v-if="clearError" class="py-2 text-sm text-red-500 font-medium">
                 {{ clearError }}
@@ -491,15 +473,15 @@ const handleExecuteDeleteSession = async () => {
                     修改后会在后台异步重新向量化。
                 </DialogDescription>
             </DialogHeader>
-            <div class="py-2">
-                <textarea v-model="editContent" class="memory-edit-textarea" rows="5" placeholder="请输入记忆内容"></textarea>
+            <div class="py-4">
+                <textarea v-model="editContent" class="memory-edit-textarea w-full p-3 border rounded-lg text-sm focus:border-emerald-500 outline-none transition-colors" rows="5" placeholder="请输入记忆内容"></textarea>
             </div>
-            <div v-if="memoryActionError" class="text-sm text-red-500 font-medium">
+            <div v-if="memoryActionError" class="text-sm text-red-500 font-medium pb-4">
                 {{ memoryActionError }}
             </div>
             <DialogFooter class="gap-2 sm:gap-0">
                 <Button variant="outline" @click="handleCancelEdit" :disabled="isUpdatingMemory">取消</Button>
-                <Button @click="handleUpdateMemory" :disabled="isUpdatingMemory">
+                <Button @click="handleUpdateMemory" :disabled="isUpdatingMemory" class="bg-emerald-600 hover:bg-emerald-700">
                     <Loader2 v-if="isUpdatingMemory" class="w-4 h-4 mr-2 animate-spin" />
                     {{ isUpdatingMemory ? '保存中...' : '保存修改' }}
                 </Button>
@@ -517,7 +499,7 @@ const handleExecuteDeleteSession = async () => {
                     </div>
                     <DialogTitle>确认删除记忆点？</DialogTitle>
                 </div>
-                <DialogDescription class="text-gray-600 space-y-2 py-2">
+                <DialogDescription class="text-gray-600 text-sm py-2">
                     <p>删除后将无法恢复该记忆点。</p>
                 </DialogDescription>
             </DialogHeader>
@@ -545,10 +527,10 @@ const handleExecuteDeleteSession = async () => {
                     </div>
                     <DialogTitle>确认删除会话？</DialogTitle>
                 </div>
-                <DialogDescription class="text-gray-600 space-y-2 py-2">
+                <div class="text-gray-600 space-y-2 py-2 text-sm">
                     <p>将删除该条会话记录。</p>
                     <p class="text-xs text-red-500">注意：该操作同时会删除由该会话生成的记忆（如有），且不可恢复。</p>
-                </DialogDescription>
+                </div>
             </DialogHeader>
             <div v-if="sessionActionError" class="py-2 text-sm text-red-500 font-medium">
                 {{ sessionActionError }}
@@ -566,355 +548,24 @@ const handleExecuteDeleteSession = async () => {
 </template>
 
 <style scoped>
+/* 引入共享样式 */
+@import '@/styles/drawer-common.css';
+
 /* 抽屉内容容器 */
 :deep([data-radix-vue-dialog-content]) {
     max-width: 360px !important;
     -webkit-app-region: no-drag;
 }
 
-/* Header 样式 */
-.drawer-content {
-    -webkit-app-region: no-drag;
+/* Override default sheet styles */
+:deep(.sheet-content) {
+    padding: 0 !important;
 }
 
-.drawer-header {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-    padding: 20px 16px;
-    border-bottom: 1px solid #e5e5e5;
-    background: #f5f5f5;
-    transition: background 0.3s;
-    -webkit-app-region: no-drag;
-}
-
-.header-white {
-    background: #fff;
-}
-
-.friend-info {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex: 1;
-}
-
-.header-back {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    width: 100%;
-    -webkit-app-region: no-drag;
-}
-
-.back-btn {
-    display: flex;
-    align-items: center;
-    gap: 2px;
-    color: #07c160;
-    font-size: 15px;
-    cursor: pointer;
-    background: none;
-    border: none;
-    padding: 0;
-    margin-right: 8px;
-    -webkit-app-region: no-drag;
-}
-
-.header-title {
-    font-size: 16px;
-    font-weight: 600;
-}
-
-.friend-avatar {
-    width: 48px;
-    height: 48px;
-    border-radius: 6px;
-    overflow: hidden;
-    background: #e5e5e5;
-    flex-shrink: 0;
-}
-
-.friend-avatar img {
-    width: 100%;
-    -webkit-app-region: no-drag;
-    height: 100%;
-    object-fit: cover;
-}
-
-.friend-name {
-    font-size: 16px;
-    font-weight: 500;
-    color: #333;
-    margin: 0;
-}
-
-
-/* Menu List */
-.menu-list {
-    flex: 1;
-    background: #fff;
-    padding: 8px 0;
-    overflow-y: auto;
-}
-
-/* Session History List */
-.session-history-list {
-    flex: 1;
-    background: #fff;
-    overflow-y: auto;
-    padding: 0;
-}
-
-.session-item {
-    width: 100%;
-    -webkit-app-region: no-drag;
-    padding: 12px 16px;
-    border: none;
-    background: transparent;
-    border-bottom: 1px solid #f0f0f0;
-    text-align: left;
-    cursor: pointer;
-    transition: background 0.15s;
-}
-
-.session-item:hover {
-    background: #f9f9f9;
-}
-
-.session-item.active {
-    background: #f2f2f2;
-}
-
-.session-item-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 4px;
-}
-
-.session-title {
-    font-size: 14px;
-    font-weight: 500;
-    color: #333;
-}
-
-.session-time {
-    font-size: 12px;
-    color: #b2b2b2;
-}
-
-.session-preview {
-    font-size: 13px;
-    color: #888;
-    line-height: 1.4;
-    margin: 0;
-}
-
-.list-empty {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding-top: 100px;
-    color: #ccc;
-}
-
-.empty-icon {
-    margin-bottom: 16px;
-    opacity: 0.5;
-}
-
-.list-loading {
-    padding: 20px;
-    text-align: center;
-    color: #888;
-    font-size: 14px;
-}
-
-.list-error {
-    padding: 40px 20px;
-    text-align: center;
-}
-
-.list-error p {
-    color: #fa5151;
-    font-size: 14px;
-    margin-bottom: 12px;
-}
-
-.retry-btn {
-    background: #07c160;
-    color: #fff;
-    border: none;
-    padding: 6px 16px;
-    border-radius: 4px;
-    font-size: 13px;
-    cursor: pointer;
-}
-
-.retry-btn:hover {
-    background: #06ad56;
-}
-
-.merged-view-item {
-    background: #fbfbfb;
-    border-bottom: 2px solid #f0f0f0;
-}
-
-/* Memory List View Styles */
-.memory-history-list {
-    flex: 1;
-    background: #f8f9fa;
-    overflow-y: auto;
-    padding: 16px;
-}
-
-.memory-items {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-}
-
-.memory-card {
-    background: #fff;
-    border-radius: 8px;
-    padding: 14px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-    border: 1px solid #f0f0f0;
-}
-
-.memory-content {
-    font-size: 14px;
-    color: #333;
-    line-height: 1.6;
-    word-break: break-word;
-}
-
-.memory-footer {
-    display: flex;
-    justify-content: flex-end;
-    margin-top: 10px;
-    padding-top: 8px;
-    border-top: 1px solid #f9f9f9;
-    align-items: center;
-    gap: 8px;
-}
-
-.memory-time {
-    font-size: 11px;
-    color: #b2b2b2;
-}
-
-.memory-actions {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-right: auto;
-}
-
-.memory-action-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 24px;
-    height: 24px;
-    border-radius: 6px;
-    border: none;
-    background: #f3f4f6;
-    color: #666;
-    cursor: pointer;
-    transition: background 0.15s;
-}
-
-.memory-action-btn:hover {
-    background: #e9ecef;
-}
-
-.memory-action-danger {
-    color: #fa5151;
-}
-
-.memory-action-error {
-    padding: 10px 12px;
-    border-radius: 8px;
-    background: #fff2f2;
-    text-align: left;
-}
-
-.memory-edit-textarea {
-    width: 100%;
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    padding: 10px 12px;
-    font-size: 14px;
-    line-height: 1.6;
-    resize: vertical;
-    outline: none;
-}
-
-.memory-edit-textarea:focus {
-    border-color: #07c160;
-    box-shadow: 0 0 0 2px rgba(7, 193, 96, 0.12);
-}
-
-.menu-item {
-    width: 100%;
-    -webkit-app-region: no-drag;
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    padding: 14px 16px;
-    border: none;
-    background: transparent;
-    color: #333;
-    cursor: pointer;
-    transition: background 0.15s;
-    text-align: left;
-}
-
-.menu-item:hover {
-    background: #f5f5f5;
-}
-
-.menu-item:active {
-    background: #ececec;
-}
-
-.menu-icon {
-    flex-shrink: 0;
-    color: #666;
-}
-
-.menu-label {
-    font-size: 15px;
-    color: #333;
-}
-
-/* 危险操作样式 (清空聊天记录) */
-.menu-item-danger .menu-label {
-    color: #fa5151;
-}
-
-.menu-item-danger .menu-icon {
-    color: #fa5151;
-}
-
-.menu-item-danger:hover {
-    background: #fff5f5;
-}
-
-/* 移动端适配 */
 @media (max-width: 640px) {
     :deep([data-radix-vue-dialog-content]) {
         max-width: 100% !important;
         width: 100% !important;
     }
-}
-
-/* Override default sheet styles */
-:deep(.sheet-content) {
-    padding: 0 !important;
 }
 </style>

@@ -27,6 +27,9 @@ export const useSettingsStore = defineStore('settings', () => {
     // ===== User 配置 =====
     const userAvatar = ref<string>('')
 
+    // ===== System 配置 =====
+    const autoLaunch = ref<boolean>(false)
+
     // ===== Loading 状态 =====
     const isLoading = ref(false)
     const isSaving = ref(false)
@@ -140,6 +143,18 @@ export const useSettingsStore = defineStore('settings', () => {
     }
 
     /**
+     * 从后端获取 system 分组的配置
+     */
+    const fetchSystemSettings = () =>
+        fetchSettings('system', { auto_launch: autoLaunch })
+
+    /**
+     * 保存 system 配置到后端
+     */
+    const saveSystemSettings = () =>
+        saveSettings('system', { auto_launch: autoLaunch })
+
+    /**
      * 将秒数转换为分钟显示
      */
     const getTimeoutInMinutes = (): number => {
@@ -165,6 +180,7 @@ export const useSettingsStore = defineStore('settings', () => {
         activeEmbeddingConfigId,
         activeMemoryLlmConfigId,
         userAvatar,
+        autoLaunch,
         isLoading,
         isSaving,
         // Actions
@@ -178,5 +194,7 @@ export const useSettingsStore = defineStore('settings', () => {
         saveMemorySettings,
         fetchUserSettings,
         saveUserSettings,
+        fetchSystemSettings,
+        saveSystemSettings,
     }
 })
