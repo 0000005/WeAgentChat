@@ -73,7 +73,13 @@ export const useGroupStore = defineStore('group', () => {
 
     const fetchGroupDetails = async (id: number) => {
         try {
-            return await groupApi.getGroup(id);
+            const data = await groupApi.getGroup(id);
+            // Update local state
+            const index = groups.value.findIndex((g) => g.id === id);
+            if (index !== -1) {
+                groups.value[index] = { ...groups.value[index], ...data };
+            }
+            return data;
         } catch (e) {
             console.error(`Failed to fetch group details for ${id}`, e);
             throw e;
@@ -83,6 +89,7 @@ export const useGroupStore = defineStore('group', () => {
     const inviteMembers = async (groupId: number, memberIds: string[]) => {
         try {
             await groupApi.inviteMembers(groupId, memberIds);
+            await fetchGroupDetails(groupId);
         } catch (e) {
             console.error('Failed to invite members', e);
             throw e;
@@ -92,6 +99,7 @@ export const useGroupStore = defineStore('group', () => {
     const removeMember = async (groupId: number, memberId: string) => {
         try {
             await groupApi.removeMember(groupId, memberId);
+            await fetchGroupDetails(groupId);
         } catch (e) {
             console.error('Failed to remove member', e);
             throw e;

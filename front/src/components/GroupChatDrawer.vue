@@ -2,6 +2,7 @@
 import { ref, watch } from 'vue'
 import { useSessionStore } from '@/stores/session'
 import { useGroupStore } from '@/stores/group'
+import { useSettingsStore } from '@/stores/settings'
 import {
     Sheet,
     SheetContent,
@@ -22,7 +23,6 @@ import { Input } from '@/components/ui/input'
 import {
     Plus,
     Minus,
-    Users,
     Camera,
     Check,
     X,
@@ -45,9 +45,19 @@ const emit = defineEmits<{
 
 const sessionStore = useSessionStore()
 const groupStore = useGroupStore()
+const settingsStore = useSettingsStore()
 const toast = useToast()
 
 const groupInfo = ref<any>(null)
+
+const getMemberAvatarUrl = (member: any) => {
+    // 如果是当前用户，优先使用 settingsStore 中的头像
+    if (member.member_type === 'user') {
+        return getStaticUrl(settingsStore.userAvatar) || 'default_avatar.svg'
+    }
+    // 其他成员（AI）
+    return member.avatar ? getStaticUrl(member.avatar) : ''
+}
 
 // 群组管理状态
 const showMemberSelector = ref(false)
@@ -85,7 +95,7 @@ const openMemberSelector = (mode: 'invite' | 'remove') => {
 // 处理成员选择确认
 const handleMemberConfirm = async (memberIds: string[]) => {
     if (!groupInfo.value) return
-    
+
     try {
         if (memberSelectorMode.value === 'invite') {
             await groupStore.inviteMembers(groupInfo.value.id, memberIds)
@@ -117,7 +127,7 @@ const startEditGroupName = () => {
 // 保存群名称
 const saveGroupName = async () => {
     if (!groupInfo.value || !editingGroupName.value.trim()) return
-    
+
     isUpdatingGroup.value = true
     try {
         await groupStore.updateGroupSettings(groupInfo.value.id, { name: editingGroupName.value.trim() })
@@ -140,7 +150,7 @@ const cancelEditGroupName = () => {
 // 处理群头像更新
 const handleGroupAvatarUpdate = async (url: string) => {
     if (!groupInfo.value) return
-    
+
     try {
         await groupStore.updateGroupSettings(groupInfo.value.id, { avatar: url })
         groupInfo.value.avatar = url
@@ -154,7 +164,7 @@ const handleGroupAvatarUpdate = async (url: string) => {
 // 退出群聊确认
 const confirmExitGroup = async () => {
     if (!groupInfo.value) return
-    
+
     isExiting.value = true
     try {
         await groupStore.exitGroup(groupInfo.value.id)
@@ -184,13 +194,15 @@ const handleClose = () => {
                     <div class="friend-avatar cursor-pointer group relative" @click="showAvatarUploader = true">
                         <GroupAvatar :members="groupInfo?.members" :avatar="groupInfo?.avatar" size="40" />
                         <!-- Group Avatar Edit Overlay -->
-                        <div class="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded">
+                        <div
+                            class="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded">
                             <Camera :size="20" class="text-white" />
                         </div>
                     </div>
                     <div class="flex flex-col">
                         <SheetTitle class="friend-name">{{ groupInfo?.name || '群聊' }}</SheetTitle>
-                        <span v-if="groupInfo" class="text-xs text-gray-500">{{ groupInfo.members?.length || 0 }} 名成员</span>
+                        <span v-if="groupInfo" class="text-xs text-gray-500">{{ groupInfo.members?.length || 0 }}
+                            名成员</span>
                     </div>
                 </div>
             </SheetHeader>
@@ -201,25 +213,30 @@ const handleClose = () => {
                 <div v-if="groupInfo" class="group-members-section p-4 border-b bg-white">
                     <div class="members-grid grid grid-cols-4 gap-y-4">
                         <!-- Members -->
-                        <div v-for="member in groupInfo.members" :key="member.member_id" class="member-item flex flex-col items-center gap-1">
+                        <div v-for="member in groupInfo.members" :key="member.member_id"
+                            class="member-item flex flex-col items-center gap-1">
                             <div class="member-avatar w-12 h-12 rounded bg-gray-100 overflow-hidden">
-                                <img v-if="member.avatar" :src="getStaticUrl(member.avatar)" class="w-full h-full object-cover" />
+                                <img v-if="getMemberAvatarUrl(member)" :src="getMemberAvatarUrl(member)"
+                                    class="w-full h-full object-cover" />
                                 <div v-else class="w-full h-full flex items-center justify-center text-gray-400">
-                                    <Users v-if="member.member_type === 'user'" :size="24" />
-                                    <span v-else>{{ member.name?.[0] }}</span>
+                                    <span v-if="member.name">{{ member.name[0] }}</span>
                                 </div>
                             </div>
                             <span class="text-[10px] text-gray-500 truncate w-full text-center">{{ member.name }}</span>
                         </div>
                         <!-- Add/Remove Buttons -->
-                        <button class="member-item flex flex-col items-center gap-1" @click="openMemberSelector('invite')">
-                            <div class="w-12 h-12 rounded border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-300 hover:border-gray-400 hover:text-gray-400 transition-colors">
+                        <button class="member-item flex flex-col items-center gap-1"
+                            @click="openMemberSelector('invite')">
+                            <div
+                                class="w-12 h-12 rounded border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-300 hover:border-gray-400 hover:text-gray-400 transition-colors">
                                 <Plus :size="24" />
                             </div>
                             <span class="text-[10px] text-gray-400">添加</span>
                         </button>
-                        <button class="member-item flex flex-col items-center gap-1" @click="openMemberSelector('remove')">
-                            <div class="w-12 h-12 rounded border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-300 hover:border-gray-400 hover:text-gray-400 transition-colors">
+                        <button class="member-item flex flex-col items-center gap-1"
+                            @click="openMemberSelector('remove')">
+                            <div
+                                class="w-12 h-12 rounded border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-300 hover:border-gray-400 hover:text-gray-400 transition-colors">
                                 <Minus :size="24" />
                             </div>
                             <span class="text-[10px] text-gray-400">移除</span>
@@ -229,7 +246,8 @@ const handleClose = () => {
 
                 <!-- Group Specific Settings -->
                 <div v-if="groupInfo" class="group-settings mt-2">
-                    <div class="menu-item flex justify-between items-center group/edit" @click="!isEditingGroupName && startEditGroupName()">
+                    <div class="menu-item flex justify-between items-center group/edit"
+                        @click="!isEditingGroupName && startEditGroupName()">
                         <span class="menu-label">群聊名称</span>
                         <div class="flex-1 flex justify-end items-center gap-2 overflow-hidden">
                             <template v-if="!isEditingGroupName">
@@ -237,19 +255,18 @@ const handleClose = () => {
                                 <ChevronRight :size="16" class="text-gray-300" />
                             </template>
                             <template v-else>
-                                <Input 
-                                    v-model="editingGroupName" 
-                                    class="h-8 py-0 px-2 text-sm focus-visible:ring-emerald-500" 
-                                    @click.stop 
-                                    @keyup.enter="saveGroupName"
-                                    autofocus
-                                />
+                                <Input v-model="editingGroupName"
+                                    class="h-8 py-0 px-2 text-sm focus-visible:ring-emerald-500" @click.stop
+                                    @keyup.enter="saveGroupName" autofocus />
                                 <div class="flex gap-1 shrink-0">
-                                    <button @click.stop="saveGroupName" class="p-1 text-emerald-600 hover:bg-emerald-50 rounded" :disabled="isUpdatingGroup">
+                                    <button @click.stop="saveGroupName"
+                                        class="p-1 text-emerald-600 hover:bg-emerald-50 rounded"
+                                        :disabled="isUpdatingGroup">
                                         <Loader2 v-if="isUpdatingGroup" :size="14" class="animate-spin" />
                                         <Check v-else :size="14" />
                                     </button>
-                                    <button @click.stop="cancelEditGroupName" class="p-1 text-gray-400 hover:bg-gray-100 rounded">
+                                    <button @click.stop="cancelEditGroupName"
+                                        class="p-1 text-gray-400 hover:bg-gray-100 rounded">
                                         <X :size="14" />
                                     </button>
                                 </div>
@@ -258,10 +275,12 @@ const handleClose = () => {
                     </div>
                     <div class="menu-item flex justify-between items-center">
                         <span class="menu-label">自动回复</span>
-                        <Switch :model-value="groupInfo.auto_reply" @update:model-value="(val) => groupStore.updateGroupSettings(groupInfo.id, { auto_reply: val }).then(updated => groupInfo = { ...groupInfo, auto_reply: updated.auto_reply })" />
+                        <Switch :model-value="groupInfo.auto_reply"
+                            @update:model-value="(val) => groupStore.updateGroupSettings(groupInfo.id, { auto_reply: val }).then(updated => groupInfo = { ...groupInfo, auto_reply: updated.auto_reply })" />
                     </div>
                     <div class="mt-8 px-4 pb-8">
-                        <Button variant="destructive" class="w-full bg-[#fa5151] hover:bg-[#d93a3a]" @click="showExitConfirm = true">退出群聊</Button>
+                        <Button variant="destructive" class="w-full bg-[#fa5151] hover:bg-[#d93a3a]"
+                            @click="showExitConfirm = true">退出群聊</Button>
                     </div>
                 </div>
             </div>
@@ -269,21 +288,12 @@ const handleClose = () => {
     </Sheet>
 
     <!-- Group Management Dialogs -->
-    <GroupMemberSelector 
-        v-if="groupInfo"
-        v-model:open="showMemberSelector"
-        :mode="memberSelectorMode"
-        :existing-members="groupInfo.members"
-        @confirm="handleMemberConfirm"
-    />
+    <GroupMemberSelector v-if="groupInfo" v-model:open="showMemberSelector" :mode="memberSelectorMode"
+        :existing-members="groupInfo.members" @confirm="handleMemberConfirm" />
 
-    <AvatarUploader 
-        v-if="showAvatarUploader && groupInfo"
-        :initial-image="groupInfo.avatar ? getStaticUrl(groupInfo.avatar) : ''"
-        title="上传群头像"
-        @close="showAvatarUploader = false"
-        @update:image="handleGroupAvatarUpdate"
-    />
+    <AvatarUploader v-if="showAvatarUploader && groupInfo"
+        :initial-image="groupInfo.avatar ? getStaticUrl(groupInfo.avatar) : ''" title="上传群头像"
+        @close="showAvatarUploader = false" @update:image="handleGroupAvatarUpdate" />
 
     <!-- Exit Group Confirmation -->
     <Dialog v-model:open="showExitConfirm">
@@ -296,7 +306,8 @@ const handleClose = () => {
             </DialogHeader>
             <DialogFooter class="gap-2 sm:gap-0 mt-4">
                 <Button variant="outline" @click="showExitConfirm = false" :disabled="isExiting">取消</Button>
-                <Button variant="destructive" @click="confirmExitGroup" :disabled="isExiting" class="bg-[#fa5151] hover:bg-[#d93a3a]">
+                <Button variant="destructive" @click="confirmExitGroup" :disabled="isExiting"
+                    class="bg-[#fa5151] hover:bg-[#d93a3a]">
                     <Loader2 v-if="isExiting" class="w-4 h-4 mr-2 animate-spin" />
                     {{ isExiting ? '退出中...' : '确认退出' }}
                 </Button>
