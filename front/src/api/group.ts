@@ -168,6 +168,15 @@ export const groupApi = {
     },
 
     /**
+     * 清空群消息记录
+     */
+    clearMessages: (groupId: number) => {
+        return request<{ message: string }>({
+            url: `/chat/group/${groupId}/messages`,
+            method: 'DELETE',
+        });
+    },
+    /**
      * 发送群消息并流式获取响应
      */
     async *sendGroupMessageStream(groupId: number, data: { content: string, mentions?: string[], enable_thinking?: boolean }): AsyncGenerator<{ event: string, data: any }> {

@@ -29,6 +29,9 @@ from agents.stream_events import RunItemStreamEvent
 
 logger = logging.getLogger(__name__)
 
+# Story 09-06: 控制符常量
+CTRL_NO_REPLY = "<CTRL:NO_REPLY>"
+
 def _model_base_name(model_name: Optional[str]) -> str:
     if not model_name:
         return ""
@@ -134,20 +137,11 @@ class GroupChatService:
                         participants.append(friend)
                 except (ValueError, TypeError):
                     continue
-        elif group.auto_reply:
-            # 暂定：如果没有 @，且 auto_reply 开启，则默认群内第一个 AI 回复
-            ai_members = db.query(GroupMember).filter(
-                GroupMember.group_id == group_id, 
-                GroupMember.member_type == "friend"
-            ).all()
-            if ai_members:
-                try:
-                    f_id = int(ai_members[0].member_id)
-                    friend = db.query(Friend).filter(Friend.id == f_id).first()
-                    if friend:
-                        participants.append(friend)
-                except (ValueError, TypeError):
-                    pass
+        # Story 09-06: 严格遵守"只有被@时才发言"规则 (AC-2)
+        # 即使开启了 auto_reply，也只有被提及的 AI 才会参与回复
+        # elif group.auto_reply:
+        #     ... 暂不自动回复 ...
+        pass
 
         if not participants:
             yield {"event": "done", "data": {"message": "No AI responded"}}
@@ -317,6 +311,13 @@ class GroupChatService:
                 
                 persona_prompt = (friend.system_prompt if friend.system_prompt else get_prompt("chat/default_system_prompt.txt")).strip()
                 
+                # 注入群聊规则 (Story 09-06)
+                try:
+                    group_rule = get_prompt("chat/group_chat_rule.txt").strip()
+                    persona_prompt = f"{persona_prompt}\n\n{group_rule}"
+                except Exception as e:
+                    logger.warning(f"Failed to load group_chat_rule: {e}")
+
                 script_prompt = ""
                 if friend.script_expression:
                     try: script_prompt = get_prompt("persona/script_expression.txt").strip()
@@ -333,7 +334,7 @@ class GroupChatService:
                 try:
                     root_template = get_prompt("chat/root_system_prompt.txt")
                     # 群聊特有的上下文提示
-                    group_context = f"\n\n你现在在群聊中，你的名字是 {friend.name}。请简洁回复，避免长篇大论。如果用户提到了其他人，请根据情况互动。"
+                    group_context = f"\n\n你现在在群聊中，你的名字是 {friend.name}。只有被@时才发言，其他时候保持沉默并输出 {CTRL_NO_REPLY}。"
                     
                     final_instructions = root_template.replace("{{role-play-prompt}}", persona_prompt + group_context)
                     final_instructions = final_instructions.replace("{{script-expression}}", f"\n\n{script_prompt}" if script_prompt else "")
@@ -343,23 +344,100 @@ class GroupChatService:
                 except Exception:
                     final_instructions = f"{persona_prompt}\n\n{script_prompt}\n\n{current_time}"
 
-                # 4. 构建消息列表
+                # 4. 构建消息列表 (Mock Tool Call 模式 - Story 09-06)
                 agent_messages = []
-                # 注入历史记录，转换格式
+                
+                # 将历史记录切分为以“人类消息”开头的轮次
+                rounds = []
+                current_round = None
+                
                 for msg in history_msgs:
-                    if msg.sender_type == "friend" and msg.sender_id == str(friend_id):
-                        agent_messages.append({"role": "assistant", "content": msg.content})
+                    if msg.sender_type == "user":
+                        if current_round:
+                            rounds.append(current_round)
+                        current_round = {"user": msg, "others": [], "self": None}
                     else:
-                        sender_name = name_map.get(msg.sender_id, "未知")
-                        agent_messages.append({"role": "user", "content": f"{sender_name}: {msg.content}"})
+                        if current_round:
+                            if msg.sender_type == "friend" and msg.sender_id == str(friend_id):
+                                current_round["self"] = msg
+                            else:
+                                current_round["others"].append(msg)
+                        else:
+                            # 历史开头的非用户消息，先忽略或归入虚拟轮次
+                            pass
+                if current_round:
+                    rounds.append(current_round)
+
+                # 转换为上帝视角格式（使用 Agents Item 格式）
+                for r in rounds:
+                    u_msg = r["user"]
+                    agent_messages.append({"role": "user", "content": u_msg.content})
+                    
+                    # 虚拟工具 Item：获取其他成员发言
+                    others_content = "\n".join([f"{name_map.get(m.sender_id, '未知')}: {m.content}" for m in r["others"]])
+                    if not others_content:
+                        others_content = "(empty)"
+                    
+                    tc_id_hist = f"call_get_msgs_{u_msg.id}"
+                    agent_messages.append({
+                        "type": "function_call",
+                        "call_id": tc_id_hist,
+                        "name": "get_other_members_messages",
+                        "arguments": "{}"
+                    })
+                    agent_messages.append({
+                        "type": "function_call_output",
+                        "call_id": tc_id_hist,
+                        "output": others_content
+                    })
+                    
+                    # 补齐发言历史 Item
+                    if r["self"] and r["self"].content.strip():
+                        agent_messages.append({"role": "assistant", "content": r["self"].content})
+                    else:
+                        agent_messages.append({"role": "assistant", "content": CTRL_NO_REPLY})
                 
-                # 注入召回信息 (暂时简化处理，不放在 user 消息后，以免干扰群聊语境)
+                # 注入召回信息 (保持在当前消息前)
                 if injected_recall_messages:
-                    # 过滤掉 tool 相关的，群聊目前不一定支持复杂工具调用
-                    text_recalls = [m for m in injected_recall_messages if isinstance(m, dict) and "content" in m and m.get("role") in ("user", "assistant")]
-                    agent_messages.extend(text_recalls)
+                    # 允许注入全部 Item (包括 function_call/function_call_output)
+                    agent_messages.extend(injected_recall_messages)
                 
-                # 5. 调用 LLM
+                # 5. 当前轮次注入
+                agent_messages.append({"role": "user", "content": message_content})
+                
+                # 注入当前轮次的 Mock 工具调用 Item
+                # get_other_members_messages
+                tc_id_curr = f"call_curr_msgs_{user_msg_id}"
+                agent_messages.append({
+                    "type": "function_call",
+                    "call_id": tc_id_curr,
+                    "name": "get_other_members_messages",
+                    "arguments": "{}"
+                })
+                agent_messages.append({
+                    "type": "function_call_output",
+                    "call_id": tc_id_curr,
+                    "output": "(empty)" # 并行执行时，尚未有其他 AI 回复
+                })
+                
+                # is_mentioned
+                tc_id_ment = f"call_ment_{user_msg_id}"
+                agent_messages.append({
+                    "type": "function_call",
+                    "call_id": tc_id_ment,
+                    "name": "is_mentioned",
+                    "arguments": "{}"
+                })
+                agent_messages.append({
+                    "type": "function_call_output",
+                    "call_id": tc_id_ment,
+                    "output": "被提及，需要发言"
+                })
+
+                # AC-4: 后端日志中可确认 AI Context 包含格式化的 Tool Result 消息
+                logger.info(f"[GroupGenTask] AI Context (Items) for {friend_name} (ID: {friend_id}):\n{json.dumps(agent_messages, ensure_ascii=False, indent=2)}")
+
+                # 6. 调用 LLM
                 client = AsyncOpenAI(base_url=llm_config.base_url, api_key=llm_config.api_key)
                 set_default_openai_client(client)
                 
@@ -623,6 +701,15 @@ class GroupChatService:
             await queue.put({"event": "error", "data": {"sender_id": str(friend_id), "detail": str(e)}})
         finally:
             await queue.put(None) # Signal completion of this producer
+
+
+    @staticmethod
+    def clear_group_messages(db: Session, group_id: int):
+        """
+        清空群聊消息记录。
+        """
+        db.query(GroupMessage).filter(GroupMessage.group_id == group_id).delete()
+        db.commit()
 
 
 group_chat_service = GroupChatService()

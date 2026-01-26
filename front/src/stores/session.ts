@@ -850,6 +850,20 @@ export const useSessionStore = defineStore('session', () => {
             } catch (error) {
                 console.error('Failed to start new session:', error)
             }
+        },
+        clearGroupHistory: async (groupId: number) => {
+            const { groupApi } = await import('@/api/group')
+            isLoading.value = true
+            try {
+                await groupApi.clearMessages(groupId)
+                // 清空本地状态
+                messagesMap.value[groupId] = []
+            } catch (error) {
+                console.error(`Failed to clear history for group ${groupId}:`, error)
+                throw error
+            } finally {
+                isLoading.value = false
+            }
         }
     }
 })

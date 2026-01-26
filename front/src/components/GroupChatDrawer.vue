@@ -68,6 +68,8 @@ const editingGroupName = ref('')
 const isUpdatingGroup = ref(false)
 const showExitConfirm = ref(false)
 const isExiting = ref(false)
+const showClearConfirm = ref(false)
+const isClearing = ref(false)
 
 watch([() => props.open, () => sessionStore.currentGroupId], async ([open, groupId]) => {
     if (open && groupId) {
@@ -83,6 +85,7 @@ watch([() => props.open, () => sessionStore.currentGroupId], async ([open, group
         showMemberSelector.value = false
         showAvatarUploader.value = false
         showExitConfirm.value = false
+        showClearConfirm.value = false
     }
 })
 
@@ -175,6 +178,22 @@ const confirmExitGroup = async () => {
         toast.error(e.message || '退出失败')
     } finally {
         isExiting.value = false
+    }
+}
+
+// 清空聊天记录确认
+const confirmClearHistory = async () => {
+    if (!groupInfo.value) return
+
+    isClearing.value = true
+    try {
+        await sessionStore.clearGroupHistory(groupInfo.value.id)
+        toast.success('聊天记录已清空')
+        showClearConfirm.value = false
+    } catch (e: any) {
+        toast.error(e.message || '清空失败')
+    } finally {
+        isClearing.value = false
     }
 }
 
@@ -278,7 +297,11 @@ const handleClose = () => {
                         <Switch :model-value="groupInfo.auto_reply"
                             @update:model-value="(val) => groupStore.updateGroupSettings(groupInfo.id, { auto_reply: val }).then(updated => groupInfo = { ...groupInfo, auto_reply: updated.auto_reply })" />
                     </div>
-                    <div class="mt-8 px-4 pb-8">
+                    <div class="mt-8 px-4 pb-2">
+                        <Button variant="outline" class="w-full text-gray-600 border-gray-200 hover:bg-gray-50"
+                            @click="showClearConfirm = true">清空聊天记录</Button>
+                    </div>
+                    <div class="px-4 pb-8">
                         <Button variant="destructive" class="w-full bg-[#fa5151] hover:bg-[#d93a3a]"
                             @click="showExitConfirm = true">退出群聊</Button>
                     </div>
@@ -294,6 +317,26 @@ const handleClose = () => {
     <AvatarUploader v-if="showAvatarUploader && groupInfo"
         :initial-image="groupInfo.avatar ? getStaticUrl(groupInfo.avatar) : ''" title="上传群头像"
         @close="showAvatarUploader = false" @update:image="handleGroupAvatarUpdate" />
+
+    <!-- Clear History Confirmation -->
+    <Dialog v-model:open="showClearConfirm">
+        <DialogContent class="sm:max-w-[400px]">
+            <DialogHeader>
+                <DialogTitle>清空聊天记录</DialogTitle>
+                <DialogDescription class="mt-2 text-red-500 font-medium">
+                    确定要清空该群聊的所有聊天记录吗？此操作不可撤销。
+                </DialogDescription>
+            </DialogHeader>
+            <DialogFooter class="gap-2 sm:gap-0 mt-4">
+                <Button variant="outline" @click="showClearConfirm = false" :disabled="isClearing">取消</Button>
+                <Button variant="destructive" @click="confirmClearHistory" :disabled="isClearing"
+                    class="bg-[#fa5151] hover:bg-[#d93a3a]">
+                    <Loader2 v-if="isClearing" class="w-4 h-4 mr-2 animate-spin" />
+                    {{ isClearing ? '清空中...' : '确认清空' }}
+                </Button>
+            </DialogFooter>
+        </DialogContent>
+    </Dialog>
 
     <!-- Exit Group Confirmation -->
     <Dialog v-model:open="showExitConfirm">

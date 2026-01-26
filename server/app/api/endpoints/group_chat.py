@@ -38,3 +38,24 @@ async def send_group_message_stream(
             yield f"event: {event_type}\ndata: {json_data}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+@router.delete("/group/{group_id}/messages")
+async def clear_group_messages(
+    *,
+    db: Session = Depends(deps.get_db),
+    group_id: int,
+):
+    """
+    清空群消息记录。
+    """
+    # 鉴权：检查当前用户是否在群组中
+    member = db.query(GroupMember).filter(
+        GroupMember.group_id == group_id,
+        GroupMember.member_id == DEFAULT_USER_ID,
+        GroupMember.member_type == "user"
+    ).first()
+    if not member:
+        raise HTTPException(status_code=403, detail="Not a member of this group")
+
+    group_chat_service.clear_group_messages(db, group_id)
+    return {"message": "Success"}
