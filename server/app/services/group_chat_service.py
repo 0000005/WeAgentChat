@@ -228,7 +228,7 @@ class GroupChatService:
                 # 获取最近 15 条消息
                 history_msgs = (
                     db.query(GroupMessage)
-                    .filter(GroupMessage.group_id == group_id, GroupMessage.id < ai_msg_id)
+                    .filter(GroupMessage.group_id == group_id, GroupMessage.id < user_msg_id)
                     .order_by(GroupMessage.create_time.desc())
                     .limit(15)
                     .all()
@@ -267,6 +267,9 @@ class GroupChatService:
                             role = "assistant" if (m.sender_type == "friend" and m.sender_id == str(friend_id)) else "user"
                             messages_for_recall.append({"role": role, "content": m.content})
                         
+                        # 增加当前收到的消息参与召回
+                        messages_for_recall.append({"role": "user", "content": message_content})
+
                         recall_result = await RecallService.perform_recall(
                             db, DEFAULT_USER_ID, DEFAULT_SPACE_ID, messages_for_recall, friend_id
                         )
