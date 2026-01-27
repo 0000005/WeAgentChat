@@ -42,12 +42,23 @@ export interface GroupUpdate {
 export interface GroupMessageRead {
     id: number;
     group_id: number;
+    session_id: number;
     sender_id: string;
     sender_type: 'user' | 'friend';
     content: string;
     message_type: 'text' | 'system' | '@';
     mentions?: string[];
     create_time: string;
+}
+
+export interface GroupSessionRead {
+    id: number;
+    group_id: number;
+    title?: string;
+    create_time: string;
+    update_time: string;
+    ended: boolean;
+    last_message_time?: string | null;
 }
 
 async function request<T>(options: { url: string; method: string; data?: any; params?: any }): Promise<T> {
@@ -171,6 +182,15 @@ export const groupApi = {
         return request<{ message: string }>({
             url: `/chat/group/${groupId}/messages`,
             method: 'DELETE',
+        });
+    },
+    /**
+     * 手动新建群聊会话
+     */
+    createGroupSession: (groupId: number) => {
+        return request<GroupSessionRead>({
+            url: `/chat/group/${groupId}/sessions`,
+            method: 'POST',
         });
     },
     /**

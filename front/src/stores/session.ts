@@ -313,6 +313,7 @@ export const useSessionStore = defineStore('session', () => {
                 role: (m.sender_type === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
                 content: m.content,
                 createdAt: new Date(m.create_time).getTime(),
+                sessionId: m.session_id,
                 senderId: m.sender_id,
                 senderType: m.sender_type
             }))
@@ -523,6 +524,8 @@ export const useSessionStore = defineStore('session', () => {
         // Map friend IDs to track streaming content for each friend
         const aiMessages: Record<string, Message> = {}
 
+        let capturedSessionId: number | undefined = undefined
+
         try {
             const stream = groupApi.sendGroupMessageStream(groupId, { content, mentions, enable_thinking: enableThinking })
             streamingMap.value['g' + groupId] = true
@@ -532,7 +535,13 @@ export const useSessionStore = defineStore('session', () => {
                     // Update user message ID
                     if (data.message_id) {
                         const localMsg = messagesMap.value['g' + groupId].find(m => m.id === userMsg.id)
-                        if (localMsg) localMsg.id = data.message_id
+                        if (localMsg) {
+                            localMsg.id = data.message_id
+                            localMsg.sessionId = data.session_id
+                        }
+                    }
+                    if (data.session_id) {
+                        capturedSessionId = data.session_id
                     }
                 } else if (event === 'message' || event === 'model_thinking' || event === 'thinking' || event === 'recall_thinking' || event === 'tool_call' || event === 'tool_result') {
                     const senderId = data.sender_id
@@ -548,7 +557,8 @@ export const useSessionStore = defineStore('session', () => {
                             recallThinkingContent: '',
                             toolCalls: [],
                             createdAt: Date.now(),
-                            senderId: senderId
+                            senderId: senderId,
+                            sessionId: capturedSessionId
                         }
                         messagesMap.value['g' + groupId].push(newMsg)
                         // Important: Get the reactive proxy from the messages list to ensure property updates are tracked
@@ -580,8 +590,14 @@ export const useSessionStore = defineStore('session', () => {
                     }
                 } else if (event === 'done') {
                     const senderId = data.sender_id
+                    if (!capturedSessionId && data.session_id) {
+                        capturedSessionId = data.session_id
+                    }
                     if (senderId && aiMessages[senderId]) {
                         aiMessages[senderId].id = data.message_id
+                        if (capturedSessionId) {
+                            aiMessages[senderId].sessionId = capturedSessionId
+                        }
                         // Use finalized content if provided
                         if (data.content) {
                             aiMessages[senderId].content = data.content
@@ -856,6 +872,36 @@ export const useSessionStore = defineStore('session', () => {
                 })
             } catch (error) {
                 console.error('Failed to start new session:', error)
+            }
+        },
+        startNewGroupSession: async () => {
+            if (!currentGroupId.value) return
+
+            const groupId = currentGroupId.value
+            const { groupApi } = await import('@/api/group')
+
+            // Prevent multiple consecutive new sessions
+            const messages = messagesMap.value['g' + groupId]
+            if (messages && messages.length > 0) {
+                const lastMsg = messages[messages.length - 1]
+                if (lastMsg.role === 'system' && lastMsg.content === '新会话') {
+                    return
+                }
+            }
+
+            try {
+                await groupApi.createGroupSession(groupId)
+                if (!messagesMap.value['g' + groupId]) {
+                    messagesMap.value['g' + groupId] = []
+                }
+                messagesMap.value['g' + groupId].push({
+                    id: Date.now(),
+                    role: 'system',
+                    content: '新会话',
+                    createdAt: Date.now()
+                })
+            } catch (error) {
+                console.error('Failed to start new group session:', error)
             }
         },
         clearGroupHistory: async (groupId: number) => {

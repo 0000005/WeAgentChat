@@ -37,6 +37,7 @@ class GroupMessageCreate(GroupMessageBase):
 class GroupMessageRead(GroupMessageBase):
     id: int
     group_id: int
+    session_id: int
     sender_id: str
     sender_type: MemberType
     create_time: datetime
@@ -71,3 +72,16 @@ class GroupRead(GroupBase):
 
 class GroupReadWithMembers(GroupRead):
     members: List[GroupMemberRead] = []
+
+# --- Group Session Schemas ---
+class GroupSessionRead(BaseModel):
+    id: int
+    group_id: int
+    title: Optional[str] = None
+    create_time: datetime
+    update_time: datetime
+    ended: bool
+    last_message_time: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True

@@ -39,6 +39,25 @@ async def send_group_message_stream(
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
+@router.post("/group/{group_id}/sessions", response_model=group_schemas.GroupSessionRead)
+def create_group_session(
+    *,
+    db: Session = Depends(deps.get_db),
+    group_id: int,
+):
+    """
+    手动新建群聊会话（不触发记忆归档）。
+    """
+    member = db.query(GroupMember).filter(
+        GroupMember.group_id == group_id,
+        GroupMember.member_id == DEFAULT_USER_ID,
+        GroupMember.member_type == "user"
+    ).first()
+    if not member:
+        raise HTTPException(status_code=403, detail="Not a member of this group")
+
+    return group_chat_service.create_group_session(db, group_id)
+
 @router.delete("/group/{group_id}/messages")
 async def clear_group_messages(
     *,

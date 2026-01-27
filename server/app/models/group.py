@@ -18,6 +18,22 @@ class Group(Base):
     # Relationships
     members = relationship("GroupMember", back_populates="group", cascade="all, delete-orphan")
     messages = relationship("GroupMessage", back_populates="group", cascade="all, delete-orphan")
+    sessions = relationship("GroupSession", back_populates="group", cascade="all, delete-orphan")
+
+
+class GroupSession(Base):
+    __tablename__ = "group_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    group_id = Column(Integer, ForeignKey("groups.id"), nullable=False)
+    title = Column(String(128), default="群聊会话", nullable=True)
+    create_time = Column(UTCDateTime, default=utc_now, nullable=False)
+    update_time = Column(UTCDateTime, default=utc_now, onupdate=utc_now, nullable=False)
+    ended = Column(Boolean, default=False, nullable=False)
+    last_message_time = Column(UTCDateTime, nullable=True)
+
+    group = relationship("Group", back_populates="sessions")
+    messages = relationship("GroupMessage", back_populates="session", cascade="all, delete-orphan")
 
 
 class GroupMember(Base):
@@ -42,6 +58,7 @@ class GroupMessage(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     group_id = Column(Integer, ForeignKey("groups.id"), nullable=False)
+    session_id = Column(Integer, ForeignKey("group_sessions.id"), nullable=False)
     sender_id = Column(String(64), nullable=False)
     sender_type = Column(String(20), nullable=False) # 'user' or 'friend'
     content = Column(Text, nullable=False)
@@ -56,3 +73,4 @@ class GroupMessage(Base):
 
     # Relationships
     group = relationship("Group", back_populates="messages")
+    session = relationship("GroupSession", back_populates="messages")

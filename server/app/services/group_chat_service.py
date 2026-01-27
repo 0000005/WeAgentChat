@@ -6,7 +6,7 @@ from typing import List, Optional, AsyncGenerator, Dict
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone, timedelta
 
-from app.models.group import Group, GroupMember, GroupMessage
+from app.models.group import Group, GroupMember, GroupMessage, GroupSession
 from app.models.friend import Friend
 from app.schemas import group as group_schemas
 from app.services.llm_service import llm_service
@@ -216,9 +216,72 @@ class GroupChatService:
         return []
 
     @staticmethod
+    def _get_active_group_session(db: Session, group_id: int) -> Optional[GroupSession]:
+        return (
+            db.query(GroupSession)
+            .filter(GroupSession.group_id == group_id, GroupSession.ended == False)
+            .order_by(GroupSession.id.desc())
+            .first()
+        )
+
+    @staticmethod
+    def _create_group_session(db: Session, group_id: int, title: Optional[str] = None) -> GroupSession:
+        session = GroupSession(group_id=group_id, title=title or "群聊会话")
+        db.add(session)
+        db.commit()
+        db.refresh(session)
+        return session
+
+    @staticmethod
+    def get_or_create_session_for_group(db: Session, group_id: int) -> GroupSession:
+        timeout = SettingsService.get_setting(db, "session", "passive_timeout", 1800)
+        session = GroupChatService._get_active_group_session(db, group_id)
+
+        if session:
+            if session.last_message_time:
+                now_time = datetime.now(timezone.utc)
+                elapsed = (now_time - session.last_message_time).total_seconds()
+                logger.info(f"[GroupSession] Session {session.id} (Group {group_id}): Last msg {session.last_message_time}, Elapsed {elapsed:.1f}s, Timeout {timeout}s")
+                if elapsed > timeout:
+                    logger.info(f"[GroupSession] Session {session.id} EXPIRED. Marking ended and creating new session. (NO memory extraction - group chat policy)")
+                    session.ended = True
+                    session.update_time = now_time
+                    db.commit()
+                    session = None
+                else:
+                    logger.info(f"[GroupSession] Session {session.id} ACTIVE. Continuing.")
+            else:
+                logger.info(f"[GroupSession] Session {session.id} has no last_message_time. Treated as ACTIVE/NEW.")
+                return session
+
+        if not session:
+            logger.info(f"[GroupSession] Creating NEW session for group {group_id}...")
+            session = GroupChatService._create_group_session(db, group_id)
+            logger.info(f"[GroupSession] New session {session.id} created.")
+
+        return session
+
+    @staticmethod
+    def create_group_session(db: Session, group_id: int) -> GroupSession:
+        active_sessions = (
+            db.query(GroupSession)
+            .filter(GroupSession.group_id == group_id, GroupSession.ended == False)
+            .all()
+        )
+        if active_sessions:
+            now_time = datetime.now(timezone.utc)
+            for session in active_sessions:
+                logger.info(f"[GroupSession] Manual new session: Ending session {session.id}. (NO memory extraction - group chat policy)")
+                session.ended = True
+                session.update_time = now_time
+            db.commit()
+        return GroupChatService._create_group_session(db, group_id)
+
+    @staticmethod
     async def _select_speakers_by_manager(
         db: Session,
         group_id: int,
+        session_id: Optional[int],
         llm_config,
         friend_map: Optional[Dict[int, Friend]] = None
     ) -> List[Friend]:
@@ -234,12 +297,14 @@ class GroupChatService:
             member_lines.append(f"{friend.name}_{friend.id}: {desc}")
         member_list = "\n".join(member_lines)
 
+        history_query = db.query(GroupMessage).filter(
+            GroupMessage.group_id == group_id,
+            GroupMessage.message_type == "text"
+        )
+        if session_id is not None:
+            history_query = history_query.filter(GroupMessage.session_id == session_id)
         history_msgs = (
-            db.query(GroupMessage)
-            .filter(
-                GroupMessage.group_id == group_id,
-                GroupMessage.message_type == "text"
-            )
+            history_query
             .order_by(GroupMessage.create_time.desc())
             .limit(20)
             .all()
@@ -347,9 +412,13 @@ class GroupChatService:
         发送群聊消息并获取 AI 响应。
         支持 @提及 强制触发。
         """
+        # 0. 获取或创建群聊会话
+        session = GroupChatService.get_or_create_session_for_group(db, group_id)
+
         # 1. 保存用户消息
         db_message = GroupMessage(
             group_id=group_id,
+            session_id=session.id,
             sender_id=sender_id,
             sender_type="user",
             content=message_in.content,
@@ -359,6 +428,10 @@ class GroupChatService:
         db.add(db_message)
         db.commit()
         db.refresh(db_message)
+        now_time = datetime.now(timezone.utc)
+        session.last_message_time = now_time
+        session.update_time = now_time
+        db.commit()
 
         llm_config = llm_service.get_active_config(db)
         model_name = llm_config.model_name if llm_config else "unknown"
@@ -369,6 +442,7 @@ class GroupChatService:
             "data": {
                 "message_id": db_message.id, 
                 "group_id": group_id,
+                "session_id": session.id,
                 "model": model_name
             }
         }
@@ -397,6 +471,7 @@ class GroupChatService:
             participants = await GroupChatService._select_speakers_by_manager(
                 db=db,
                 group_id=group_id,
+                session_id=session.id,
                 llm_config=llm_config,
                 friend_map=friend_map
             )
@@ -421,6 +496,7 @@ class GroupChatService:
             # 为 AI 创建消息占位符
             db_ai_msg = GroupMessage(
                 group_id=group_id,
+                session_id=session.id,
                 sender_id=str(friend.id),
                 sender_type="friend",
                 content="",
@@ -432,6 +508,7 @@ class GroupChatService:
             
             task = asyncio.create_task(GroupChatService._run_group_ai_generation_task(
                 group_id=group_id,
+                session_id=session.id,
                 friend_id=friend.id,
                 user_msg_id=db_message.id,
                 ai_msg_id=db_ai_msg.id,
@@ -453,6 +530,7 @@ class GroupChatService:
     @staticmethod
     async def _run_group_ai_generation_task(
         group_id: int,
+        session_id: int,
         friend_id: int,
         user_msg_id: int,
         ai_msg_id: int,
@@ -486,7 +564,11 @@ class GroupChatService:
                 # 获取最近 15 条消息
                 history_msgs = (
                     db.query(GroupMessage)
-                    .filter(GroupMessage.group_id == group_id, GroupMessage.id < user_msg_id)
+                    .filter(
+                        GroupMessage.group_id == group_id,
+                        GroupMessage.session_id == session_id,
+                        GroupMessage.id < user_msg_id
+                    )
                     .order_by(GroupMessage.create_time.desc())
                     .limit(15)
                     .all()
@@ -942,6 +1024,12 @@ class GroupChatService:
                 if db_msg:
                     db_msg.content = final_content
                     db.commit()
+                    group_session = db.query(GroupSession).filter(GroupSession.id == session_id).first()
+                    if group_session:
+                        now_time = datetime.now(timezone.utc)
+                        group_session.last_message_time = now_time
+                        group_session.update_time = now_time
+                        db.commit()
 
                 usage["completion_tokens"] = len(content_buffer)
                 # 发送完成事件
@@ -950,6 +1038,7 @@ class GroupChatService:
                     "data": {
                         "sender_id": str(friend_id),
                         "message_id": ai_msg_id,
+                        "session_id": session_id,
                         "content": final_content,
                         "usage": usage
                     }
@@ -967,9 +1056,10 @@ class GroupChatService:
     @staticmethod
     def clear_group_messages(db: Session, group_id: int):
         """
-        清空群聊消息记录。
+        清空群聊消息记录，并同步清除群聊会话。
         """
         db.query(GroupMessage).filter(GroupMessage.group_id == group_id).delete()
+        db.query(GroupSession).filter(GroupSession.group_id == group_id).delete()
         db.commit()
 
 

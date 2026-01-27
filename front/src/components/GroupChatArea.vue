@@ -124,6 +124,40 @@ const currentGroupName = computed(() => {
 
 const messages = computed(() => sessionStore.currentMessages)
 
+// 检测是否需要显示会话分隔线（session_id 变化时）
+const shouldShowSessionDivider = (index: number): boolean => {
+  if (index === 0) return false
+  const currentMsg = messages.value[index]
+  const prevMsg = messages.value[index - 1]
+
+  if (currentMsg.role === 'system') return false
+
+  if (currentMsg.sessionId && prevMsg.sessionId && currentMsg.sessionId !== prevMsg.sessionId) {
+    return true
+  }
+  return false
+}
+
+// 格式化会话时间戳（类似微信聊天记录中的时间显示）
+const formatSessionTime = (timestamp: number): string => {
+  const date = new Date(timestamp)
+  const now = new Date()
+  const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24))
+
+  const timeStr = date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+
+  if (diffDays === 0) {
+    return timeStr
+  } else if (diffDays === 1) {
+    return `昨天 ${timeStr}`
+  } else if (diffDays < 7) {
+    const weekdays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六']
+    return `${weekdays[date.getDay()]} ${timeStr}`
+  } else {
+    return date.toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' }) + ' ' + timeStr
+  }
+}
+
 // Toast Feedback Logic (Copied from ChatArea.vue)
 const showToast = ref(false)
 const toastMessage = ref('')
@@ -179,30 +213,7 @@ const handleOpenDrawer = () => {
 }
 
 const handleNewChat = async () => {
-  // TODO: Implement group session management when backend is ready
-  // For now, just add a system message locally
-  if (!sessionStore.currentGroupId) return
-  const groupId = sessionStore.currentGroupId
-
-  if (!sessionStore.messagesMap['g' + groupId]) {
-    sessionStore.messagesMap['g' + groupId] = []
-  }
-
-  // Prevent multiple consecutive new sessions
-  const messages = sessionStore.messagesMap['g' + groupId]
-  if (messages.length > 0) {
-    const lastMsg = messages[messages.length - 1]
-    if (lastMsg.role === 'system' && lastMsg.content === '新会话') {
-      return
-    }
-  }
-
-  sessionStore.messagesMap['g' + groupId].push({
-    id: Date.now(),
-    role: 'system',
-    content: '新会话',
-    createdAt: Date.now()
-  })
+  await sessionStore.startNewGroupSession()
 }
 
 const getMemberAvatar = (senderId: string, senderType: string) => {
@@ -491,7 +502,11 @@ const handleAvatarClick = (url: string) => {
 
       <Conversation v-else class="flex-1 w-full overflow-hidden">
         <ConversationContent class="messages-content">
-          <template v-for="msg in messages" :key="msg.id">
+          <template v-for="(msg, index) in messages" :key="msg.id">
+            <!-- 会话分隔线（session_id 变化时显示） -->
+            <div v-if="shouldShowSessionDivider(index)" class="session-divider">
+              <span class="divider-time">{{ formatSessionTime(msg.createdAt) }}</span>
+            </div>
             <div v-if="msg.role === 'system'" class="message-system">
               <span>{{ msg.content }}</span>
             </div>
@@ -969,6 +984,24 @@ const handleAvatarClick = (url: string) => {
   background: rgba(0, 0, 0, 0.05);
   padding: 4px 12px;
   border-radius: 12px;
+}
+
+/* 会话分隔线 */
+.session-divider {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 20px 0;
+  width: 100%;
+}
+
+.divider-time {
+  background: rgba(0, 0, 0, 0.06);
+  color: #888;
+  font-size: 11px;
+  padding: 4px 14px;
+  border-radius: 14px;
+  letter-spacing: 0.5px;
 }
 
 /* Message Group Wrapper */
