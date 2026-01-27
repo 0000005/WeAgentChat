@@ -82,15 +82,15 @@ export const useSessionStore = defineStore('session', () => {
     const currentGroupId = ref<number | null>(null)
     const chatType = ref<'friend' | 'group'>('friend')
 
-    // Unread counts map: friendId -> count
-    const unreadCounts = ref<Record<number, number>>({})
+    // Unread counts map: 'f' + friendId or 'g' + groupId -> count
+    const unreadCounts = ref<Record<string, number>>({})
 
-    // Messages map: friendId -> Message[]
-    const messagesMap = ref<Record<number, Message[]>>({})
+    // Messages map: 'f' + friendId or 'g' + groupId -> Message[]
+    const messagesMap = ref<Record<string, Message[]>>({})
 
     const isLoading = ref(false)
-    // Streaming state per friend: friendId -> boolean
-    const streamingMap = ref<Record<number, boolean>>({})
+    // Streaming state per friend/group: 'f' + friendId or 'g' + groupId -> boolean
+    const streamingMap = ref<Record<string, boolean>>({})
 
     // Current specific session ID (if not null, show only this session's messages)
     const currentSessionId = ref<number | null>(null)
@@ -101,21 +101,19 @@ export const useSessionStore = defineStore('session', () => {
     const currentMessages = computed(() => {
         if (chatType.value === 'group') {
             if (!currentGroupId.value) return []
-            // For now groups use the same messagesMap but we should probably separate them
-            // if we expect overlapping IDs. If IDs are global, it's fine.
-            return messagesMap.value[currentGroupId.value] || []
+            return messagesMap.value['g' + currentGroupId.value] || []
         }
         if (!currentFriendId.value) return []
-        return messagesMap.value[currentFriendId.value] || []
+        return messagesMap.value['f' + currentFriendId.value] || []
     })
 
     // Is current friend or group chat streaming?
     const isStreaming = computed(() => {
         if (chatType.value === 'group') {
-            return !!currentGroupId.value && !!streamingMap.value[currentGroupId.value]
+            return !!currentGroupId.value && !!streamingMap.value['g' + currentGroupId.value]
         }
         if (!currentFriendId.value) return false
-        return !!streamingMap.value[currentFriendId.value]
+        return !!streamingMap.value['f' + currentFriendId.value]
     })
 
     const isLoadingMore = ref(false)
@@ -134,14 +132,14 @@ export const useSessionStore = defineStore('session', () => {
             }))
 
             if (skip === 0) {
-                messagesMap.value[friendId] = mappedMessages
+                messagesMap.value['f' + friendId] = mappedMessages
             } else {
                 // If skipping, it's pagination - prepend messages
-                const currentMsgs = messagesMap.value[friendId] || []
+                const currentMsgs = messagesMap.value['f' + friendId] || []
                 // Ensure no duplicates
                 const existingIds = new Set(currentMsgs.map(m => m.id))
                 const newMsgs = mappedMessages.filter(m => !existingIds.has(m.id))
-                messagesMap.value[friendId] = [...newMsgs, ...currentMsgs]
+                messagesMap.value['f' + friendId] = [...newMsgs, ...currentMsgs]
             }
             return apiMessages.length
         } catch (error) {
@@ -154,7 +152,7 @@ export const useSessionStore = defineStore('session', () => {
     const loadMoreMessages = async (friendId: number): Promise<boolean> => {
         if (isLoadingMore.value) return false // Return false when already loading, don't assume there's more
 
-        const currentMsgs = messagesMap.value[friendId] || []
+        const currentMsgs = messagesMap.value['f' + friendId] || []
         const skip = currentMsgs.length
 
         isLoadingMore.value = true
@@ -179,7 +177,7 @@ export const useSessionStore = defineStore('session', () => {
                 sessionId: m.session_id
             }))
 
-            const currentMsgs = messagesMap.value[friendId] || []
+            const currentMsgs = messagesMap.value['f' + friendId] || []
             const existingIds = new Set(currentMsgs.map(m => m.id))
 
             // Helper to check if a message already exists (by ID or by content+timestamp)
@@ -204,7 +202,7 @@ export const useSessionStore = defineStore('session', () => {
                 // Sort new messages by createdAt to ensure correct order
                 newMsgs.sort((a, b) => a.createdAt - b.createdAt)
                 // Append new messages to the end
-                messagesMap.value[friendId] = [...currentMsgs, ...newMsgs]
+                messagesMap.value['f' + friendId] = [...currentMsgs, ...newMsgs]
             }
         } catch (error) {
             console.warn(`Silent sync failed for friend ${friendId}:`, error)
@@ -251,7 +249,7 @@ export const useSessionStore = defineStore('session', () => {
             // For now, we reuse the same list but clear it if we are switching to a specific session
             // In a more persistent setup, we might want a separate map for sessions
             if (currentFriendId.value) {
-                messagesMap.value[currentFriendId.value] = mappedMessages
+                messagesMap.value['f' + currentFriendId.value] = mappedMessages
             }
         } catch (error) {
             console.error(`Failed to load session ${sessionId}:`, error)
@@ -266,13 +264,13 @@ export const useSessionStore = defineStore('session', () => {
         chatType.value = 'friend'
 
         // Clear unread count when entering chat
-        if (unreadCounts.value[friendId]) {
-            unreadCounts.value[friendId] = 0
+        if (unreadCounts.value['f' + friendId]) {
+            unreadCounts.value['f' + friendId] = 0
         }
         currentSessionId.value = null // Reset to default merged/latest view
 
         // Cache hit: render immediately, sync in background
-        if (messagesMap.value[friendId]?.length > 0) {
+        if (messagesMap.value['f' + friendId]?.length > 0) {
             // Background silent sync (don't await)
             syncLatestMessages(friendId).catch(e => console.warn('Silent sync failed:', e))
             fetchFriendSessions(friendId) // Also refresh sessions silently
@@ -320,12 +318,12 @@ export const useSessionStore = defineStore('session', () => {
             }))
 
             if (skip === 0) {
-                messagesMap.value[groupId] = mappedMessages
+                messagesMap.value['g' + groupId] = mappedMessages
             } else {
-                const currentMsgs = messagesMap.value[groupId] || []
+                const currentMsgs = messagesMap.value['g' + groupId] || []
                 const existingIds = new Set(currentMsgs.map(m => m.id))
                 const newMsgs = mappedMessages.filter(m => !existingIds.has(m.id))
-                messagesMap.value[groupId] = [...newMsgs, ...currentMsgs]
+                messagesMap.value['g' + groupId] = [...newMsgs, ...currentMsgs]
             }
             return apiMessages.length
         } catch (error) {
@@ -348,10 +346,10 @@ export const useSessionStore = defineStore('session', () => {
             createdAt: Date.now()
         }
 
-        if (!messagesMap.value[friendId]) {
-            messagesMap.value[friendId] = []
+        if (!messagesMap.value['f' + friendId]) {
+            messagesMap.value['f' + friendId] = []
         }
-        messagesMap.value[friendId].push(userMsg)
+        messagesMap.value['f' + friendId].push(userMsg)
 
         // Update friend list preview immediately for user message
         friendStore.updateLastMessage(friendId, content, 'user')
@@ -374,7 +372,7 @@ export const useSessionStore = defineStore('session', () => {
             for await (const { event, data } of stream) {
                 if (event === 'start') {
                     // Stream started - mark as streaming immediately
-                    streamingMap.value[friendId] = true
+                    streamingMap.value['f' + friendId] = true
                     friendStore.updateLastMessage(friendId, '对方正在输入...', 'assistant')
 
                     // Capture session_id for later use
@@ -382,27 +380,27 @@ export const useSessionStore = defineStore('session', () => {
                     capturedAssistantMsgId = data.message_id
 
                     // Update local user message with real database ID
-                    if (data.user_message_id && messagesMap.value[friendId]) {
-                        const localUserMsg = messagesMap.value[friendId].find(m => m.id === userMsg.id)
+                    if (data.user_message_id && messagesMap.value['f' + friendId]) {
+                        const localUserMsg = messagesMap.value['f' + friendId].find(m => m.id === userMsg.id)
                         if (localUserMsg) {
                             localUserMsg.id = data.user_message_id
                             localUserMsg.sessionId = data.session_id
                         }
                     }
                 } else if (event === 'model_thinking' || event === 'thinking') {
-                    streamingMap.value[friendId] = true
+                    streamingMap.value['f' + friendId] = true
                     const delta = data.delta || ''
                     modelThinkingBuffer += delta
                 } else if (event === 'recall_thinking') {
-                    streamingMap.value[friendId] = true
+                    streamingMap.value['f' + friendId] = true
                     const delta = data.delta || ''
                     recallThinkingBuffer += delta
                 } else if (event === 'message') {
-                    streamingMap.value[friendId] = true
+                    streamingMap.value['f' + friendId] = true
                     const delta = data.delta || ''
                     contentBuffer += delta
                 } else if (event === 'tool_call') {
-                    streamingMap.value[friendId] = true
+                    streamingMap.value['f' + friendId] = true
                     toolCallsBuffer.push({
                         name: data.tool_name,
                         args: data.arguments,
@@ -410,7 +408,7 @@ export const useSessionStore = defineStore('session', () => {
                         status: 'calling'
                     })
                 } else if (event === 'tool_result') {
-                    streamingMap.value[friendId] = true
+                    streamingMap.value['f' + friendId] = true
                     const tc = data.call_id
                         ? [...toolCallsBuffer].reverse().find(t => t.callId === data.call_id && t.status === 'calling')
                         : [...toolCallsBuffer].reverse().find(t => t.name === data.tool_name && t.status === 'calling')
@@ -435,9 +433,9 @@ export const useSessionStore = defineStore('session', () => {
                         createdAt: Date.now(),
                         sessionId: capturedSessionId
                     }
-                    messagesMap.value[friendId].push(errorMsg)
+                    messagesMap.value['f' + friendId].push(errorMsg)
 
-                    streamingMap.value[friendId] = false
+                    streamingMap.value['f' + friendId] = false
                     friendStore.updateLastMessage(friendId, contentBuffer || '[消息发送失败]', 'assistant')
 
                     // Return early - no need to continue processing
@@ -454,14 +452,14 @@ export const useSessionStore = defineStore('session', () => {
                         createdAt: Date.now(),
                         sessionId: capturedSessionId // Use captured session_id
                     }
-                    messagesMap.value[friendId].push(assistantMsg)
+                    messagesMap.value['f' + friendId].push(assistantMsg)
 
-                    streamingMap.value[friendId] = false
+                    streamingMap.value['f' + friendId] = false
                     // Check if user has switched away during streaming - mark as unread
                     // Count segments to match visual perception (3 bubbles = 3 unread)
                     if (currentFriendId.value !== friendId) {
                         const segmentCount = parseMessageSegments(contentBuffer).length || 1
-                        unreadCounts.value[friendId] = (unreadCounts.value[friendId] || 0) + segmentCount
+                        unreadCounts.value['f' + friendId] = (unreadCounts.value['f' + friendId] || 0) + segmentCount
                     }
 
                     // Trigger tray/taskbar flash if window doesn't have focus (Electron only)
@@ -493,11 +491,11 @@ export const useSessionStore = defineStore('session', () => {
                 toolCalls: toolCallsBuffer.length > 0 ? toolCallsBuffer : undefined,
                 createdAt: Date.now()
             }
-            messagesMap.value[friendId].push(errorMsg)
+            messagesMap.value['f' + friendId].push(errorMsg)
             // Update sidebar preview with partial content or error indicator
             friendStore.updateLastMessage(friendId, contentBuffer || '[消息发送失败]', 'assistant')
         } finally {
-            streamingMap.value[friendId] = false
+            streamingMap.value['f' + friendId] = false
         }
     }
 
@@ -517,23 +515,23 @@ export const useSessionStore = defineStore('session', () => {
             senderId: 'user'
         }
 
-        if (!messagesMap.value[groupId]) {
-            messagesMap.value[groupId] = []
+        if (!messagesMap.value['g' + groupId]) {
+            messagesMap.value['g' + groupId] = []
         }
-        messagesMap.value[groupId].push(userMsg)
+        messagesMap.value['g' + groupId].push(userMsg)
 
         // Map friend IDs to track streaming content for each friend
         const aiMessages: Record<string, Message> = {}
 
         try {
             const stream = groupApi.sendGroupMessageStream(groupId, { content, mentions, enable_thinking: enableThinking })
-            streamingMap.value[groupId] = true
+            streamingMap.value['g' + groupId] = true
 
             for await (const { event, data } of stream) {
                 if (event === 'start') {
                     // Update user message ID
                     if (data.message_id) {
-                        const localMsg = messagesMap.value[groupId].find(m => m.id === userMsg.id)
+                        const localMsg = messagesMap.value['g' + groupId].find(m => m.id === userMsg.id)
                         if (localMsg) localMsg.id = data.message_id
                     }
                 } else if (event === 'message' || event === 'model_thinking' || event === 'thinking' || event === 'recall_thinking' || event === 'tool_call' || event === 'tool_result') {
@@ -552,9 +550,9 @@ export const useSessionStore = defineStore('session', () => {
                             createdAt: Date.now(),
                             senderId: senderId
                         }
-                        messagesMap.value[groupId].push(newMsg)
+                        messagesMap.value['g' + groupId].push(newMsg)
                         // Important: Get the reactive proxy from the messages list to ensure property updates are tracked
-                        aiMessages[senderId] = messagesMap.value[groupId][messagesMap.value[groupId].length - 1]
+                        aiMessages[senderId] = messagesMap.value['g' + groupId][messagesMap.value['g' + groupId].length - 1]
                     }
 
                     if (event === 'message') {
@@ -597,7 +595,7 @@ export const useSessionStore = defineStore('session', () => {
         } catch (error) {
             console.error('Failed to send group message:', error)
         } finally {
-            streamingMap.value[groupId] = false
+            streamingMap.value['g' + groupId] = false
         }
     }
 
@@ -607,7 +605,7 @@ export const useSessionStore = defineStore('session', () => {
         try {
             await ChatAPI.clearFriendMessages(friendId)
             // Clear local state
-            messagesMap.value[friendId] = []
+            messagesMap.value['f' + friendId] = []
             if (currentFriendId.value === friendId) {
                 currentSessions.value = []
                 currentSessionId.value = null
@@ -628,7 +626,7 @@ export const useSessionStore = defineStore('session', () => {
             // Find message locally in current friend's list
             // Note: messagesMap stores all messages for a friend
             if (!currentFriendId.value) return
-            const messages = messagesMap.value[currentFriendId.value]
+            const messages = messagesMap.value['f' + currentFriendId.value]
             if (!messages) return
 
             const index = messages.findIndex(m => m.id === messageId)
@@ -690,7 +688,7 @@ export const useSessionStore = defineStore('session', () => {
         if (message.role !== 'assistant') return
 
         const friendId = currentFriendId.value
-        const messages = messagesMap.value[friendId] || []
+        const messages = messagesMap.value['f' + friendId] || []
         const msgIndex = messages.findIndex(m => m.id === message.id)
 
         // 1. Save backup of old message for recovery on failure
@@ -704,7 +702,7 @@ export const useSessionStore = defineStore('session', () => {
         }
 
         // 3. Prepare for streaming
-        streamingMap.value[friendId] = true
+        streamingMap.value['f' + friendId] = true
         friendStore.updateLastMessage(friendId, '对方正在输入...', 'assistant')
 
         let contentBuffer = ''
@@ -718,9 +716,9 @@ export const useSessionStore = defineStore('session', () => {
             console.error("Cannot regenerate message without session ID")
             // Restore old message
             if (oldMessageBackup) {
-                messagesMap.value[friendId].push(oldMessageBackup)
+                messagesMap.value['f' + friendId].push(oldMessageBackup)
             }
-            streamingMap.value[friendId] = false
+            streamingMap.value['f' + friendId] = false
             return
         }
 
@@ -729,18 +727,18 @@ export const useSessionStore = defineStore('session', () => {
 
             for await (const { event, data } of stream) {
                 if (event === 'start') {
-                    streamingMap.value[friendId] = true
+                    streamingMap.value['f' + friendId] = true
                 } else if (event === 'model_thinking' || event === 'thinking') {
-                    streamingMap.value[friendId] = true
+                    streamingMap.value['f' + friendId] = true
                     modelThinkingBuffer += data.delta || ''
                 } else if (event === 'recall_thinking') {
-                    streamingMap.value[friendId] = true
+                    streamingMap.value['f' + friendId] = true
                     recallThinkingBuffer += data.delta || ''
                 } else if (event === 'message') {
-                    streamingMap.value[friendId] = true
+                    streamingMap.value['f' + friendId] = true
                     contentBuffer += data.delta || ''
                 } else if (event === 'tool_call') {
-                    streamingMap.value[friendId] = true
+                    streamingMap.value['f' + friendId] = true
                     toolCallsBuffer.push({
                         name: data.tool_name,
                         args: data.arguments,
@@ -748,7 +746,7 @@ export const useSessionStore = defineStore('session', () => {
                         status: 'calling'
                     })
                 } else if (event === 'tool_result') {
-                    streamingMap.value[friendId] = true
+                    streamingMap.value['f' + friendId] = true
                     const tc = data.call_id
                         ? [...toolCallsBuffer].reverse().find(t => t.callId === data.call_id && t.status === 'calling')
                         : [...toolCallsBuffer].reverse().find(t => t.name === data.tool_name && t.status === 'calling')
@@ -759,10 +757,10 @@ export const useSessionStore = defineStore('session', () => {
                 } else if (event === 'error' || event === 'task_error') {
                     // AC-6: Restore old message on error
                     if (oldMessageBackup) {
-                        messagesMap.value[friendId].push(oldMessageBackup)
+                        messagesMap.value['f' + friendId].push(oldMessageBackup)
                         friendStore.updateLastMessage(friendId, oldMessageBackup.content, 'assistant')
                     }
-                    streamingMap.value[friendId] = false
+                    streamingMap.value['f' + friendId] = false
                     const errorDetail = data.detail || data.message || JSON.stringify(data)
                     throw new Error(errorDetail)
                 } else if (event === 'done') {
@@ -776,11 +774,11 @@ export const useSessionStore = defineStore('session', () => {
                         createdAt: Date.now(),
                         sessionId: sessionId // Preserve sessionId for future operations
                     }
-                    messagesMap.value[friendId].push(assistantMsg)
-                    streamingMap.value[friendId] = false
+                    messagesMap.value['f' + friendId].push(assistantMsg)
+                    streamingMap.value['f' + friendId] = false
                     if (currentFriendId.value !== friendId) {
                         const segmentCount = parseMessageSegments(contentBuffer).length || 1
-                        unreadCounts.value[friendId] = (unreadCounts.value[friendId] || 0) + segmentCount
+                        unreadCounts.value['f' + friendId] = (unreadCounts.value['f' + friendId] || 0) + segmentCount
                     }
                     friendStore.updateLastMessage(friendId, contentBuffer, 'assistant')
                 }
@@ -788,14 +786,14 @@ export const useSessionStore = defineStore('session', () => {
         } catch (error) {
             console.error('Failed to regenerate message:', error)
             // AC-6: Restore old message on network/catch error
-            if (oldMessageBackup && !messagesMap.value[friendId].some(m => m.id === oldMessageBackup.id)) {
-                messagesMap.value[friendId].push(oldMessageBackup)
+            if (oldMessageBackup && !messagesMap.value['f' + friendId].some(m => m.id === oldMessageBackup.id)) {
+                messagesMap.value['f' + friendId].push(oldMessageBackup)
                 friendStore.updateLastMessage(friendId, oldMessageBackup.content, 'assistant')
             }
-            streamingMap.value[friendId] = false
+            streamingMap.value['f' + friendId] = false
             throw error // Re-throw for ChatArea to show toast
         } finally {
-            streamingMap.value[friendId] = false
+            streamingMap.value['f' + friendId] = false
         }
     }
 
@@ -835,7 +833,7 @@ export const useSessionStore = defineStore('session', () => {
             currentSessionId.value = null // 重置为活跃视图
 
             // Prevent multiple consecutive new sessions
-            const messages = messagesMap.value[currentFriendId.value]
+            const messages = messagesMap.value['f' + currentFriendId.value]
             if (messages && messages.length > 0) {
                 const lastMsg = messages[messages.length - 1]
                 if (lastMsg.role === 'system' && lastMsg.content === '新会话') {
@@ -847,10 +845,10 @@ export const useSessionStore = defineStore('session', () => {
                 await ChatAPI.createSession({ friend_id: currentFriendId.value })
                 await fetchFriendSessions(currentFriendId.value) // 刷新会话列表
                 // Add system message manually to the local list
-                if (!messagesMap.value[currentFriendId.value]) {
-                    messagesMap.value[currentFriendId.value] = []
+                if (!messagesMap.value['f' + currentFriendId.value]) {
+                    messagesMap.value['f' + currentFriendId.value] = []
                 }
-                messagesMap.value[currentFriendId.value].push({
+                messagesMap.value['f' + currentFriendId.value].push({
                     id: Date.now(),
                     role: 'system',
                     content: '新会话',
@@ -866,7 +864,7 @@ export const useSessionStore = defineStore('session', () => {
             try {
                 await groupApi.clearMessages(groupId)
                 // 清空本地状态
-                messagesMap.value[groupId] = []
+                messagesMap.value['g' + groupId] = []
             } catch (error) {
                 console.error(`Failed to clear history for group ${groupId}:`, error)
                 throw error

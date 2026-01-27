@@ -156,10 +156,10 @@ const isElectron = Boolean((window as any).WeAgentChat?.windowControls)
 const handleHeaderContextMenu = (event: MouseEvent) => {
   if (!isElectron) return
   event.preventDefault()
-  ;(window as any).WeAgentChat?.windowControls?.showSystemMenu({
-    x: event.screenX,
-    y: event.screenY,
-  })
+    ; (window as any).WeAgentChat?.windowControls?.showSystemMenu({
+      x: event.screenX,
+      y: event.screenY,
+    })
 }
 
 const handleToggleThinking = () => {
@@ -171,7 +171,7 @@ const handleToggleThinking = () => {
 
 const handleToggleMaximize = () => {
   if (!isElectron) return
-  ;(window as any).WeAgentChat?.windowControls?.toggleMaximize()
+    ; (window as any).WeAgentChat?.windowControls?.toggleMaximize()
 }
 
 const handleOpenDrawer = () => {
@@ -183,21 +183,21 @@ const handleNewChat = async () => {
   // For now, just add a system message locally
   if (!sessionStore.currentGroupId) return
   const groupId = sessionStore.currentGroupId
-  
-  if (!sessionStore.messagesMap[groupId]) {
-    sessionStore.messagesMap[groupId] = []
+
+  if (!sessionStore.messagesMap['g' + groupId]) {
+    sessionStore.messagesMap['g' + groupId] = []
   }
-  
+
   // Prevent multiple consecutive new sessions
-  const messages = sessionStore.messagesMap[groupId]
+  const messages = sessionStore.messagesMap['g' + groupId]
   if (messages.length > 0) {
     const lastMsg = messages[messages.length - 1]
     if (lastMsg.role === 'system' && lastMsg.content === '新会话') {
       return
     }
   }
-  
-  sessionStore.messagesMap[groupId].push({
+
+  sessionStore.messagesMap['g' + groupId].push({
     id: Date.now(),
     role: 'system',
     content: '新会话',
@@ -210,12 +210,12 @@ const getMemberAvatar = (senderId: string, senderType: string) => {
     return getStaticUrl(settingsStore.userAvatar) || 'default_avatar.svg'
   }
   if (senderType === 'assistant' || senderType === 'friend') {
-      const member = currentGroup.value?.members?.find(m => m.member_id === senderId)
-      if (member?.avatar) return getStaticUrl(member.avatar) || 'default_avatar.svg'
-      
-      const friend = friendStore.friends.find(f => String(f.id) === senderId)
-      if (friend?.avatar) return getStaticUrl(friend.avatar) || 'default_avatar.svg'
-      return `https://api.dicebear.com/7.x/shapes/svg?seed=${senderId}`
+    const member = currentGroup.value?.members?.find(m => m.member_id === senderId)
+    if (member?.avatar) return getStaticUrl(member.avatar) || 'default_avatar.svg'
+
+    const friend = friendStore.friends.find(f => String(f.id) === senderId)
+    if (friend?.avatar) return getStaticUrl(friend.avatar) || 'default_avatar.svg'
+    return `https://api.dicebear.com/7.x/shapes/svg?seed=${senderId}`
   }
   return 'default_avatar.svg'
 }
@@ -224,7 +224,7 @@ const getMemberName = (senderId: string, _senderType: string) => {
   if (senderId === 'user') return '我'
   const member = currentGroup.value?.members?.find(m => m.member_id === senderId)
   if (member?.name) return member.name
-  
+
   const friend = friendStore.friends.find(f => String(f.id) === senderId)
   return friend?.name || 'AI'
 }
@@ -260,13 +260,13 @@ watch(showMentionMenu, (val) => {
 })
 
 const filteredMembers = computed(() => {
-   if (!currentGroup.value?.members) return []
-   const filtered = currentGroup.value.members.filter(m => 
-     m.member_type === 'friend' && 
-     (m.name?.toLowerCase().includes(mentionSearch.value.toLowerCase()) || !mentionSearch.value)
-   )
-   return filtered
- })
+  if (!currentGroup.value?.members) return []
+  const filtered = currentGroup.value.members.filter(m =>
+    m.member_type === 'friend' &&
+    (m.name?.toLowerCase().includes(mentionSearch.value.toLowerCase()) || !mentionSearch.value)
+  )
+  return filtered
+})
 
 watch(filteredMembers, () => {
   selectedIndex.value = 0
@@ -321,8 +321,8 @@ const handleKeyDown = (e: KeyboardEvent) => {
     selectedIndex.value = (selectedIndex.value - 1 + filteredMembers.value.length) % filteredMembers.value.length
   } else if (e.key === 'Enter') {
     if (filteredMembers.value[selectedIndex.value]) {
-       e.preventDefault()
-       selectMention(filteredMembers.value[selectedIndex.value])
+      e.preventDefault()
+      selectMention(filteredMembers.value[selectedIndex.value])
     }
   } else if (e.key === 'Escape') {
     showMentionMenu.value = false
@@ -339,7 +339,7 @@ const selectMention = (member: any) => {
   input.value = `${before}${member.name} ${after}`
   mentionedIds.value.add(member.member_id)
   showMentionMenu.value = false
-  
+
   // Focus back to textarea
   setTimeout(() => {
     const textarea = document.querySelector('.input-textarea') as HTMLTextAreaElement
@@ -354,14 +354,14 @@ const selectMention = (member: any) => {
 const handleSubmit = async (_e?: any) => {
   if (!input.value.trim()) return
   if (!sessionStore.currentGroupId) return
-  
+
   const content = input.value
   const mentions = Array.from(mentionedIds.value).filter(id => content.includes(`@${getMemberName(id, 'friend')}`))
-  
+
   input.value = ''
   mentionedIds.value.clear()
   status.value = 'streaming'
-  
+
   try {
     await sessionStore.sendGroupMessage(content, mentions, isThinkingMode.value)
   } catch (err) {
@@ -443,7 +443,8 @@ const handleAvatarClick = (url: string) => {
             <div class="flex items-center gap-2">
               <GroupAvatar :size="32" :members="currentGroup?.members" :avatar="currentGroup?.avatar" />
               <h2 class="chat-title">{{ currentGroupName }}</h2>
-              <span class="member-count text-gray-400 text-sm font-normal">({{ currentGroup?.member_count || 0 }})</span>
+              <span class="member-count text-gray-400 text-sm font-normal">({{ currentGroup?.member_count || 0
+              }})</span>
             </div>
             <span v-if="sessionStore.isStreaming" class="typing-indicator">对方正在输入...</span>
           </div>
@@ -463,7 +464,8 @@ const handleAvatarClick = (url: string) => {
     <div class="chat-messages-container flex-col bg-[#f5f5f5]">
       <!-- Vectorization Warning Banner -->
       <div v-if="!isEmbeddingConfigured" class="vector-warning-banner" @click="handleOpenEmbeddingSettings">
-        <div class="banner-content text-amber-600 bg-amber-50 px-4 py-2 border-b border-amber-100 flex items-center gap-2 text-sm cursor-pointer hover:bg-amber-100 transition-colors">
+        <div
+          class="banner-content text-amber-600 bg-amber-50 px-4 py-2 border-b border-amber-100 flex items-center gap-2 text-sm cursor-pointer hover:bg-amber-100 transition-colors">
           <AlertTriangle :size="16" class="warning-icon" />
           <span>向量化模型未配置，记忆系统将无法工作。</span>
           <span class="action-link text-amber-700 font-medium ml-auto">去配置 &gt;</span>
@@ -486,7 +488,7 @@ const handleAvatarClick = (url: string) => {
           </svg>
         </div>
       </div>
-      
+
       <Conversation v-else class="flex-1 w-full overflow-hidden">
         <ConversationContent class="messages-content">
           <template v-for="msg in messages" :key="msg.id">
@@ -500,14 +502,16 @@ const handleAvatarClick = (url: string) => {
                 class="message-group group-assistant">
                 <div class="message-wrapper message-assistant group relative">
                   <!-- Avatar -->
-                  <div class="message-avatar" @click="handleAvatarClick(getMemberAvatar(msg.senderId || 'assistant', 'assistant'))">
+                  <div class="message-avatar"
+                    @click="handleAvatarClick(getMemberAvatar(msg.senderId || 'assistant', 'assistant'))">
                     <img :src="getMemberAvatar(msg.senderId || 'assistant', 'assistant')" alt="Avatar" />
                   </div>
 
                   <!-- Message Bubble -->
                   <div class="message-bubble-container" :class="{ 'message-pop-in': segment }">
                     <!-- Member Name for groups -->
-                    <span v-if="sIndex === 0" class="member-name">{{ getMemberName(msg.senderId || 'assistant', 'assistant') }}</span>
+                    <span v-if="sIndex === 0" class="member-name">{{ getMemberName(msg.senderId || 'assistant',
+                      'assistant') }}</span>
                     <div class="message-bubble">
                       <MessageContent>
                         <MessageResponse :content="segment" />
@@ -596,14 +600,9 @@ const handleAvatarClick = (url: string) => {
         <PromptInputCommand class="mention-menu">
           <PromptInputCommandList>
             <PromptInputCommandGroup heading="选择提醒的人">
-              <PromptInputCommandItem
-                v-for="(member, index) in filteredMembers"
-                :key="member.member_id"
-                :value="member.name || member.member_id"
-                @select="selectMention(member)"
-                class="mention-item"
-                :class="{ 'bg-accent text-accent-foreground': index === selectedIndex }"
-              >
+              <PromptInputCommandItem v-for="(member, index) in filteredMembers" :key="member.member_id"
+                :value="member.name || member.member_id" @select="selectMention(member)" class="mention-item"
+                :class="{ 'bg-accent text-accent-foreground': index === selectedIndex }">
                 <img :src="getMemberAvatar(member.member_id, 'friend')" class="w-6 h-6 rounded mr-2" />
                 <span>{{ member.name }}</span>
               </PromptInputCommandItem>
@@ -615,14 +614,8 @@ const handleAvatarClick = (url: string) => {
 
       <PromptInput class="input-box" @submit="checkLlmConfigAndSubmit">
 
-        <PromptInputTextarea 
-          v-model="input" 
-          placeholder="输入消息..." 
-          class="input-textarea" 
-          @input="handleInput"
-          @keydown="handleKeyDown"
-          @click="lastCursorPosition = $event.target.selectionStart"
-        />
+        <PromptInputTextarea v-model="input" placeholder="输入消息..." class="input-textarea" @input="handleInput"
+          @keydown="handleKeyDown" @click="lastCursorPosition = $event.target.selectionStart" />
         <div class="input-footer">
           <div class="footer-left">
             <!-- Thinking Mode Toggle -->
@@ -645,7 +638,8 @@ const handleAvatarClick = (url: string) => {
 
     <!-- Avatar Preview Dialog -->
     <Dialog v-model:open="showAvatarPreview">
-      <DialogContent class="p-0 bg-transparent border-none shadow-none max-w-3xl w-auto flex justify-center items-center">
+      <DialogContent
+        class="p-0 bg-transparent border-none shadow-none max-w-3xl w-auto flex justify-center items-center">
         <img :src="previewAvatarUrl" class="max-w-full max-h-[80vh] object-contain rounded-md" alt="Avatar Preview" />
       </DialogContent>
     </Dialog>
@@ -658,20 +652,20 @@ const handleAvatarClick = (url: string) => {
         </DialogHeader>
         <div class="thinking-dialog-body max-h-[60vh] overflow-y-auto pr-2">
           <div v-if="activeRecallThinkingContent" class="thinking-section mb-6">
-            <div class="thinking-section-title text-sm font-semibold text-gray-500 mb-2 border-l-4 border-amber-400 pl-2">回忆思维链</div>
-            <StreamMarkdown
-              :content="activeRecallThinkingContent"
+            <div
+              class="thinking-section-title text-sm font-semibold text-gray-500 mb-2 border-l-4 border-amber-400 pl-2">
+              回忆思维链</div>
+            <StreamMarkdown :content="activeRecallThinkingContent"
               :shiki-theme="{ light: 'github-light', dark: 'github-dark' }"
-              class="thinking-markdown text-sm text-gray-700 bg-gray-50 p-3 rounded"
-            />
+              class="thinking-markdown text-sm text-gray-700 bg-gray-50 p-3 rounded" />
           </div>
           <div v-if="activeModelThinkingContent" class="thinking-section">
-            <div class="thinking-section-title text-sm font-semibold text-gray-500 mb-2 border-l-4 border-emerald-400 pl-2">模型思维链</div>
-            <StreamMarkdown
-              :content="activeModelThinkingContent"
+            <div
+              class="thinking-section-title text-sm font-semibold text-gray-500 mb-2 border-l-4 border-emerald-400 pl-2">
+              模型思维链</div>
+            <StreamMarkdown :content="activeModelThinkingContent"
               :shiki-theme="{ light: 'github-light', dark: 'github-dark' }"
-              class="thinking-markdown text-sm text-gray-700 bg-gray-50 p-3 rounded"
-            />
+              class="thinking-markdown text-sm text-gray-700 bg-gray-50 p-3 rounded" />
           </div>
         </div>
       </DialogContent>
@@ -812,8 +806,15 @@ const handleAvatarClick = (url: string) => {
 }
 
 @keyframes typing-fade {
-  0%, 100% { opacity: 0.6; }
-  50% { opacity: 1; }
+
+  0%,
+  100% {
+    opacity: 0.6;
+  }
+
+  50% {
+    opacity: 1;
+  }
 }
 
 .message-pop-in {
@@ -821,8 +822,15 @@ const handleAvatarClick = (url: string) => {
 }
 
 @keyframes message-pop-in {
-  from { opacity: 0; transform: scale(0.96) translateY(10px); }
-  to { opacity: 1; transform: scale(1) translateY(0); }
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
 
 .header-actions {
@@ -980,11 +988,13 @@ const handleAvatarClick = (url: string) => {
 
 /* Input Area */
 .chat-input-area {
-  position: relative; /* 重要：为提及菜单提供定位基准 */
+  position: relative;
+  /* 重要：为提及菜单提供定位基准 */
   background: #f5f5f5;
   border-top: 1px solid #e5e5e5;
   padding: 8px 16px 16px;
-  overflow: visible !important; /* 确保菜单不会被切掉 */
+  overflow: visible !important;
+  /* 确保菜单不会被切掉 */
 }
 
 .input-toolbar {
@@ -1156,8 +1166,15 @@ const handleAvatarClick = (url: string) => {
 }
 
 @keyframes mention-pop {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 :deep(.mention-item[data-selected="true"]) {

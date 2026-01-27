@@ -97,7 +97,7 @@ const getFriendAvatar = (friend: any): string => {
 // Combine friends and groups for a unified conversation list
 const unifiedConversations = computed(() => {
   const list: any[] = []
-  
+
   // Add single chats
   friends.value.forEach(f => {
     list.push({
@@ -106,7 +106,7 @@ const unifiedConversations = computed(() => {
       sortTime: new Date(f.last_message_time || f.update_time).getTime()
     })
   })
-  
+
   // Add group chats
   groups.value.forEach(g => {
     list.push({
@@ -115,10 +115,10 @@ const unifiedConversations = computed(() => {
       sortTime: new Date(g.update_time).getTime() // Groups use update_time for now
     })
   })
-  
+
   // Sort by time descending
   list.sort((a, b) => b.sortTime - a.sortTime)
-  
+
   if (!searchQuery.value) return list
   const query = searchQuery.value.toLowerCase()
   return list.filter((item: any) => item.name.toLowerCase().includes(query))
@@ -177,7 +177,7 @@ onMounted(async () => {
     friendStore.friends.length === 0 ? friendStore.fetchFriends() : Promise.resolve(),
     groupStore.groups.length === 0 ? groupStore.fetchGroups() : Promise.resolve()
   ])
-  
+
   // Select first item if nothing is selected
   if (currentFriendId.value === null && currentGroupId.value === null && unifiedConversations.value.length > 0) {
     onSelectConversation(unifiedConversations.value[0])
@@ -228,12 +228,10 @@ onMounted(async () => {
       </div>
 
       <!-- Conversation Items -->
-      <div v-else v-for="item in unifiedConversations" :key="item.type + item.id" class="friend-item"
-        :class="{ 
-          active: (item.type === 'friend' && item.id === currentFriendId) || (item.type === 'group' && item.id === currentGroupId),
-          pinned: !!item.pinned_at 
-        }"
-        @click="onSelectConversation(item)">
+      <div v-else v-for="item in unifiedConversations" :key="item.type + item.id" class="friend-item" :class="{
+        active: (item.type === 'friend' && item.id === currentFriendId) || (item.type === 'group' && item.id === currentGroupId),
+        pinned: !!item.pinned_at
+      }" @click="onSelectConversation(item)">
         <div class="avatar-wrapper relative">
           <div class="friend-avatar" :class="{ 'group-avatar-grid': item.type === 'group' }">
             <template v-if="item.type === 'friend'">
@@ -243,8 +241,8 @@ onMounted(async () => {
               <GroupAvatar :members="item.members" :avatar="item.avatar" />
             </template>
           </div>
-          <div v-if="unreadCounts[item.id] > 0 && item.type === 'friend'" class="unread-badge">
-            {{ unreadCounts[item.id] }}
+          <div v-if="unreadCounts[(item.type === 'friend' ? 'f' : 'g') + item.id] > 0" class="unread-badge">
+            {{ unreadCounts[(item.type === 'friend' ? 'f' : 'g') + item.id] }}
           </div>
         </div>
 
@@ -258,7 +256,7 @@ onMounted(async () => {
             <span class="friend-time">{{ getLastActiveTime(item) }}</span>
           </div>
           <div class="friend-preview">
-            <template v-if="sessionStore.streamingMap[item.id]">
+            <template v-if="sessionStore.streamingMap[(item.type === 'friend' ? 'f' : 'g') + item.id]">
               <span class="text-emerald-600 font-medium">对方正在输入...</span>
             </template>
             <template v-else>
@@ -275,12 +273,13 @@ onMounted(async () => {
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem v-if="item.type === 'friend'" @click.stop="openEditFriendDialog(item.id)" class="cursor-pointer">
+            <DropdownMenuItem v-if="item.type === 'friend'" @click.stop="openEditFriendDialog(item.id)"
+              class="cursor-pointer">
               <Pencil class="mr-2 h-4 w-4" />
               编辑好友
             </DropdownMenuItem>
-            <DropdownMenuItem v-if="item.type === 'friend' && !item.is_preset" @click.stop="openDeleteFriendDialog(item.id)"
-              class="text-red-600 focus:text-red-600 cursor-pointer">
+            <DropdownMenuItem v-if="item.type === 'friend' && !item.is_preset"
+              @click.stop="openDeleteFriendDialog(item.id)" class="text-red-600 focus:text-red-600 cursor-pointer">
               <Trash2 class="mr-2 h-4 w-4" />
               删除好友
             </DropdownMenuItem>
