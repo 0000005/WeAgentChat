@@ -1,7 +1,8 @@
 import json
 import logging
 import asyncio
-from typing import List, Optional, AsyncGenerator
+import re
+from typing import List, Optional, AsyncGenerator, Dict
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone, timedelta
 
@@ -84,6 +85,258 @@ def _extract_reasoning_text(raw: object) -> str:
 
 class GroupChatService:
     @staticmethod
+    def _get_group_friend_map(db: Session, group_id: int) -> Dict[int, Friend]:
+        members = (
+            db.query(GroupMember)
+            .filter(GroupMember.group_id == group_id, GroupMember.member_type == "friend")
+            .all()
+        )
+        friend_ids: List[int] = []
+        for m in members:
+            try:
+                friend_ids.append(int(m.member_id))
+            except (ValueError, TypeError):
+                continue
+
+        if not friend_ids:
+            return {}
+
+        friends = (
+            db.query(Friend)
+            .filter(Friend.id.in_(friend_ids), Friend.deleted == False)
+            .all()
+        )
+        return {f.id: f for f in friends}
+
+    @staticmethod
+    def _load_manager_few_shots() -> List[dict]:
+        messages: List[dict] = []
+        for i in range(1, 6):
+            try:
+                user_text = get_prompt(f"chat/few_shot/group_manager_user_{i}.txt").strip()
+                assistant_text = get_prompt(f"chat/few_shot/group_manager_assistant_{i}.txt").strip()
+            except Exception as e:
+                logger.warning(f"[GroupManager] Failed to load few-shot {i}: {e}")
+                continue
+
+            if user_text:
+                messages.append({"role": "user", "content": user_text})
+            if assistant_text:
+                messages.append({"role": "assistant", "content": assistant_text})
+        return messages
+
+    @staticmethod
+    def _extract_json_payload(raw: str) -> Optional[object]:
+        if not raw:
+            return None
+        raw = raw.strip()
+
+        try:
+            return json.loads(raw)
+        except Exception:
+            pass
+
+        match = re.search(r"```(?:json)?\s*([\s\S]*?)```", raw)
+        if match:
+            block = match.group(1).strip()
+            try:
+                return json.loads(block)
+            except Exception:
+                pass
+
+        def _slice_between(text: str, start: str, end: str) -> Optional[str]:
+            s = text.find(start)
+            e = text.rfind(end)
+            if s == -1 or e == -1 or e <= s:
+                return None
+            return text[s : e + 1]
+
+        array_block = _slice_between(raw, "[", "]")
+        if array_block:
+            try:
+                return json.loads(array_block)
+            except Exception:
+                pass
+
+        obj_block = _slice_between(raw, "{", "}")
+        if obj_block:
+            try:
+                return json.loads(obj_block)
+            except Exception:
+                pass
+
+        return None
+
+    @staticmethod
+    def _parse_manager_ids(raw: str) -> List[int]:
+        payload = GroupChatService._extract_json_payload(raw)
+        if payload is None:
+            return []
+
+        candidates = []
+        if isinstance(payload, list):
+            candidates = payload
+        elif isinstance(payload, dict):
+            for key in ("speakerId", "speakerIds", "speaker_id", "speaker_ids", "speakers", "ids"):
+                if key in payload:
+                    candidates = payload.get(key) or []
+                    break
+
+        ids: List[int] = []
+        seen = set()
+        for item in candidates:
+            val: Optional[int] = None
+            if isinstance(item, int):
+                val = item
+            elif isinstance(item, float):
+                if item.is_integer():
+                    val = int(item)
+            elif isinstance(item, str):
+                if item.strip().isdigit():
+                    val = int(item.strip())
+            if val is None or val in seen:
+                continue
+            seen.add(val)
+            ids.append(val)
+        return ids
+
+    @staticmethod
+    def _fallback_speaker_ids(history_msgs: List[GroupMessage], friend_map: Dict[int, Friend]) -> List[int]:
+        for msg in reversed(history_msgs):
+            if msg.sender_type != "friend":
+                continue
+            try:
+                fid = int(msg.sender_id)
+            except (ValueError, TypeError):
+                continue
+            if fid in friend_map:
+                return [fid]
+        if friend_map:
+            return [sorted(friend_map.keys())[0]]
+        return []
+
+    @staticmethod
+    async def _select_speakers_by_manager(
+        db: Session,
+        group_id: int,
+        llm_config,
+        friend_map: Optional[Dict[int, Friend]] = None
+    ) -> List[Friend]:
+        friend_map = friend_map or GroupChatService._get_group_friend_map(db, group_id)
+        if not friend_map:
+            logger.info(f"[GroupManager] No available friends in group {group_id}")
+            return []
+
+        member_lines: List[str] = []
+        for fid in sorted(friend_map.keys()):
+            friend = friend_map[fid]
+            desc = (friend.description or "").strip() or "暂无描述"
+            member_lines.append(f"{friend.name}_{friend.id}: {desc}")
+        member_list = "\n".join(member_lines)
+
+        history_msgs = (
+            db.query(GroupMessage)
+            .filter(
+                GroupMessage.group_id == group_id,
+                GroupMessage.message_type == "text"
+            )
+            .order_by(GroupMessage.create_time.desc())
+            .limit(20)
+            .all()
+        )
+        history_msgs.reverse()
+
+        history_lines: List[str] = []
+        for msg in history_msgs:
+            content = (msg.content or "").strip()
+            if not content:
+                continue
+            if msg.sender_type == "friend":
+                try:
+                    fid = int(msg.sender_id)
+                except (ValueError, TypeError):
+                    fid = None
+                name = friend_map.get(fid).name if fid in friend_map else "未知"
+                history_lines.append(f"{name}_{msg.sender_id}: {content}")
+            else:
+                history_lines.append(f"我: {content}")
+
+        chat_history = "\n".join(history_lines) if history_lines else "(empty)"
+        user_prompt = f"当前群成员列表：\n{member_list}\n\n---\n\n当前聊的聊天记录\n{chat_history}"
+
+        logger.info(
+            "[GroupManager] Input context for group %s:\nmemberList:\n%s\nchatHistory:\n%s",
+            group_id,
+            member_list,
+            chat_history,
+        )
+
+        if not llm_config:
+            logger.warning("[GroupManager] LLM config missing, falling back to heuristic selection")
+            fallback_ids = GroupChatService._fallback_speaker_ids(history_msgs, friend_map)
+            return [friend_map[fid] for fid in fallback_ids if fid in friend_map]
+
+        manager_prompt = get_prompt("chat/group_manager.txt").strip()
+        few_shots = GroupChatService._load_manager_few_shots()
+
+        client = AsyncOpenAI(base_url=llm_config.base_url, api_key=llm_config.api_key)
+        set_default_openai_client(client, use_for_tracing=True)
+        set_default_openai_api("chat_completions")
+
+        raw_model_name = llm_config.model_name
+        model_name = llm_service.normalize_model_name(raw_model_name)
+
+        model_settings_kwargs = {}
+        if _supports_sampling(model_name):
+            model_settings_kwargs["temperature"] = 0.2
+            model_settings_kwargs["top_p"] = 0.9
+        model_settings = ModelSettings(**model_settings_kwargs)
+
+        use_litellm = provider_rules.should_use_litellm(llm_config, raw_model_name)
+        if use_litellm:
+            from agents.extensions.models.litellm_model import LitellmModel
+            gemini_model_name = provider_rules.normalize_gemini_model_name(raw_model_name)
+            gemini_base_url = provider_rules.normalize_gemini_base_url(llm_config.base_url)
+            agent_model = LitellmModel(model=gemini_model_name, base_url=gemini_base_url, api_key=llm_config.api_key)
+        else:
+            agent_model = model_name
+
+        agent = Agent(name="GroupManager", instructions=manager_prompt, model=agent_model, model_settings=model_settings)
+
+        try:
+            result = await Runner.run(
+                agent,
+                few_shots + [{"role": "user", "content": user_prompt}],
+                run_config=RunConfig(trace_include_sensitive_data=True),
+            )
+            raw_output = (result.final_output or "").strip()
+        except Exception as e:
+            logger.error(f"[GroupManager] LLM call failed: {e}")
+            fallback_ids = GroupChatService._fallback_speaker_ids(history_msgs, friend_map)
+            return [friend_map[fid] for fid in fallback_ids if fid in friend_map]
+
+        parsed_ids = GroupChatService._parse_manager_ids(raw_output)
+        if not parsed_ids:
+            logger.warning(f"[GroupManager] Empty/invalid output, raw: {raw_output}")
+            parsed_ids = GroupChatService._fallback_speaker_ids(history_msgs, friend_map)
+
+        # Filter to valid members and enforce 1~3 speakers
+        final_ids: List[int] = []
+        seen = set()
+        for fid in parsed_ids:
+            if fid in friend_map and fid not in seen:
+                final_ids.append(fid)
+                seen.add(fid)
+            if len(final_ids) >= 3:
+                break
+
+        if not final_ids:
+            final_ids = GroupChatService._fallback_speaker_ids(history_msgs, friend_map)
+
+        logger.info(f"[GroupManager] Selected speakers: {final_ids} (raw={raw_output})")
+        return [friend_map[fid] for fid in final_ids if fid in friend_map]
+
+    @staticmethod
     async def send_group_message_stream(
         db: Session, 
         group_id: int, 
@@ -127,16 +380,26 @@ class GroupChatService:
             return
 
         participants = []
+        friend_map = GroupChatService._get_group_friend_map(db, group_id)
         if message_in.mentions:
-            # 找到被提到的好友
+            seen = set()
+            # 找到被提到的好友（仅限群成员）
             for mention_id in message_in.mentions:
                 try:
                     f_id = int(mention_id)
-                    friend = db.query(Friend).filter(Friend.id == f_id).first()
-                    if friend:
-                        participants.append(friend)
                 except (ValueError, TypeError):
                     continue
+                if f_id in friend_map and f_id not in seen:
+                    participants.append(friend_map[f_id])
+                    seen.add(f_id)
+
+        if not participants:
+            participants = await GroupChatService._select_speakers_by_manager(
+                db=db,
+                group_id=group_id,
+                llm_config=llm_config,
+                friend_map=friend_map
+            )
 
         if not participants:
             yield {"event": "done", "data": {"message": "No AI responded"}}
