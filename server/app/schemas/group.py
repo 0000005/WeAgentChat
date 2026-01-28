@@ -66,6 +66,9 @@ class GroupRead(GroupBase):
     member_count: int = 0
     create_time: datetime
     update_time: datetime
+    last_message: Optional[str] = None
+    last_message_sender_name: Optional[str] = None
+    last_message_time: Optional[datetime] = None
 
     class Config:
         from_attributes = True

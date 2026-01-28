@@ -20,6 +20,9 @@ export interface GroupRead {
     members?: GroupMember[];
     create_time: string;
     update_time: string;
+    last_message?: string;
+    last_message_sender_name?: string;
+    last_message_time?: string;
 }
 
 export interface GroupReadWithMembers extends GroupRead {

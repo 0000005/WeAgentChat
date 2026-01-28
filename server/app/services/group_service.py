@@ -56,6 +56,39 @@ class GroupService:
                 m.avatar = user_avatar
 
     @staticmethod
+    def _populate_last_message(db: Session, group: Group) -> None:
+        """
+        Populate last message preview for a group.
+        """
+        from app.models.group import GroupMessage
+        from sqlalchemy import desc
+        
+        last_msg = db.query(GroupMessage).filter(
+            GroupMessage.group_id == group.id
+        ).order_by(desc(GroupMessage.create_time)).first()
+        
+        if last_msg:
+            # For groups, we use _strip_message_tags if it was available.
+            # FriendService has _strip_message_tags.
+            from app.services.friend_service import _strip_message_tags
+            group.last_message = _strip_message_tags(last_msg.content)
+            group.last_message_time = last_msg.create_time
+            
+            if last_msg.sender_type == "user":
+                group.last_message_sender_name = "我"
+            else:
+                # Find friend name in members (members should be populated already)
+                sender = next((m for m in group.members if m.member_id == last_msg.sender_id and m.member_type == "friend"), None)
+                if sender and hasattr(sender, 'name'):
+                    group.last_message_sender_name = sender.name
+                else:
+                    group.last_message_sender_name = "其它"
+        else:
+            group.last_message = None
+            group.last_message_time = None
+            group.last_message_sender_name = None
+
+    @staticmethod
     def get_user_groups(db: Session, user_id: str = DEFAULT_USER_ID) -> List[Group]:
         """
         Get all groups the user belongs to with member count and populated members.
@@ -69,6 +102,10 @@ class GroupService:
         
         for g in groups:
             GroupService._populate_group_members(db, g)
+            GroupService._populate_last_message(db, g)
+        
+        # Sort groups by last message time descending
+        groups.sort(key=lambda x: (x.last_message_time or x.update_time or x.create_time), reverse=True)
         
         return groups
 
@@ -128,6 +165,7 @@ class GroupService:
             return None
         
         GroupService._populate_group_members(db, db_group)
+        GroupService._populate_last_message(db, db_group)
         return db_group
 
     @staticmethod

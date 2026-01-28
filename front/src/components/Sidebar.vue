@@ -54,17 +54,31 @@ const { groups, isLoading: groupsLoading } = storeToRefs(groupStore)
 
 const searchQuery = ref('')
 
-// Get friend's last message preview
-const getLastMessagePreview = (friend: any): string => {
-  if (friend.last_message) {
-    const prefix = friend.last_message_role === 'user' ? '[我]' : ''
-    // Limit length to 30 characters
-    const content = friend.last_message.length > 30
-      ? friend.last_message.substring(0, 30) + '...'
-      : friend.last_message
-    return `${prefix}${content}`
+// Get conversation preview
+const getConversationPreview = (item: any): string => {
+  if (item.type === 'friend') {
+    if (item.last_message) {
+      const prefix = item.last_message_role === 'user' ? '[我]' : ''
+      // Limit length to 30 characters
+      const content = item.last_message.length > 30
+        ? item.last_message.substring(0, 30) + '...'
+        : item.last_message
+      return `${prefix}${content}`
+    }
+    return item.description || '点击开始聊天...'
+  } else {
+    // Group logic
+    if (item.last_message) {
+      const name = item.last_message_sender_name || '未知'
+      const prefix = name === '我' ? '[我]' : `${name}: `
+
+      const content = item.last_message.length > 30
+        ? item.last_message.substring(0, 30) + '...'
+        : item.last_message
+      return `${prefix}${content}`
+    }
+    return item.description || '点击进入群聊'
   }
-  return friend.description || '点击开始聊天...'
 }
 
 // Get friend's last active time
@@ -112,7 +126,7 @@ const unifiedConversations = computed(() => {
     list.push({
       ...g,
       type: 'group',
-      sortTime: new Date(g.update_time).getTime() // Groups use update_time for now
+      sortTime: new Date(g.last_message_time || g.update_time).getTime()
     })
   })
 
@@ -260,7 +274,7 @@ onMounted(async () => {
               <span class="text-emerald-600 font-medium">对方正在输入...</span>
             </template>
             <template v-else>
-              {{ item.type === 'friend' ? getLastMessagePreview(item) : (item.description || '点击进入群聊') }}
+              {{ getConversationPreview(item) }}
             </template>
           </div>
         </div>

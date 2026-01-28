@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import * as ChatAPI from '@/api/chat'
 import { useFriendStore } from './friend'
+import { useGroupStore } from './group'
 
 export interface ToolCall {
     name: string
@@ -81,6 +82,7 @@ export function parseMessageSegments(content: string): string[] {
 
 export const useSessionStore = defineStore('session', () => {
     const friendStore = useFriendStore()
+    const groupStore = useGroupStore()
 
     // Current selected friend ID (WeChat-style: contact list)
     const currentFriendId = ref<number | null>(null)
@@ -544,6 +546,15 @@ export const useSessionStore = defineStore('session', () => {
         if (!currentGroupId.value) return
 
         const groupId = currentGroupId.value
+        const prevGroupSnapshot = (() => {
+            const g = groupStore.getGroup(groupId)
+            if (!g) return null
+            return {
+                last_message: g.last_message,
+                last_message_sender_name: g.last_message_sender_name,
+                last_message_time: g.last_message_time
+            }
+        })()
         const { groupApi } = await import('@/api/group')
 
         // 1. Add user message locally
@@ -560,10 +571,14 @@ export const useSessionStore = defineStore('session', () => {
         }
         messagesMap.value['g' + groupId].push(userMsg)
 
+        // Update group list preview immediately for user message
+        groupStore.updateLastMessage(groupId, content, '我')
+
         // Map friend IDs to track streaming content for each friend
         const aiMessages: Record<string, Message> = {}
 
         let capturedSessionId: number | undefined = undefined
+        let hasServerAck = false
 
         try {
             const stream = groupApi.sendGroupMessageStream(groupId, { content, mentions, enable_thinking: enableThinking })
@@ -582,6 +597,7 @@ export const useSessionStore = defineStore('session', () => {
                     if (data.session_id) {
                         capturedSessionId = data.session_id
                     }
+                    hasServerAck = true
                 } else if (event === 'meta_participants') {
                     // Story 09-10: Update typing users list (bind by group/session)
                     if (data.group_id && Number(data.group_id) !== groupId) {
@@ -642,6 +658,13 @@ export const useSessionStore = defineStore('session', () => {
                             tc.status = 'completed'
                         }
                     }
+
+                    // Update sidebar preview for streaming content
+                    if (event === 'message') {
+                        const senderName = groupStore.getGroup(groupId)?.members?.find(m => m.member_id === senderId)?.name || '...'
+                        const currentContent = aiMessages[senderId]?.content || '...'
+                        groupStore.updateLastMessage(groupId, currentContent, senderName)
+                    }
                 } else if (event === 'done') {
                     const senderId = data.sender_id
                     if (data.session_id && capturedSessionId && data.session_id !== capturedSessionId) {
@@ -658,6 +681,16 @@ export const useSessionStore = defineStore('session', () => {
                         // Use finalized content if provided
                         if (data.content) {
                             aiMessages[senderId].content = data.content
+                        }
+                    }
+
+                    if (senderId) {
+                        const finalContent = data.content || aiMessages[senderId]?.content || ''
+                        if (finalContent) {
+                            const senderName = senderId === 'user'
+                                ? '我'
+                                : (groupStore.getGroup(groupId)?.members?.find(m => m.member_id === senderId)?.name || '未知')
+                            groupStore.updateLastMessage(groupId, finalContent, senderName)
                         }
                     }
 
@@ -683,6 +716,16 @@ export const useSessionStore = defineStore('session', () => {
             }
         } catch (error) {
             console.error('Failed to send group message:', error)
+            if (!hasServerAck) {
+                const group = groupStore.getGroup(groupId)
+                if (group && prevGroupSnapshot) {
+                    group.last_message = prevGroupSnapshot.last_message
+                    group.last_message_sender_name = prevGroupSnapshot.last_message_sender_name
+                    group.last_message_time = prevGroupSnapshot.last_message_time
+                } else {
+                    groupStore.updateLastMessage(groupId, '[消息发送失败]', '我')
+                }
+            }
         } finally {
             streamingMap.value['g' + groupId] = false
             clearGroupTypingUsers(groupId) // Ensure clean state

@@ -106,6 +106,15 @@ export const useGroupStore = defineStore('group', () => {
         }
     };
 
+    const updateLastMessage = (groupId: number, content: string, senderName: string) => {
+        const group = groups.value.find((g) => g.id === groupId);
+        if (group) {
+            group.last_message = content;
+            group.last_message_sender_name = senderName;
+            group.last_message_time = new Date().toISOString();
+        }
+    };
+
     return {
         groups,
         isLoading,
@@ -118,5 +127,6 @@ export const useGroupStore = defineStore('group', () => {
         fetchGroupDetails,
         inviteMembers,
         removeMember,
+        updateLastMessage,
     };
 });
