@@ -109,7 +109,16 @@ export const useGroupStore = defineStore('group', () => {
     const updateLastMessage = (groupId: number, content: string, senderName: string) => {
         const group = groups.value.find((g) => g.id === groupId);
         if (group) {
-            group.last_message = content;
+            // Clean up content: strip <message> tags for sidebar preview
+            let previewContent = content;
+            if (content && content.includes('<message>')) {
+                // Join segments with a space for preview
+                previewContent = content.replace(/<message>([\s\S]*?)<\/message>/g, '$1 ').trim();
+                // Strip any remaining/unclosed tags
+                previewContent = previewContent.replace(/<\/?message>/g, '').trim();
+            }
+
+            group.last_message = previewContent;
             group.last_message_sender_name = senderName;
             group.last_message_time = new Date().toISOString();
         }

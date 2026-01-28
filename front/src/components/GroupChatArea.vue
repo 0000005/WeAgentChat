@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch, nextTick, onBeforeUnmount, onMounted } from 'vue'
-import { useSessionStore, parseMessageSegments } from '@/stores/session'
+import { useSessionStore } from '@/stores/session'
+import { parseMessageSegments } from '@/utils/chat'
 import { useFriendStore } from '@/stores/friend'
 import { useGroupStore } from '@/stores/group'
 import { useSettingsStore } from '@/stores/settings'

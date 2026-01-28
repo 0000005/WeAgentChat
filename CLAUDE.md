@@ -76,6 +76,18 @@ This script will simultaneously launch the Backend API and Frontend Dev Server.
 *   **Structure:** Layered Architecture (API -> Service -> Models/Schemas)
 *   **API Prefix:** `/api`
 
+#### Provider 适配规则
+为降低多模型接入的维护成本，provider 级差异被集中到一个轻量规则模块：
+*   **规则集中位置：** `server/app/services/provider_rules.py`
+*   **职责范围（provider 级）：**
+    *   base_url / model_name 归一化（如 Gemini）
+    *   是否走 LiteLLM
+    *   是否支持 `reasoning_effort` 这类协议级参数
+    *   Gemini `thought_signature`、DeepSeek `reasoning` 注入等特殊要求
+*   **模型能力来源（model 级）：** 仍由数据库中的模型配置决定（工具调用/思考/视觉/联网等）
+
+
+
 ### Desktop (`electron/`)
 *   **Framework:** Electron 32+
 *   **Builder:** electron-builder 24
@@ -116,7 +128,7 @@ Vue 3 frontend implemented with a focus on WeChat's aesthetic.
 *   **`components/`**: UI logic and views.
     *   `ai-elements/`: AI-native components (Reasoning, Tool, Canvas, etc.) from `ai-elements-vue`.
     *   `ui/`: Base UI primitives (via shadcn-vue, e.g., HoverCard, Dialog, Button).
-    *   `common/`: Common reusable components.
+    *   `common/`: Common reusable components (e.g., `AvatarUploader.vue`, `ToolCallsDetail.vue`).
     *   `ChatArea.vue`: Main message terminal (supports SSE events & reasoning).
     *   `ChatDrawerMenu.vue`: WeChat-style drawer for chat settings and actions.
     *   `Sidebar.vue`: Session list and search.
@@ -133,7 +145,11 @@ Vue 3 frontend implemented with a focus on WeChat's aesthetic.
     *   `WindowControls.vue`: Custom window controls (minimize/maximize/close).
     *   `ToastContainer.vue`: Toast notification container.
 *   **`stores/`**: Pinia state management.
-    *   `session.ts`: Chat session buffers, SSE event parsing, and message history.
+    *   `session.ts`: 会话状态入口与编排层（仅 state/computed + 组合 action）。
+    *   `session.fetch.ts`: 拉取/分页/同步相关逻辑。
+    *   `session.sessions.ts`: 会话管理相关逻辑（切换/删除/新会话）。
+    *   `session.stream.friend.ts`: 单聊 SSE 流式处理（发送/重生成/撤回）。
+    *   `session.stream.group.ts`: 群聊 SSE 流式处理与 typing 状态管理。
     *   `friend.ts`: Persona/Friend metadata and state.
     *   `llm.ts` & `embedding.ts`: Global config synchronization with backend.
     *   `settings.ts`: System-wide settings (e.g., memory expiration).
@@ -146,6 +162,10 @@ Vue 3 frontend implemented with a focus on WeChat's aesthetic.
     *   `useChat.ts`: Chat interaction logic.
     *   `useToast.ts`: Toast notification management.
     *   `useUpdateCheck.ts`: Version update checking.
+*   **`types/`**: Frontend shared types.
+    *   `chat.ts`: Message/ToolCall/GroupTypingUser 类型定义。
+*   **`utils/`**: Shared utilities.
+    *   `chat.ts`: `parseMessageSegments` 与 `INITIAL_MESSAGE_LIMIT`。
 *   **`lib/`**: Utility functions (e.g., `utils.ts` for Tailwind/CSS classes).
 
 #### 📁 Configuration
@@ -172,9 +192,11 @@ FastAPI backend with a modular service-oriented architecture.
     *   `friend_service.py`: Persona and friendship management.
     *   `friend_template_service.py`: Preset friend template management.
     *   `persona_generator_service.py`: AI-powered persona generation.
+    *   `provider_rules.py`: Lightweight rule module for provider-level differences (base_url normalization, reasoning injection, etc.).
     *   `memo/`: Memory system bridge.
         *   `bridge.py`: Interface to the embedded Memobase SDK.
         *   `constants.py`: Memory system constants and configuration.
+        *   `default_profile_config.py`: Default configuration for user profile memory extraction.
     *   `settings_service.py`: Config defaults and DB persistence.
 *   **`models/`**: SQLAlchemy ORM definitions (SQLite target).
     *   `chat.py`, `friend.py`, `friend_template.py`, `system_setting.py`, `llm.py`, `embedding.py`.
@@ -267,8 +289,8 @@ Project landing page and promotional assets.
 *   `main.js`: Interactive scripts.
 *   `assets/`: Screenshots and media resources.
 
-### 📁 Static Assets (`static/`)
-*   **`avatars/`**: Pre-generated avatar images for friends.
+### 📁 Static Assets (`server/static/`)
+*   **`avatars/`**: Pre-generated avatar images and presets for friends.
 
 ---
 
@@ -301,6 +323,7 @@ Project landing page and promotional assets.
     *   **Prompt 分类目录：**
         *   `chat/`: Chat-related prompts (system prompts, context templates).
         *   `persona/`: Persona generation prompts.
+        *   `memory/`: Memory-related prompts (e.g., summary hints).
         *   `recall/`: Memory recall agent prompts.
         *   `tests/`: Test prompts.
 *   **Unit Testing:** Run tests using `server\venv\Scripts\python -m pytest server/tests`.

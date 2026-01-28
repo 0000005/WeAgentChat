@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ToolCall } from '@/stores/session'
+import type { ToolCall } from '@/types/chat'
 import { computed } from 'vue'
 
 interface Props {

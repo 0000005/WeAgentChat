@@ -1,5 +1,6 @@
 import { ref, computed } from 'vue'
-import { useSessionStore, type Message } from '@/stores/session'
+import { useSessionStore } from '@/stores/session'
+import type { Message } from '@/types/chat'
 import { useThinkingModeStore } from '@/stores/thinkingMode'
 
 export { type Message }

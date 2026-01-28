@@ -1,84 +1,14 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import * as ChatAPI from '@/api/chat'
 import { useFriendStore } from './friend'
 import { useGroupStore } from './group'
-
-export interface ToolCall {
-    name: string
-    args: any
-    result?: any
-    status: 'calling' | 'completed' | 'error'
-    callId?: string
-}
-
-export interface Message {
-    id: number
-    role: 'user' | 'assistant' | 'system'
-    content: string
-    thinkingContent?: string
-    recallThinkingContent?: string
-    toolCalls?: ToolCall[]
-    createdAt: number
-    sessionId?: number
-    senderId?: string
-    senderType?: string
-}
-
-export interface GroupTypingUser {
-    id: number
-    name: string
-}
-
-/**
- * Parse message content into segments based on <message> tags.
- * If no tags are found, returns original content as a single segment.
- * 
- * Edge cases handled:
- * 1. No tags at all → return original content as single segment
- * 2. Multiple complete <message>...</message> tags → return all segments
- * 3. Trailing unclosed <message>... → include as last segment (for SSE streaming)
- * 4. Empty <message></message> → filter out
- * 5. Malformed/nested tags → extract outermost complete blocks
- */
-export function parseMessageSegments(content: string): string[] {
-    if (!content) return []
-
-    // Quick path: no tags at all
-    if (!content.includes('<message>')) {
-        return [content.trim()]
-    }
-
-    const regex = /<message>([\s\S]*?)<\/message>/g
-    const segments: string[] = []
-    let lastIndex = 0
-    let match
-
-    while ((match = regex.exec(content)) !== null) {
-        const segment = match[1].trim()
-        if (segment) {
-            segments.push(segment)
-        }
-        lastIndex = regex.lastIndex
-    }
-
-    // Handle trailing unclosed <message> tag (SSE streaming case)
-    const remainingContent = content.slice(lastIndex)
-    if (remainingContent.includes('<message>')) {
-        const openTagIndex = remainingContent.indexOf('<message>')
-        const trailingContent = remainingContent.slice(openTagIndex + '<message>'.length).trim()
-        if (trailingContent) {
-            segments.push(trailingContent)
-        }
-    }
-
-    // Fallback: if we found <message> tags but extracted nothing, show raw content
-    if (segments.length === 0) {
-        return [content.trim()]
-    }
-
-    return segments
-}
+import { createSessionFetch } from './session.fetch'
+import { createSessionActions } from './session.sessions'
+import { createFriendStreamActions } from './session.stream.friend'
+import { createGroupStreamActions } from './session.stream.group'
+import type { ChatSession } from '@/api/chat'
+import type { Message, GroupTypingUser } from '@/types/chat'
+import { INITIAL_MESSAGE_LIMIT } from '@/utils/chat'
 
 export const useSessionStore = defineStore('session', () => {
     const friendStore = useFriendStore()
@@ -101,38 +31,11 @@ export const useSessionStore = defineStore('session', () => {
 
     // Current specific session ID (if not null, show only this session's messages)
     const currentSessionId = ref<number | null>(null)
-    const currentSessions = ref<ChatAPI.ChatSession[]>([])
+    const currentSessions = ref<ChatSession[]>([])
     const fetchError = ref<string | null>(null)
 
     // Story 09-10: Group typing users list (per group)
     const groupTypingUsersMap = ref<Record<string, GroupTypingUser[]>>({})
-    const groupTypingUsers = computed(() => {
-        if (chatType.value !== 'group' || !currentGroupId.value) return []
-        return groupTypingUsersMap.value['g' + currentGroupId.value] || []
-    })
-
-    const setGroupTypingUsers = (groupId: number, users: GroupTypingUser[]) => {
-        groupTypingUsersMap.value = {
-            ...groupTypingUsersMap.value,
-            ['g' + groupId]: users
-        }
-    }
-
-    const removeGroupTypingUser = (groupId: number, senderId?: string | number) => {
-        if (!senderId) return
-        const key = 'g' + groupId
-        const current = groupTypingUsersMap.value[key] || []
-        const next = current.filter(u => String(u.id) !== String(senderId))
-        groupTypingUsersMap.value = {
-            ...groupTypingUsersMap.value,
-            [key]: next
-        }
-    }
-
-    const clearGroupTypingUsers = (groupId: number) => {
-        setGroupTypingUsers(groupId, [])
-    }
-
     // Get messages for current friend or group
     const currentMessages = computed(() => {
         if (chatType.value === 'group') {
@@ -153,783 +56,76 @@ export const useSessionStore = defineStore('session', () => {
     })
 
     const isLoadingMore = ref(false)
-    const INITIAL_MESSAGE_LIMIT = 10 // TODO: Change back to 30 after testing
 
-    // Fetch messages for a specific friend (merged from all sessions)
-    const fetchFriendMessages = async (friendId: number, skip: number = 0, limit: number = INITIAL_MESSAGE_LIMIT) => {
-        try {
-            const apiMessages = await ChatAPI.getFriendMessages(friendId, skip, limit)
-            const mappedMessages = apiMessages.map(m => ({
-                id: m.id,
-                role: m.role as 'user' | 'assistant' | 'system',
-                content: m.content,
-                createdAt: new Date(m.create_time).getTime(),
-                sessionId: m.session_id
-            }))
-
-            if (skip === 0) {
-                messagesMap.value['f' + friendId] = mappedMessages
-            } else {
-                // If skipping, it's pagination - prepend messages
-                const currentMsgs = messagesMap.value['f' + friendId] || []
-                // Ensure no duplicates
-                const existingIds = new Set(currentMsgs.map(m => m.id))
-                const newMsgs = mappedMessages.filter(m => !existingIds.has(m.id))
-                messagesMap.value['f' + friendId] = [...newMsgs, ...currentMsgs]
-            }
-            return apiMessages.length
-        } catch (error) {
-            console.error(`Failed to fetch messages for friend ${friendId}:`, error)
-            return 0
-        }
-    }
-
-    // Load more (older) messages
-    const loadMoreMessages = async (friendId: number): Promise<boolean> => {
-        if (isLoadingMore.value) return false // Return false when already loading, don't assume there's more
-
-        const currentMsgs = messagesMap.value['f' + friendId] || []
-        const skip = currentMsgs.length
-
-        isLoadingMore.value = true
-        try {
-            const count = await fetchFriendMessages(friendId, skip, INITIAL_MESSAGE_LIMIT)
-            return count >= INITIAL_MESSAGE_LIMIT // If we got full page, there might be more
-        } finally {
-            isLoadingMore.value = false
-        }
-    }
-
-    // Silent sync latest messages
-    const syncLatestMessages = async (friendId: number) => {
-        try {
-            // Get latest 10 messages to check for updates
-            const apiMessages = await ChatAPI.getFriendMessages(friendId, 0, 10)
-            const mappedMessages = apiMessages.map(m => ({
-                id: m.id,
-                role: m.role as 'user' | 'assistant' | 'system',
-                content: m.content,
-                createdAt: new Date(m.create_time).getTime(),
-                sessionId: m.session_id
-            }))
-
-            const currentMsgs = messagesMap.value['f' + friendId] || []
-            const existingIds = new Set(currentMsgs.map(m => m.id))
-
-            // Helper to check if a message already exists (by ID or by content+timestamp)
-            const isDuplicate = (serverMsg: typeof mappedMessages[0]): boolean => {
-                // First check by ID
-                if (existingIds.has(serverMsg.id)) return true
-
-                // Then check by content + approximate timestamp (within 30 seconds)
-                // This handles local messages with temp IDs (Date.now()) vs server IDs
-                const TIME_TOLERANCE = 30000 // 30 seconds
-                return currentMsgs.some(localMsg =>
-                    localMsg.role === serverMsg.role &&
-                    localMsg.content === serverMsg.content &&
-                    Math.abs(localMsg.createdAt - serverMsg.createdAt) < TIME_TOLERANCE
-                )
-            }
-
-            // Find messages that are NOT in current list
-            const newMsgs = mappedMessages.filter(m => !isDuplicate(m))
-
-            if (newMsgs.length > 0) {
-                // Sort new messages by createdAt to ensure correct order
-                newMsgs.sort((a, b) => a.createdAt - b.createdAt)
-                // Append new messages to the end
-                messagesMap.value['f' + friendId] = [...currentMsgs, ...newMsgs]
-            }
-        } catch (error) {
-            console.warn(`Silent sync failed for friend ${friendId}:`, error)
-        }
-    }
-
-    // Fetch all sessions for a specific friend
-    const fetchFriendSessions = async (friendId: number) => {
-        fetchError.value = null
-        try {
-            const sessions = await ChatAPI.getFriendSessions(friendId)
-            currentSessions.value = sessions
-        } catch (error) {
-            console.error(`Failed to fetch sessions for friend ${friendId}:`, error)
-            fetchError.value = '无法加载会话列表，请检查网络连接。'
-        }
-    }
-
-    const resetToMergedView = async () => {
-        if (!currentFriendId.value) return
-        currentSessionId.value = null
-        isLoading.value = true
-        try {
-            await fetchFriendMessages(currentFriendId.value, 0, INITIAL_MESSAGE_LIMIT)
-        } finally {
-            isLoading.value = false
-        }
-    }
-
-    // Load messages for a SPECIFIC session
-    const loadSpecificSession = async (sessionId: number) => {
-        currentSessionId.value = sessionId
-        isLoading.value = true
-        try {
-            const apiMessages = await ChatAPI.getMessages(sessionId)
-            const mappedMessages = apiMessages.map(m => ({
-                id: m.id,
-                role: m.role as 'user' | 'assistant' | 'system',
-                content: m.content,
-                createdAt: new Date(m.create_time).getTime(),
-                sessionId: m.session_id
-            }))
-
-            // For now, we reuse the same list but clear it if we are switching to a specific session
-            // In a more persistent setup, we might want a separate map for sessions
-            if (currentFriendId.value) {
-                messagesMap.value['f' + currentFriendId.value] = mappedMessages
-            }
-        } catch (error) {
-            console.error(`Failed to load session ${sessionId}:`, error)
-        } finally {
-            isLoading.value = false
-        }
-    }
-
-    const selectFriend = async (friendId: number) => {
-        currentFriendId.value = friendId
-        currentGroupId.value = null
-        chatType.value = 'friend'
-
-        // Clear unread count when entering chat
-        if (unreadCounts.value['f' + friendId]) {
-            unreadCounts.value['f' + friendId] = 0
-        }
-        currentSessionId.value = null // Reset to default merged/latest view
-
-        // Cache hit: render immediately, sync in background
-        if (messagesMap.value['f' + friendId]?.length > 0) {
-            // Background silent sync (don't await)
-            syncLatestMessages(friendId).catch(e => console.warn('Silent sync failed:', e))
-            fetchFriendSessions(friendId) // Also refresh sessions silently
-            return
-        }
-
-        // Cache miss: show loading
-        isLoading.value = true
-        try {
-            await Promise.all([
-                fetchFriendMessages(friendId, 0, INITIAL_MESSAGE_LIMIT),
-                fetchFriendSessions(friendId)
-            ])
-        } finally {
-            isLoading.value = false
-        }
-    }
-
-    const selectGroup = async (groupId: number) => {
-        currentGroupId.value = groupId
-        currentFriendId.value = null
-        chatType.value = 'group'
-        currentSessionId.value = null
-
-        // Clear unread count when entering group chat
-        if (unreadCounts.value['g' + groupId]) {
-            unreadCounts.value['g' + groupId] = 0
-        }
-
-        // Fetch group messages
-        isLoading.value = true
-        try {
-            await fetchGroupMessages(groupId)
-        } finally {
-            isLoading.value = false
-        }
-    }
-
-    const fetchGroupMessages = async (groupId: number, skip: number = 0, limit: number = INITIAL_MESSAGE_LIMIT) => {
-        const { groupApi } = await import('@/api/group')
-        try {
-            const apiMessages = await groupApi.getGroupMessages(groupId, skip, limit)
-            const mappedMessages: Message[] = apiMessages.map(m => ({
-                id: m.id,
-                role: (m.sender_type === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
-                content: m.content,
-                createdAt: new Date(m.create_time).getTime(),
-                sessionId: m.session_id,
-                senderId: m.sender_id,
-                senderType: m.sender_type
-            }))
-
-            if (skip === 0) {
-                messagesMap.value['g' + groupId] = mappedMessages
-            } else {
-                const currentMsgs = messagesMap.value['g' + groupId] || []
-                const existingIds = new Set(currentMsgs.map(m => m.id))
-                const newMsgs = mappedMessages.filter(m => !existingIds.has(m.id))
-                messagesMap.value['g' + groupId] = [...newMsgs, ...currentMsgs]
-            }
-            return apiMessages.length
-        } catch (error) {
-            console.error(`Failed to fetch messages for group ${groupId}:`, error)
-            return 0
-        }
-    }
-
-    // Send message to current friend
-    const sendMessage = async (content: string, enableThinking: boolean = false) => {
-        if (!currentFriendId.value) return
-
-        const friendId = currentFriendId.value
-
-        // 1. Add user message locally
-        const userMsg: Message = {
-            id: -(Date.now() + Math.random()),
-            role: 'user',
-            content: content,
-            createdAt: Date.now()
-        }
-
-        if (!messagesMap.value['f' + friendId]) {
-            messagesMap.value['f' + friendId] = []
-        }
-        messagesMap.value['f' + friendId].push(userMsg)
-
-        // Update friend list preview immediately for user message
-        friendStore.updateLastMessage(friendId, content, 'user')
-
-        // Buffers for storing incoming data before they are "shown" in UI
-        let contentBuffer = ''
-        let modelThinkingBuffer = ''
-        let recallThinkingBuffer = ''
-        let toolCallsBuffer: ToolCall[] = []
-        const assistantMsgId = Date.now() + 1
-        let capturedSessionId: number | undefined = undefined // Capture session_id from start event
-        let capturedAssistantMsgId: number | undefined = undefined // Capture assistant msg id from start event
-
-        try {
-            // 如果当前正在查看特定会话，则按会话 ID 发送消息；否则按好友 ID 发送（由后端自动寻址）
-            const stream = currentSessionId.value
-                ? ChatAPI.sendMessageStream(currentSessionId.value, { content, enable_thinking: enableThinking })
-                : ChatAPI.sendMessageToFriendStream(friendId, { content, enable_thinking: enableThinking })
-
-            for await (const { event, data } of stream) {
-                if (event === 'start') {
-                    // Stream started - mark as streaming immediately
-                    streamingMap.value['f' + friendId] = true
-                    friendStore.updateLastMessage(friendId, '对方正在输入...', 'assistant')
-
-                    // Capture session_id for later use
-                    capturedSessionId = data.session_id
-                    capturedAssistantMsgId = data.message_id
-
-                    // Update local user message with real database ID
-                    if (data.user_message_id && messagesMap.value['f' + friendId]) {
-                        const localUserMsg = messagesMap.value['f' + friendId].find(m => m.id === userMsg.id)
-                        if (localUserMsg) {
-                            localUserMsg.id = data.user_message_id
-                            localUserMsg.sessionId = data.session_id
-                        }
-                    }
-                } else if (event === 'model_thinking' || event === 'thinking') {
-                    streamingMap.value['f' + friendId] = true
-                    const delta = data.delta || ''
-                    modelThinkingBuffer += delta
-                } else if (event === 'recall_thinking') {
-                    streamingMap.value['f' + friendId] = true
-                    const delta = data.delta || ''
-                    recallThinkingBuffer += delta
-                } else if (event === 'message') {
-                    streamingMap.value['f' + friendId] = true
-                    const delta = data.delta || ''
-                    contentBuffer += delta
-                } else if (event === 'tool_call') {
-                    streamingMap.value['f' + friendId] = true
-                    toolCallsBuffer.push({
-                        name: data.tool_name,
-                        args: data.arguments,
-                        callId: data.call_id,
-                        status: 'calling'
-                    })
-                } else if (event === 'tool_result') {
-                    streamingMap.value['f' + friendId] = true
-                    const tc = data.call_id
-                        ? [...toolCallsBuffer].reverse().find(t => t.callId === data.call_id && t.status === 'calling')
-                        : [...toolCallsBuffer].reverse().find(t => t.name === data.tool_name && t.status === 'calling')
-                    if (tc) {
-                        tc.result = data.result
-                        tc.status = 'completed'
-                    }
-                } else if (event === 'error' || event === 'task_error') {
-                    // Backend error - immediately show error and reset streaming state
-                    const errorDetail = data.detail || data.message || JSON.stringify(data)
-                    const errorContent = contentBuffer
-                        ? `${contentBuffer}\n\n[错误: ${errorDetail}]`
-                        : `[错误: ${errorDetail}]`
-
-                    const errorMsg: Message = {
-                        id: capturedAssistantMsgId ?? Date.now() + 2,
-                        role: 'assistant',
-                        content: errorContent,
-                        thinkingContent: modelThinkingBuffer || undefined,
-                        recallThinkingContent: recallThinkingBuffer || undefined,
-                        toolCalls: toolCallsBuffer.length > 0 ? toolCallsBuffer : undefined,
-                        createdAt: Date.now(),
-                        sessionId: capturedSessionId
-                    }
-                    messagesMap.value['f' + friendId].push(errorMsg)
-
-                    streamingMap.value['f' + friendId] = false
-                    friendStore.updateLastMessage(friendId, contentBuffer || '[消息发送失败]', 'assistant')
-
-                    // Return early - no need to continue processing
-                    return
-                } else if (event === 'done') {
-                    // Finalize: Push the complete message to the list all at once
-                    const assistantMsg: Message = {
-                        id: data.message_id || assistantMsgId,
-                        role: 'assistant',
-                        content: contentBuffer,
-                        thinkingContent: modelThinkingBuffer || undefined,
-                        recallThinkingContent: recallThinkingBuffer || undefined,
-                        toolCalls: toolCallsBuffer.length > 0 ? toolCallsBuffer : undefined,
-                        createdAt: Date.now(),
-                        sessionId: capturedSessionId // Use captured session_id
-                    }
-                    messagesMap.value['f' + friendId].push(assistantMsg)
-
-                    streamingMap.value['f' + friendId] = false
-                    // Check if user has switched away during streaming - mark as unread
-                    // Count segments to match visual perception (3 bubbles = 3 unread)
-                    if (currentFriendId.value !== friendId) {
-                        const segmentCount = parseMessageSegments(contentBuffer).length || 1
-                        unreadCounts.value['f' + friendId] = (unreadCounts.value['f' + friendId] || 0) + segmentCount
-                    }
-
-                    // Trigger tray/taskbar flash if window doesn't have focus (Electron only)
-                    if (typeof document !== 'undefined' && !document.hasFocus()) {
-                        window.WeAgentChat?.notification?.flash()
-                    }
-
-                    // 异步刷新会话列表统计
-                    fetchFriendSessions(friendId)
-                    // Update friend list preview for assistant message with final content
-                    friendStore.updateLastMessage(friendId, contentBuffer, 'assistant')
-                }
-            }
-
-
-        } catch (error) {
-            console.error('Failed to send message:', error)
-            // If buffer has content, show it with a connection break marker
-            // Otherwise show a generic error message
-            const finalContent = contentBuffer
-                ? `${contentBuffer}\n\n[连接中断]`
-                : 'Error: Failed to get response from AI.'
-            const errorMsg: Message = {
-                id: Date.now() + 2,
-                role: 'assistant',
-                content: finalContent,
-                thinkingContent: modelThinkingBuffer || undefined,
-                recallThinkingContent: recallThinkingBuffer || undefined,
-                toolCalls: toolCallsBuffer.length > 0 ? toolCallsBuffer : undefined,
-                createdAt: Date.now()
-            }
-            messagesMap.value['f' + friendId].push(errorMsg)
-            // Update sidebar preview with partial content or error indicator
-            friendStore.updateLastMessage(friendId, contentBuffer || '[消息发送失败]', 'assistant')
-        } finally {
-            streamingMap.value['f' + friendId] = false
-        }
-    }
-
-    // Send message to current group
-    const sendGroupMessage = async (content: string, mentions: string[] = [], enableThinking: boolean = false) => {
-        if (!currentGroupId.value) return
-
-        const groupId = currentGroupId.value
-        const prevGroupSnapshot = (() => {
-            const g = groupStore.getGroup(groupId)
-            if (!g) return null
-            return {
-                last_message: g.last_message,
-                last_message_sender_name: g.last_message_sender_name,
-                last_message_time: g.last_message_time
-            }
-        })()
-        const { groupApi } = await import('@/api/group')
-
-        // 1. Add user message locally
-        const userMsg: Message = {
-            id: -(Date.now() + Math.random()),
-            role: 'user',
-            content: content,
-            createdAt: Date.now(),
-            senderId: 'user'
-        }
-
-        if (!messagesMap.value['g' + groupId]) {
-            messagesMap.value['g' + groupId] = []
-        }
-        messagesMap.value['g' + groupId].push(userMsg)
-
-        // Update group list preview immediately for user message
-        groupStore.updateLastMessage(groupId, content, '我')
-
-        // Map friend IDs to track streaming content for each friend
-        const aiMessages: Record<string, Message> = {}
-
-        let capturedSessionId: number | undefined = undefined
-        let hasServerAck = false
-
-        try {
-            const stream = groupApi.sendGroupMessageStream(groupId, { content, mentions, enable_thinking: enableThinking })
-            streamingMap.value['g' + groupId] = true
-
-            for await (const { event, data } of stream) {
-                if (event === 'start') {
-                    // Update user message ID
-                    if (data.message_id) {
-                        const localMsg = messagesMap.value['g' + groupId].find(m => m.id === userMsg.id)
-                        if (localMsg) {
-                            localMsg.id = data.message_id
-                            localMsg.sessionId = data.session_id
-                        }
-                    }
-                    if (data.session_id) {
-                        capturedSessionId = data.session_id
-                    }
-                    hasServerAck = true
-                } else if (event === 'meta_participants') {
-                    // Story 09-10: Update typing users list (bind by group/session)
-                    if (data.group_id && Number(data.group_id) !== groupId) {
-                        continue
-                    }
-                    if (data.session_id) {
-                        if (!capturedSessionId) {
-                            capturedSessionId = data.session_id
-                        } else if (capturedSessionId !== data.session_id) {
-                            continue
-                        }
-                    }
-                    if (data.participants && Array.isArray(data.participants)) {
-                        setGroupTypingUsers(groupId, data.participants)
-                    }
-                } else if (event === 'message' || event === 'model_thinking' || event === 'thinking' || event === 'recall_thinking' || event === 'tool_call' || event === 'tool_result') {
-                    const senderId = data.sender_id
-                    if (!senderId) continue
-
-                    // If we haven't seen this AI friend yet in this interaction, create a placeholder
-                    if (!aiMessages[senderId]) {
-                        const newMsg: Message = {
-                            id: -(Date.now() + Math.random()),
-                            role: 'assistant',
-                            content: '',
-                            thinkingContent: '',
-                            recallThinkingContent: '',
-                            toolCalls: [],
-                            createdAt: Date.now(),
-                            senderId: senderId,
-                            sessionId: capturedSessionId
-                        }
-                        messagesMap.value['g' + groupId].push(newMsg)
-                        // Important: Get the reactive proxy from the messages list to ensure property updates are tracked
-                        aiMessages[senderId] = messagesMap.value['g' + groupId][messagesMap.value['g' + groupId].length - 1]
-                    }
-
-                    if (event === 'message') {
-                        aiMessages[senderId].content += data.delta || ''
-                    } else if (event === 'model_thinking' || event === 'thinking') {
-                        aiMessages[senderId].thinkingContent = (aiMessages[senderId].thinkingContent || '') + (data.delta || '')
-                    } else if (event === 'recall_thinking') {
-                        aiMessages[senderId].recallThinkingContent = (aiMessages[senderId].recallThinkingContent || '') + (data.delta || '')
-                    } else if (event === 'tool_call') {
-                        if (!aiMessages[senderId].toolCalls) aiMessages[senderId].toolCalls = []
-                        aiMessages[senderId].toolCalls?.push({
-                            name: data.tool_name,
-                            args: data.arguments,
-                            callId: data.call_id,
-                            status: 'calling'
-                        })
-                    } else if (event === 'tool_result') {
-                        const tc = data.call_id
-                            ? [...(aiMessages[senderId].toolCalls || [])].reverse().find(t => t.callId === data.call_id && t.status === 'calling')
-                            : [...(aiMessages[senderId].toolCalls || [])].reverse().find(t => t.name === data.tool_name && t.status === 'calling')
-                        if (tc) {
-                            tc.result = data.result
-                            tc.status = 'completed'
-                        }
-                    }
-
-                    // Update sidebar preview for streaming content
-                    if (event === 'message') {
-                        const senderName = groupStore.getGroup(groupId)?.members?.find(m => m.member_id === senderId)?.name || '...'
-                        const currentContent = aiMessages[senderId]?.content || '...'
-                        groupStore.updateLastMessage(groupId, currentContent, senderName)
-                    }
-                } else if (event === 'done') {
-                    const senderId = data.sender_id
-                    if (data.session_id && capturedSessionId && data.session_id !== capturedSessionId) {
-                        continue
-                    }
-                    if (!capturedSessionId && data.session_id) {
-                        capturedSessionId = data.session_id
-                    }
-                    if (senderId && aiMessages[senderId]) {
-                        aiMessages[senderId].id = data.message_id
-                        if (capturedSessionId) {
-                            aiMessages[senderId].sessionId = capturedSessionId
-                        }
-                        // Use finalized content if provided
-                        if (data.content) {
-                            aiMessages[senderId].content = data.content
-                        }
-                    }
-
-                    if (senderId) {
-                        const finalContent = data.content || aiMessages[senderId]?.content || ''
-                        if (finalContent) {
-                            const senderName = senderId === 'user'
-                                ? '我'
-                                : (groupStore.getGroup(groupId)?.members?.find(m => m.member_id === senderId)?.name || '未知')
-                            groupStore.updateLastMessage(groupId, finalContent, senderName)
-                        }
-                    }
-
-                    // If user has switched away during streaming, mark as unread
-                    if (currentGroupId.value !== groupId) {
-                        const finalContent = data.content || (senderId ? aiMessages[senderId]?.content : '') || ''
-                        const segmentCount = parseMessageSegments(finalContent).length || 1
-                        unreadCounts.value['g' + groupId] = (unreadCounts.value['g' + groupId] || 0) + segmentCount
-                    }
-
-                    // Trigger tray/taskbar flash if window doesn't have focus (Electron only)
-                    if (typeof document !== 'undefined' && !document.hasFocus()) {
-                        window.WeAgentChat?.notification?.flash()
-                    }
-                    // Story 09-10: Remove from typing list on done
-                    removeGroupTypingUser(groupId, senderId)
-                }
-                else if (event === 'error') {
-                    console.error('Group stream error:', data)
-                    // Story 09-10: Remove from typing list on error
-                    removeGroupTypingUser(groupId, data.sender_id)
-                }
-            }
-        } catch (error) {
-            console.error('Failed to send group message:', error)
-            if (!hasServerAck) {
-                const group = groupStore.getGroup(groupId)
-                if (group && prevGroupSnapshot) {
-                    group.last_message = prevGroupSnapshot.last_message
-                    group.last_message_sender_name = prevGroupSnapshot.last_message_sender_name
-                    group.last_message_time = prevGroupSnapshot.last_message_time
-                } else {
-                    groupStore.updateLastMessage(groupId, '[消息发送失败]', '我')
-                }
-            }
-        } finally {
-            streamingMap.value['g' + groupId] = false
-            clearGroupTypingUsers(groupId) // Ensure clean state
-        }
-    }
-
-    // Clear all chat history for a friend via API
-    const clearFriendHistory = async (friendId: number) => {
-        isLoading.value = true
-        try {
-            await ChatAPI.clearFriendMessages(friendId)
-            // Clear local state
-            messagesMap.value['f' + friendId] = []
-            if (currentFriendId.value === friendId) {
-                currentSessions.value = []
-                currentSessionId.value = null
-            }
-        } catch (error) {
-            console.error(`Failed to clear history for friend ${friendId}:`, error)
-            throw error
-        } finally {
-            isLoading.value = false
-        }
-    }
-
-    // Recall a message
-    const recallMessage = async (messageId: number) => {
-        try {
-            await ChatAPI.recallMessage(messageId)
-
-            // Find message locally in current friend's list
-            // Note: messagesMap stores all messages for a friend
-            if (!currentFriendId.value) return
-            const messages = messagesMap.value['f' + currentFriendId.value]
-            if (!messages) return
-
-            const index = messages.findIndex(m => m.id === messageId)
-            if (index !== -1) {
-                // Update the recalled message
-                messages[index].content = '你撤回了一条消息'
-                messages[index].role = 'system'
-                // Clear any other properties if needed
-
-                // If this was the last message, update the sidebar preview
-                if (index === messages.length - 1) {
-                    friendStore.updateLastMessage(currentFriendId.value, '你撤回了一条消息', 'system')
-                }
-
-                // Check if next message is assistant and remove it (cascade delete)
-                if (index + 1 < messages.length) {
-                    const nextMsg = messages[index + 1]
-                    if (nextMsg.role === 'assistant') {
-                        // Backend service deletes the FIRST assistant message after the recalled user message
-                        // So we remove it here too
-                        messages.splice(index + 1, 1)
-                        // If we just removed the last message, update preview again
-                        if (index === messages.length - 1) {
-                            friendStore.updateLastMessage(currentFriendId.value, '你撤回了一条消息', 'system')
-                        }
-                    }
-                }
-            }
-        } catch (error) {
-            console.error('Failed to recall message:', error)
-            throw error
-        }
-    }
-
-    // Delete a specific session
-    const deleteSession = async (sessionId: number) => {
-        try {
-            await ChatAPI.deleteSession(sessionId)
-            // Remove from local list
-            currentSessions.value = currentSessions.value.filter(s => s.id !== sessionId)
-            // If deleting current session, reset
-            if (currentSessionId.value === sessionId) {
-                currentSessionId.value = null
-                // If we were viewing this session, maybe we should go back to merged view or just empty
-                // Resetting to merged view seems safer if user is in that mode
-                if (currentFriendId.value) {
-                    // Optionally fetch messages again or just init
-                }
-            }
-        } catch (error) {
-            console.error(`Failed to delete session ${sessionId}:`, error)
-            throw error
-        }
-    }
-
-    // Regenerate an AI message
-    const regenerateMessage = async (message: Message) => {
-        if (!currentFriendId.value) return
-        if (message.role !== 'assistant') return
-
-        const friendId = currentFriendId.value
-        const messages = messagesMap.value['f' + friendId] || []
-        const msgIndex = messages.findIndex(m => m.id === message.id)
-
-        // 1. Save backup of old message for recovery on failure
-        const oldMessageBackup = msgIndex !== -1 ? { ...messages[msgIndex] } : null
-
-        // 2. Remove the old message locally (optimistic update)
-        if (msgIndex !== -1) {
-            messages.splice(msgIndex, 1)
-        } else {
-            console.warn("Could not find message to regenerate in local store")
-        }
-
-        // 3. Prepare for streaming
-        streamingMap.value['f' + friendId] = true
-        friendStore.updateLastMessage(friendId, '对方正在输入...', 'assistant')
-
-        let contentBuffer = ''
-        let modelThinkingBuffer = ''
-        let recallThinkingBuffer = ''
-        let toolCallsBuffer: ToolCall[] = []
-        const assistantMsgId = Date.now() + 1
-
-        const sessionId = message.sessionId
-        if (!sessionId) {
-            console.error("Cannot regenerate message without session ID")
-            // Restore old message
-            if (oldMessageBackup) {
-                messagesMap.value['f' + friendId].push(oldMessageBackup)
-            }
-            streamingMap.value['f' + friendId] = false
-            return
-        }
-
-        try {
-            const stream = ChatAPI.regenerateMessageStream(sessionId, message.id)
-
-            for await (const { event, data } of stream) {
-                if (event === 'start') {
-                    streamingMap.value['f' + friendId] = true
-                } else if (event === 'model_thinking' || event === 'thinking') {
-                    streamingMap.value['f' + friendId] = true
-                    modelThinkingBuffer += data.delta || ''
-                } else if (event === 'recall_thinking') {
-                    streamingMap.value['f' + friendId] = true
-                    const delta = data.delta || ''
-                    recallThinkingBuffer += delta
-                } else if (event === 'message') {
-                    streamingMap.value['f' + friendId] = true
-                    contentBuffer += data.delta || ''
-                } else if (event === 'tool_call') {
-                    streamingMap.value['f' + friendId] = true
-                    toolCallsBuffer.push({
-                        name: data.tool_name,
-                        args: data.arguments,
-                        callId: data.call_id,
-                        status: 'calling'
-                    })
-                } else if (event === 'tool_result') {
-                    streamingMap.value['f' + friendId] = true
-                    const tc = data.call_id
-                        ? [...toolCallsBuffer].reverse().find(t => t.callId === data.call_id && t.status === 'calling')
-                        : [...toolCallsBuffer].reverse().find(t => t.name === data.tool_name && t.status === 'calling')
-                    if (tc) {
-                        tc.result = data.result
-                        tc.status = 'completed'
-                    }
-                } else if (event === 'error' || event === 'task_error') {
-                    // AC-6: Restore old message on error
-                    if (oldMessageBackup) {
-                        messagesMap.value['f' + friendId].push(oldMessageBackup)
-                        friendStore.updateLastMessage(friendId, oldMessageBackup.content, 'assistant')
-                    }
-                    streamingMap.value['f' + friendId] = false
-                    const errorDetail = data.detail || data.message || JSON.stringify(data)
-                    throw new Error(errorDetail)
-                } else if (event === 'done') {
-                    const assistantMsg: Message = {
-                        id: data.message_id || assistantMsgId,
-                        role: 'assistant',
-                        content: contentBuffer,
-                        thinkingContent: modelThinkingBuffer || undefined,
-                        recallThinkingContent: recallThinkingBuffer || undefined,
-                        toolCalls: toolCallsBuffer.length > 0 ? toolCallsBuffer : undefined,
-                        createdAt: Date.now(),
-                        sessionId: sessionId // Preserve sessionId for future operations
-                    }
-                    messagesMap.value['f' + friendId].push(assistantMsg)
-                    streamingMap.value['f' + friendId] = false
-                    if (currentFriendId.value !== friendId) {
-                        const segmentCount = parseMessageSegments(contentBuffer).length || 1
-                        unreadCounts.value['f' + friendId] = (unreadCounts.value['f' + friendId] || 0) + segmentCount
-                    }
-                    friendStore.updateLastMessage(friendId, contentBuffer, 'assistant')
-                }
-            }
-        } catch (error) {
-            console.error('Failed to regenerate message:', error)
-            // AC-6: Restore old message on network/catch error
-            if (oldMessageBackup && !messagesMap.value['f' + friendId].some(m => m.id === oldMessageBackup.id)) {
-                messagesMap.value['f' + friendId].push(oldMessageBackup)
-                friendStore.updateLastMessage(friendId, oldMessageBackup.content, 'assistant')
-            }
-            streamingMap.value['f' + friendId] = false
-            throw error // Re-throw for ChatArea to show toast
-        } finally {
-            streamingMap.value['f' + friendId] = false
-        }
-    }
+    const sessionFetch = createSessionFetch({
+        messagesMap,
+        isLoading,
+        isLoadingMore,
+        currentFriendId,
+        currentSessions,
+        currentSessionId
+    })
+    const {
+        fetchFriendMessages,
+        fetchGroupMessages,
+        loadMoreMessages,
+        syncLatestMessages,
+        clearFriendHistory,
+        clearGroupHistory
+    } = sessionFetch
+
+    const sessionActions = createSessionActions({
+        currentFriendId,
+        currentGroupId,
+        chatType,
+        unreadCounts,
+        messagesMap,
+        currentSessions,
+        currentSessionId,
+        fetchError,
+        isLoading,
+        fetchFriendMessages,
+        fetchGroupMessages,
+        syncLatestMessages
+    })
+    const {
+        fetchFriendSessions,
+        loadSpecificSession,
+        resetToMergedView,
+        deleteSession,
+        startNewSession,
+        startNewGroupSession,
+        selectFriend,
+        selectGroup
+    } = sessionActions
+    const friendStreamActions = createFriendStreamActions({
+        currentFriendId,
+        currentSessionId,
+        messagesMap,
+        streamingMap,
+        unreadCounts,
+        friendStore,
+        fetchFriendSessions
+    })
+    const { sendMessage, regenerateMessage, recallMessage } = friendStreamActions
+
+    const groupStreamActions = createGroupStreamActions({
+        currentGroupId,
+        chatType,
+        messagesMap,
+        streamingMap,
+        unreadCounts,
+        groupTypingUsersMap,
+        groupStore
+    })
+    const {
+        sendGroupMessage,
+        groupTypingUsers,
+        groupTypingUsersMap: groupTypingUsersMapRef,
+        setGroupTypingUsers,
+        removeGroupTypingUser,
+        clearGroupTypingUsers
+    } = groupStreamActions
 
     return {
         currentFriendId,
@@ -937,6 +133,10 @@ export const useSessionStore = defineStore('session', () => {
         messagesMap,
         streamingMap,
         groupTypingUsers,
+        groupTypingUsersMap: groupTypingUsersMapRef,
+        setGroupTypingUsers,
+        removeGroupTypingUser,
+        clearGroupTypingUsers,
         currentMessages,
         currentSessions,
         currentSessionId,
@@ -962,80 +162,8 @@ export const useSessionStore = defineStore('session', () => {
         recallMessage,
         regenerateMessage,
         deleteSession,
-        startNewSession: async () => {
-            if (!currentFriendId.value) return
-
-            currentSessionId.value = null // 重置为活跃视图
-
-            // Prevent multiple consecutive new sessions
-            const messages = messagesMap.value['f' + currentFriendId.value]
-            if (messages && messages.length > 0) {
-                const lastMsg = messages[messages.length - 1]
-                if (lastMsg.role === 'system' && lastMsg.content === '新会话') {
-                    return
-                }
-            }
-
-            try {
-                await ChatAPI.createSession({ friend_id: currentFriendId.value })
-                await fetchFriendSessions(currentFriendId.value) // 刷新会话列表
-                // Add system message manually to the local list
-                if (!messagesMap.value['f' + currentFriendId.value]) {
-                    messagesMap.value['f' + currentFriendId.value] = []
-                }
-                messagesMap.value['f' + currentFriendId.value].push({
-                    id: Date.now(),
-                    role: 'system',
-                    content: '新会话',
-                    createdAt: Date.now()
-                })
-            } catch (error) {
-                console.error('Failed to start new session:', error)
-            }
-        },
-        startNewGroupSession: async () => {
-            if (!currentGroupId.value) return
-
-            const groupId = currentGroupId.value
-            const { groupApi } = await import('@/api/group')
-
-            // Prevent multiple consecutive new sessions
-            const messages = messagesMap.value['g' + groupId]
-            if (messages && messages.length > 0) {
-                const lastMsg = messages[messages.length - 1]
-                if (lastMsg.role === 'system' && lastMsg.content === '新会话') {
-                    return
-                }
-            }
-
-            try {
-                await groupApi.createGroupSession(groupId)
-                if (!messagesMap.value['g' + groupId]) {
-                    messagesMap.value['g' + groupId] = []
-                }
-                messagesMap.value['g' + groupId].push({
-                    id: Date.now(),
-                    role: 'system',
-                    content: '新会话',
-                    createdAt: Date.now()
-                })
-            } catch (error) {
-                console.error('Failed to start new group session:', error)
-            }
-        },
-        clearGroupHistory: async (groupId: number) => {
-            const { groupApi } = await import('@/api/group')
-            isLoading.value = true
-            try {
-                await groupApi.clearMessages(groupId)
-                // 清空本地状态
-                messagesMap.value['g' + groupId] = []
-            } catch (error) {
-                console.error(`Failed to clear history for group ${groupId}:`, error)
-                throw error
-            } finally {
-                isLoading.value = false
-            }
-        }
+        startNewSession,
+        startNewGroupSession,
+        clearGroupHistory
     }
 })

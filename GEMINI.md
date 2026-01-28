@@ -145,7 +145,11 @@ Vue 3 frontend implemented with a focus on WeChat's aesthetic.
     *   `WindowControls.vue`: Custom window controls (minimize/maximize/close).
     *   `ToastContainer.vue`: Toast notification container.
 *   **`stores/`**: Pinia state management.
-    *   `session.ts`: Chat session buffers, SSE event parsing, and message history.
+    *   `session.ts`: 会话状态入口与编排层（仅 state/computed + 组合 action）。
+    *   `session.fetch.ts`: 拉取/分页/同步相关逻辑。
+    *   `session.sessions.ts`: 会话管理相关逻辑（切换/删除/新会话）。
+    *   `session.stream.friend.ts`: 单聊 SSE 流式处理（发送/重生成/撤回）。
+    *   `session.stream.group.ts`: 群聊 SSE 流式处理与 typing 状态管理。
     *   `friend.ts`: Persona/Friend metadata and state.
     *   `llm.ts` & `embedding.ts`: Global config synchronization with backend.
     *   `settings.ts`: System-wide settings (e.g., memory expiration).
@@ -158,6 +162,10 @@ Vue 3 frontend implemented with a focus on WeChat's aesthetic.
     *   `useChat.ts`: Chat interaction logic.
     *   `useToast.ts`: Toast notification management.
     *   `useUpdateCheck.ts`: Version update checking.
+*   **`types/`**: Frontend shared types.
+    *   `chat.ts`: Message/ToolCall/GroupTypingUser 类型定义。
+*   **`utils/`**: Shared utilities.
+    *   `chat.ts`: `parseMessageSegments` 与 `INITIAL_MESSAGE_LIMIT`。
 *   **`lib/`**: Utility functions (e.g., `utils.ts` for Tailwind/CSS classes).
 
 #### 📁 Configuration

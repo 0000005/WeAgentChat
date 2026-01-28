@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { useSessionStore, parseMessageSegments, type ToolCall } from '@/stores/session'
+import { useSessionStore } from '@/stores/session'
+import { parseMessageSegments } from '@/utils/chat'
+import type { ToolCall } from '@/types/chat'
 import { useFriendStore } from '@/stores/friend'
 import { Menu, MoreHorizontal, Brain, MessageSquarePlus, AlertTriangle, Sparkles } from 'lucide-vue-next'
 import {
