@@ -98,7 +98,7 @@ from openai.types.responses import (
     ResponseOutputText,
     ResponseTextDeltaEvent,
 )
-from agents import Agent, ModelSettings, RunConfig, Runner, set_default_openai_client, set_default_openai_api
+from agents import Agent, ModelSettings, RunConfig, Runner, function_tool, set_default_openai_client, set_default_openai_api
 from agents.items import MessageOutputItem, ReasoningItem, ToolCallItem, ToolCallOutputItem
 from agents.stream_events import RunItemStreamEvent
 
@@ -832,6 +832,29 @@ async def _run_chat_generation_task(
             if segment_prompt: final_instructions += f"\n\n{segment_prompt}"
             final_instructions += f"\n\n【当前时间】\n{current_time}"
 
+        tool_description = ""
+        try:
+            tool_description = get_prompt("recall/recall_tool_description.txt").strip()
+        except Exception:
+            pass
+
+        @function_tool(name_override="recall_memory", description_override=tool_description)
+        async def tool_recall(query: str):
+            if not enable_recall:
+                return {"events": []}
+            if not embedding_service.get_active_setting(db):
+                return {"events": []}
+            event_topk = SettingsService.get_setting(db, "memory", "event_topk", 5)
+            threshold = SettingsService.get_setting(db, "memory", "similarity_threshold", 0.5)
+            return await MemoService.recall_memory(
+                user_id=DEFAULT_USER_ID,
+                space_id=DEFAULT_SPACE_ID,
+                query=query,
+                friend_id=friend_id,
+                topk_event=event_topk,
+                threshold=threshold,
+            )
+
         # 4. Run LLM
         agent_messages = [{"role": m.role, "content": m.content} for m in history]
         inject_as_tool = any(
@@ -884,6 +907,7 @@ async def _run_chat_generation_task(
             instructions=final_instructions,
             model=agent_model,
             model_settings=model_settings,
+            tools=[tool_recall],
         )
 
         full_ai_content = ""

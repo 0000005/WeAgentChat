@@ -18,7 +18,7 @@ def read_user_groups(
     """
     return group_service.get_user_groups(db)
 
-@router.post("/group/create", response_model=group_schemas.GroupRead)
+@router.post("/group/create", response_model=group_schemas.GroupReadWithMembers)
 def create_group(
     *,
     db: Session = Depends(deps.get_db),

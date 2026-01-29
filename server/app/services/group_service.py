@@ -148,6 +148,10 @@ class GroupService:
 
             db.commit()
             db.refresh(db_group)
+            
+            # Populate members and count for response
+            GroupService._populate_group_members(db, db_group)
+
             logger.info(f"Created group '{db_group.name}' (id={db_group.id}) with {len(group_in.member_ids)} initial members")
             return db_group
         except Exception as e:

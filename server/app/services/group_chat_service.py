@@ -16,6 +16,7 @@ from app.services import provider_rules
 from app.prompt import get_prompt
 from app.db.session import SessionLocal
 from app.services.memo.constants import DEFAULT_USER_ID, DEFAULT_SPACE_ID
+from app.services.memo.bridge import MemoService
 
 
 from openai import AsyncOpenAI
@@ -24,7 +25,7 @@ from openai.types.responses import (
     ResponseOutputText,
     ResponseTextDeltaEvent,
 )
-from agents import Agent, ModelSettings, RunConfig, Runner, set_default_openai_client, set_default_openai_api
+from agents import Agent, ModelSettings, RunConfig, Runner, function_tool, set_default_openai_client, set_default_openai_api
 from agents.items import MessageOutputItem, ReasoningItem, ToolCallItem, ToolCallOutputItem
 from agents.stream_events import RunItemStreamEvent
 
@@ -712,6 +713,40 @@ class GroupChatService:
                 except Exception:
                     final_instructions = f"{persona_prompt}\n\n{script_prompt}\n\n{current_time}"
 
+                tool_description = ""
+                try:
+                    tool_description = get_prompt("recall/recall_tool_description.txt").strip()
+                except Exception:
+                    pass
+
+                current_other_members = "(empty)"
+                mention_result = "被提及，需要发言"
+
+                @function_tool(name_override="recall_memory", description_override=tool_description)
+                async def tool_recall(query: str):
+                    if not enable_recall:
+                        return {"events": []}
+                    if not embedding_service.get_active_setting(db):
+                        return {"events": []}
+                    event_topk = SettingsService.get_setting(db, "memory", "event_topk", 5)
+                    threshold = SettingsService.get_setting(db, "memory", "similarity_threshold", 0.5)
+                    return await MemoService.recall_memory(
+                        user_id=DEFAULT_USER_ID,
+                        space_id=DEFAULT_SPACE_ID,
+                        query=query,
+                        friend_id=friend_id,
+                        topk_event=event_topk,
+                        threshold=threshold,
+                    )
+
+                @function_tool(name_override="get_other_members_messages", description_override="")
+                async def tool_get_other_members_messages():
+                    return current_other_members
+
+                @function_tool(name_override="is_mentioned", description_override="")
+                async def tool_is_mentioned():
+                    return mention_result
+
                 # 4. 构建消息列表 (Mock Tool Call 模式 - Story 09-06)
                 agent_messages = []
                 
@@ -785,7 +820,7 @@ class GroupChatService:
                 agent_messages.append({
                     "type": "function_call_output",
                     "call_id": tc_id_curr,
-                    "output": "(empty)" # 并行执行时，尚未有其他 AI 回复
+                    "output": current_other_members # 并行执行时，尚未有其他 AI 回复
                 })
                 
                 # is_mentioned
@@ -799,7 +834,7 @@ class GroupChatService:
                 agent_messages.append({
                     "type": "function_call_output",
                     "call_id": tc_id_ment,
-                    "output": "被提及，需要发言"
+                    "output": mention_result
                 })
 
                 # AC-4: 后端日志中可确认 AI Context 包含格式化的 Tool Result 消息
@@ -808,6 +843,7 @@ class GroupChatService:
                 # 6. 调用 LLM
                 client = AsyncOpenAI(base_url=llm_config.base_url, api_key=llm_config.api_key)
                 set_default_openai_client(client)
+                set_default_openai_api("chat_completions")
                 
                 temperature = friend.temperature if friend.temperature is not None else 0.8
                 top_p = friend.top_p if friend.top_p is not None else 0.9
@@ -831,7 +867,13 @@ class GroupChatService:
                 else:
                     agent_model = model_name
 
-                agent = Agent(name=friend.name, instructions=final_instructions, model=agent_model, model_settings=model_settings)
+                agent = Agent(
+                    name=friend.name,
+                    instructions=final_instructions,
+                    model=agent_model,
+                    model_settings=model_settings,
+                    tools=[tool_recall, tool_get_other_members_messages, tool_is_mentioned],
+                )
                 
                 content_buffer = ""
                 has_reasoning_item = False
