@@ -235,14 +235,17 @@ defineExpose({ getConfig })
 
 <template>
   <Dialog v-model:open="open">
-    <DialogContent class="auto-drive-dialog sm:max-w-2xl">
-      <DialogHeader>
-        <DialogTitle>自驱模式配置</DialogTitle>
-        <DialogDescription>一次配置即可自动多轮对话。</DialogDescription>
+    <DialogContent class="auto-drive-dialog sm:max-w-3xl">
+      <DialogHeader class="dialog-header">
+        <div class="dialog-title-wrap">
+          <DialogTitle>自驱模式配置</DialogTitle>
+          <span class="dialog-tag">多轮自动对话</span>
+        </div>
+        <DialogDescription>AI 好友将自动接力回复，多轮互动更轻松。</DialogDescription>
       </DialogHeader>
       <div class="auto-drive-form">
-        <div class="form-section">
-          <label class="form-label">模式</label>
+        <section class="form-card">
+          <div class="form-card-title">模式选择</div>
           <div class="mode-switch">
             <button type="button" class="mode-btn" :class="{ active: autoDriveMode === 'brainstorm' }"
               @click="autoDriveMode = 'brainstorm'">头脑风暴</button>
@@ -251,133 +254,147 @@ defineExpose({ getConfig })
             <button type="button" class="mode-btn" :class="{ active: autoDriveMode === 'debate' }"
               @click="autoDriveMode = 'debate'">辩论</button>
           </div>
-        </div>
+          <div class="mode-tip" v-if="autoDriveMode === 'brainstorm'">适合快速发散想法与行动方案。</div>
+          <div class="mode-tip" v-else-if="autoDriveMode === 'decision'">适合权衡多方案并给出结论。</div>
+          <div class="mode-tip" v-else>适合对立观点的结构化碰撞。</div>
+        </section>
 
-        <div v-if="autoDriveMode === 'brainstorm'" class="form-section">
-          <label class="form-label">主题</label>
-          <textarea v-model="brainstormTopic.theme" class="form-textarea"
-            placeholder="例如：提升我们产品在大学生群体中的活跃度"></textarea>
-          <label class="form-label">目标</label>
-          <textarea v-model="brainstormTopic.goal" class="form-textarea"
-            placeholder="例如：产出 10 个可执行的增长方案"></textarea>
-          <label class="form-label">约束</label>
-          <textarea v-model="brainstormTopic.constraints" class="form-textarea"
-            placeholder="例如：预算 5 万以内，2 周内落地"></textarea>
-        </div>
-
-        <div v-if="autoDriveMode === 'decision'" class="form-section">
-          <label class="form-label">决策问题</label>
-          <textarea v-model="decisionTopic.question" class="form-textarea"
-            placeholder="例如：是否在本季度推出会员制"></textarea>
-          <label class="form-label">候选方案</label>
-          <textarea v-model="decisionTopic.options" class="form-textarea"
-            placeholder="例如：A. 先小范围内测&#10;B. 直接全量上线&#10;C. 延后至下季度"></textarea>
-          <label class="form-label">评估标准</label>
-          <textarea v-model="decisionTopic.criteria" class="form-textarea"
-            placeholder="例如：用户留存权重 40%，成本权重 30%，风险权重 30%"></textarea>
-        </div>
-
-        <div v-if="autoDriveMode === 'debate'" class="form-section">
-          <label class="form-label">辩题</label>
-          <textarea v-model="debateTopic.motion" class="form-textarea"
-            placeholder="例如：工作压力大时应该主动辞职"></textarea>
-          <label class="form-label">正方立场</label>
-          <textarea v-model="debateTopic.affirmative" class="form-textarea"
-            placeholder="例如：应该辞职，优先保护身心健康"></textarea>
-          <label class="form-label">反方立场</label>
-          <textarea v-model="debateTopic.negative" class="form-textarea"
-            placeholder="例如：不应辞职，应先寻求调整与支持"></textarea>
-        </div>
-
-        <div v-if="autoDriveMode === 'brainstorm'" class="form-section">
-          <label class="form-label">参与成员</label>
-          <div class="member-grid">
-            <label v-for="member in props.groupFriendMembers" :key="member.member_id" class="member-chip">
-              <input type="checkbox" :value="member.member_id" v-model="brainstormParticipants" />
-              <span>{{ member.name }}</span>
-            </label>
+        <section class="form-card">
+          <div class="form-card-title">话题设置</div>
+          <div v-if="autoDriveMode === 'brainstorm'" class="form-section">
+            <label class="form-label">主题</label>
+            <textarea v-model="brainstormTopic.theme" class="form-textarea"
+              placeholder="例如：提升我们产品在大学生群体中的活跃度"></textarea>
+            <label class="form-label">目标</label>
+            <textarea v-model="brainstormTopic.goal" class="form-textarea"
+              placeholder="例如：产出 10 个可执行的增长方案"></textarea>
+            <label class="form-label">约束</label>
+            <textarea v-model="brainstormTopic.constraints" class="form-textarea"
+              placeholder="例如：预算 5 万以内，2 周内落地"></textarea>
           </div>
-        </div>
 
-        <div v-else-if="autoDriveMode === 'decision'" class="form-section">
-          <label class="form-label">参与成员</label>
-          <div class="member-grid">
-            <label v-for="member in props.groupFriendMembers" :key="member.member_id + '-decision'" class="member-chip">
-              <input type="checkbox" :value="member.member_id" v-model="decisionParticipants" />
-              <span>{{ member.name }}</span>
-            </label>
+          <div v-if="autoDriveMode === 'decision'" class="form-section">
+            <label class="form-label">决策问题</label>
+            <textarea v-model="decisionTopic.question" class="form-textarea"
+              placeholder="例如：是否在本季度推出会员制"></textarea>
+            <label class="form-label">候选方案</label>
+            <textarea v-model="decisionTopic.options" class="form-textarea"
+              placeholder="例如：A. 先小范围内测&#10;B. 直接全量上线&#10;C. 延后至下季度"></textarea>
+            <label class="form-label">评估标准</label>
+            <textarea v-model="decisionTopic.criteria" class="form-textarea"
+              placeholder="例如：用户留存权重 40%，成本权重 30%，风险权重 30%"></textarea>
           </div>
-        </div>
 
-        <div v-if="autoDriveMode === 'debate'" class="form-section">
-          <div class="debate-grid">
-            <div class="debate-col">
-              <label class="form-label">正方成员（1-2 人）</label>
-              <div class="member-grid">
-                <label v-for="member in props.groupFriendMembers" :key="member.member_id + '-aff'" class="member-chip">
-                  <input type="checkbox" :value="member.member_id" v-model="debateAffirmative"
-                    :disabled="isDebateSideDisabled('affirmative', member.member_id)" />
-                  <span>{{ member.name }}</span>
-                </label>
-              </div>
-            </div>
-            <div class="debate-col">
-              <label class="form-label">反方成员（1-2 人）</label>
-              <div class="member-grid">
-                <label v-for="member in props.groupFriendMembers" :key="member.member_id + '-neg'" class="member-chip">
-                  <input type="checkbox" :value="member.member_id" v-model="debateNegative"
-                    :disabled="isDebateSideDisabled('negative', member.member_id)" />
-                  <span>{{ member.name }}</span>
-                </label>
-              </div>
+          <div v-if="autoDriveMode === 'debate'" class="form-section">
+            <label class="form-label">辩题</label>
+            <textarea v-model="debateTopic.motion" class="form-textarea"
+              placeholder="例如：工作压力大时应该主动辞职"></textarea>
+            <label class="form-label">正方立场</label>
+            <textarea v-model="debateTopic.affirmative" class="form-textarea"
+              placeholder="例如：应该辞职，优先保护身心健康"></textarea>
+            <label class="form-label">反方立场</label>
+            <textarea v-model="debateTopic.negative" class="form-textarea"
+              placeholder="例如：不应辞职，应先寻求调整与支持"></textarea>
+          </div>
+        </section>
+
+        <section class="form-card">
+          <div class="form-card-title">参与成员</div>
+          <div v-if="autoDriveMode === 'brainstorm'" class="form-section">
+            <div class="member-grid">
+              <label v-for="member in props.groupFriendMembers" :key="member.member_id" class="member-chip">
+                <input type="checkbox" :value="member.member_id" v-model="brainstormParticipants" />
+                <span>{{ member.name }}</span>
+              </label>
             </div>
           </div>
-          <div class="form-hint">正反人数必须相等且每方最多 2 人</div>
-        </div>
 
-        <div class="form-section form-inline">
-          <div class="form-inline-item">
-            <label class="form-label">发言上限</label>
-            <input v-model="autoDriveTurnLimit" type="number" min="1" class="form-input" />
+          <div v-else-if="autoDriveMode === 'decision'" class="form-section">
+            <div class="member-grid">
+              <label v-for="member in props.groupFriendMembers" :key="member.member_id + '-decision'" class="member-chip">
+                <input type="checkbox" :value="member.member_id" v-model="decisionParticipants" />
+                <span>{{ member.name }}</span>
+              </label>
+            </div>
           </div>
-          <div class="form-inline-item">
-            <label class="form-label">结束动作</label>
-            <select v-model="autoDriveEndAction" class="form-select" :disabled="availableEndActions.length === 1">
-              <option v-for="action in availableEndActions" :key="action.value" :value="action.value">
-                {{ action.label }}
+
+          <div v-if="autoDriveMode === 'debate'" class="form-section">
+            <div class="debate-grid">
+              <div class="debate-col">
+                <label class="form-label">正方成员（1-2 人）</label>
+                <div class="member-grid">
+                  <label v-for="member in props.groupFriendMembers" :key="member.member_id + '-aff'" class="member-chip">
+                    <input type="checkbox" :value="member.member_id" v-model="debateAffirmative"
+                      :disabled="isDebateSideDisabled('affirmative', member.member_id)" />
+                    <span>{{ member.name }}</span>
+                  </label>
+                </div>
+              </div>
+              <div class="debate-col">
+                <label class="form-label">反方成员（1-2 人）</label>
+                <div class="member-grid">
+                  <label v-for="member in props.groupFriendMembers" :key="member.member_id + '-neg'" class="member-chip">
+                    <input type="checkbox" :value="member.member_id" v-model="debateNegative"
+                      :disabled="isDebateSideDisabled('negative', member.member_id)" />
+                    <span>{{ member.name }}</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+            <div class="form-hint">正反人数必须相等且每方最多 2 人</div>
+          </div>
+        </section>
+
+        <section class="form-card">
+          <div class="form-card-title">流程设置</div>
+          <div class="form-section form-inline">
+            <div class="form-inline-item">
+              <label class="form-label">发言上限</label>
+              <input v-model="autoDriveTurnLimit" type="number" min="1" class="form-input" />
+            </div>
+            <div class="form-inline-item">
+              <label class="form-label">结束动作</label>
+              <select v-model="autoDriveEndAction" class="form-select" :disabled="availableEndActions.length === 1">
+                <option v-for="action in availableEndActions" :key="action.value" :value="action.value">
+                  {{ action.label }}
+                </option>
+              </select>
+            </div>
+          </div>
+        </section>
+
+        <section v-if="showSummarySelector" class="form-card">
+          <div class="form-card-title">总结角色</div>
+          <div class="form-section">
+            <select v-model="autoDriveSummaryBy" class="form-select">
+              <option value="user">我（默认）</option>
+              <option v-for="member in props.groupFriendMembers" :key="member.member_id + '-summary'"
+                :value="member.member_id">
+                {{ member.name }}
               </option>
             </select>
           </div>
-        </div>
+        </section>
 
-        <div v-if="showSummarySelector" class="form-section">
-          <label class="form-label">总结角色</label>
-          <select v-model="autoDriveSummaryBy" class="form-select">
-            <option value="user">我（默认）</option>
-            <option v-for="member in props.groupFriendMembers" :key="member.member_id + '-summary'"
-              :value="member.member_id">
-              {{ member.name }}
-            </option>
-          </select>
-        </div>
-
-        <div v-if="showJudgeSelector" class="form-section">
-          <label class="form-label">评委角色</label>
-          <select v-model="autoDriveJudgeId" class="form-select">
-            <option value="user">我（默认）</option>
-            <option v-for="member in props.groupFriendMembers" :key="member.member_id + '-judge'"
-              :value="member.member_id">
-              {{ member.name }}
-            </option>
-          </select>
-          <div v-if="autoDriveJudgeId === 'user'" class="form-hint">
-            选择“我”不会自动生成胜负判断，请改选评委成员
+        <section v-if="showJudgeSelector" class="form-card">
+          <div class="form-card-title">评委角色</div>
+          <div class="form-section">
+            <select v-model="autoDriveJudgeId" class="form-select">
+              <option value="user">我（默认）</option>
+              <option v-for="member in props.groupFriendMembers" :key="member.member_id + '-judge'"
+                :value="member.member_id">
+                {{ member.name }}
+              </option>
+            </select>
+            <div v-if="autoDriveJudgeId === 'user'" class="form-hint">
+              选择“我”不会自动生成胜负判断，请改选评委成员
+            </div>
           </div>
-        </div>
+        </section>
       </div>
-      <DialogFooter class="sm:justify-end gap-2">
+      <DialogFooter class="dialog-footer">
         <Button variant="ghost" @click="open = false">取消</Button>
-        <Button type="button" variant="default" class="bg-emerald-600 hover:bg-emerald-700" @click="handleSubmit">
+        <Button type="button" variant="default" class="btn-primary" @click="handleSubmit">
           开始自驱
         </Button>
       </DialogFooter>
@@ -386,43 +403,92 @@ defineExpose({ getConfig })
 </template>
 
 <style scoped>
+.auto-drive-dialog {
+  background: #f7f8fa;
+  border: 1px solid #e6e8eb;
+}
+
+.dialog-header {
+  gap: 6px;
+}
+
+.dialog-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dialog-tag {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(7, 193, 96, 0.12);
+  color: #0f5132;
+}
+
 .auto-drive-dialog .auto-drive-form {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
   max-height: 60vh;
   overflow-y: auto;
-  padding-right: 4px;
+  padding: 2px 2px 4px;
+}
+
+.form-card {
+  background: #fff;
+  border: 1px solid #e6e8eb;
+  border-radius: 12px;
+  padding: 14px 16px;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.03);
+}
+
+.form-card-title {
+  font-size: 12px;
+  color: #3f4a5a;
+  font-weight: 600;
+  margin-bottom: 10px;
+  letter-spacing: 0.2px;
 }
 
 .form-section {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .form-label {
   font-size: 12px;
-  color: #666;
+  color: #6b7280;
 }
 
 .form-textarea {
-  min-height: 64px;
-  padding: 8px 10px;
+  min-height: 72px;
+  padding: 10px 12px;
   font-size: 13px;
-  border-radius: 4px;
-  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
   background: #fff;
   resize: vertical;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .form-input,
 .form-select {
-  padding: 8px 10px;
+  padding: 9px 12px;
   font-size: 13px;
-  border-radius: 4px;
-  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
   background: #fff;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.form-textarea:focus,
+.form-input:focus,
+.form-select:focus {
+  outline: none;
+  border-color: #07c160;
+  box-shadow: 0 0 0 2px rgba(7, 193, 96, 0.15);
 }
 
 .form-inline {
@@ -435,65 +501,140 @@ defineExpose({ getConfig })
   display: flex;
   flex-direction: column;
   gap: 6px;
-  min-width: 140px;
+  min-width: 160px;
   flex: 1;
 }
 
 .mode-switch {
-  display: flex;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  background: #f0f2f5;
+  padding: 6px;
+  border-radius: 12px;
 }
 
 .mode-btn {
-  padding: 6px 12px;
+  padding: 7px 12px;
   font-size: 12px;
-  border-radius: 4px;
-  border: 1px solid #e5e5e5;
-  background: #fff;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #3f4a5a;
   cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.mode-btn:hover {
+  background: #ffffff;
+  border-color: #e5e7eb;
 }
 
 .mode-btn.active {
   background: #07c160;
   border-color: #07c160;
   color: #fff;
+  box-shadow: 0 6px 14px rgba(7, 193, 96, 0.2);
+}
+
+.mode-tip {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #6b7280;
 }
 
 .member-grid {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px;
 }
 
 .member-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 8px;
-  border-radius: 6px;
-  border: 1px solid #e5e5e5;
-  background: #fafafa;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid #e6e8eb;
+  background: #f8f9fb;
   font-size: 12px;
   cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.member-chip:hover {
+  border-color: #cfd8e3;
+  background: #ffffff;
 }
 
 .member-chip input {
   margin: 0;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  border: 1px solid #cfd4dc;
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+}
+
+.member-chip input:checked {
+  border-color: #07c160;
+  background: #07c160;
+}
+
+.member-chip input:checked::after {
+  content: '';
+  width: 4px;
+  height: 8px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
 }
 
 .member-chip input:checked + span {
-  color: #07c160;
+  color: #0f5132;
   font-weight: 600;
+  background: rgba(7, 193, 96, 0.12);
+  border-radius: 999px;
+  padding: 2px 6px;
 }
 
 .debate-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.debate-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .form-hint {
   font-size: 12px;
-  color: #999;
+  color: #64748b;
+  background: #f5f7fa;
+  border-left: 3px solid #07c160;
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.btn-primary {
+  background: #07c160;
+  color: #fff;
+}
+
+.btn-primary:hover {
+  background: #06ad56;
 }
 </style>
