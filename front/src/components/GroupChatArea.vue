@@ -134,6 +134,16 @@ const isAutoDriveActive = computed(() => {
 const isAutoDriveDisconnected = computed(() => autoDriveConnectionStatus.value === 'disconnected')
 const showSummarySelector = computed(() => ['summary', 'both'].includes(autoDriveEndAction.value))
 const showJudgeSelector = computed(() => autoDriveMode.value === 'debate' && ['judge', 'both'].includes(autoDriveEndAction.value))
+const availableEndActions = computed(() => {
+  if (autoDriveMode.value === 'debate') {
+    return [
+      { value: 'summary', label: '总结' },
+      { value: 'judge', label: '胜负判定' },
+      { value: 'both', label: '两者' }
+    ]
+  }
+  return [{ value: 'summary', label: '总结' }]
+})
 
 const groupMembers = computed(() => currentGroup.value?.members || [])
 const groupFriendMembers = computed(() => groupMembers.value.filter(m => m.member_type === 'friend'))
@@ -167,6 +177,31 @@ const brainstormParticipants = ref<string[]>([])
 const decisionParticipants = ref<string[]>([])
 const debateAffirmative = ref<string[]>([])
 const debateNegative = ref<string[]>([])
+
+const resetAutoDriveConfig = () => {
+  autoDriveMode.value = 'brainstorm'
+  autoDriveTurnLimit.value = 6
+  autoDriveEndAction.value = 'summary'
+  autoDriveJudgeId.value = 'user'
+  autoDriveSummaryBy.value = 'user'
+
+  brainstormTopic.theme = ''
+  brainstormTopic.goal = ''
+  brainstormTopic.constraints = ''
+
+  decisionTopic.question = ''
+  decisionTopic.options = ''
+  decisionTopic.criteria = ''
+
+  debateTopic.motion = ''
+  debateTopic.affirmative = ''
+  debateTopic.negative = ''
+
+  brainstormParticipants.value = []
+  decisionParticipants.value = []
+  debateAffirmative.value = []
+  debateNegative.value = []
+}
 
 // 检测是否需要显示会话分隔线（session_id 变化时）
 const shouldShowSessionDivider = (index: number): boolean => {
@@ -421,18 +456,19 @@ const autoDriveProgressLabel = computed(() => {
   const phase = state.phase
   if (phase !== 'rounds' && phase !== 'free') return ''
 
-  let totalTurns = state.turnLimit
+  let total = state.turnLimit
+  let current = state.currentRound ?? state.currentTurn ?? 0
+
   if (state.mode === 'debate' && phase === 'free') {
     const order = Array.isArray(state.roles?.order) ? state.roles.order : []
     const count = order.length || ((state.roles?.affirmative?.length || 0) + (state.roles?.negative?.length || 0))
-    if (count > 0) totalTurns = state.turnLimit * count
-  } else if (state.mode !== 'debate') {
-    const participants = Array.isArray(state.roles?.participants) ? state.roles.participants.length : 0
-    if (participants > 0) totalTurns = state.turnLimit * participants
+    if (count > 0) total = state.turnLimit * count
+    current = state.currentTurn ?? state.currentRound ?? 0
   }
 
-  const current = Math.min(state.currentTurn || 0, totalTurns || state.currentTurn || 0)
-  return totalTurns ? `${current}/${totalTurns}` : ''
+  const safeTotal = total || 0
+  const safeCurrent = safeTotal ? Math.min(current, safeTotal) : current
+  return safeTotal ? `${safeCurrent}/${safeTotal}` : ''
 })
 
 const autoDriveNextSpeakerName = computed(() => {
@@ -524,6 +560,16 @@ watch(
     sessionStore.clearAutoDriveError(sessionStore.currentGroupId)
   }
 )
+
+watch(autoDriveConfigOpen, (val) => {
+  if (val) resetAutoDriveConfig()
+})
+
+watch(autoDriveMode, (mode) => {
+  if (mode !== 'debate' && autoDriveEndAction.value !== 'summary') {
+    autoDriveEndAction.value = 'summary'
+  }
+})
 
 onBeforeUnmount(() => {
   if (mentionKeydownHandler) {
@@ -1192,10 +1238,11 @@ const handleAvatarClick = (url: string) => {
             </div>
             <div class="form-inline-item">
               <label class="form-label">结束动作</label>
-              <select v-model="autoDriveEndAction" class="form-select">
-                <option value="summary">总结</option>
-                <option value="judge">胜负判定</option>
-                <option value="both">两者</option>
+              <select v-model="autoDriveEndAction" class="form-select"
+                :disabled="availableEndActions.length === 1">
+                <option v-for="action in availableEndActions" :key="action.value" :value="action.value">
+                  {{ action.label }}
+                </option>
               </select>
             </div>
           </div>
