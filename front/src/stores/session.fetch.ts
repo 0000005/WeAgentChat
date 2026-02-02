@@ -61,7 +61,9 @@ export const createSessionFetch = (deps: SessionFetchDeps) => {
                 createdAt: new Date(m.create_time).getTime(),
                 sessionId: m.session_id,
                 senderId: m.sender_id,
-                senderType: m.sender_type
+                senderType: m.sender_type,
+                sessionType: m.session_type,
+                debateSide: m.debate_side
             }))
 
             if (skip === 0) {

@@ -6,8 +6,9 @@ import { createSessionFetch } from './session.fetch'
 import { createSessionActions } from './session.sessions'
 import { createFriendStreamActions } from './session.stream.friend'
 import { createGroupStreamActions } from './session.stream.group'
+import { createGroupAutoDriveStreamActions } from './session.stream.group.auto_drive'
 import type { ChatSession } from '@/api/chat'
-import type { Message, GroupTypingUser } from '@/types/chat'
+import type { Message, GroupTypingUser, AutoDriveState } from '@/types/chat'
 import { INITIAL_MESSAGE_LIMIT } from '@/utils/chat'
 
 export const useSessionStore = defineStore('session', () => {
@@ -36,6 +37,11 @@ export const useSessionStore = defineStore('session', () => {
 
     // Story 09-10: Group typing users list (per group)
     const groupTypingUsersMap = ref<Record<string, GroupTypingUser[]>>({})
+
+    const autoDriveStateMap = ref<Record<string, AutoDriveState | null>>({})
+    const autoDriveStreamingMap = ref<Record<string, boolean>>({})
+    const autoDriveConnectionMap = ref<Record<string, 'connected' | 'disconnected'>>({})
+    const autoDriveErrorMap = ref<Record<string, string | null>>({})
     // Get messages for current friend or group
     const currentMessages = computed(() => {
         if (chatType.value === 'group') {
@@ -127,6 +133,49 @@ export const useSessionStore = defineStore('session', () => {
         clearGroupTypingUsers
     } = groupStreamActions
 
+    const autoDriveStreamActions = createGroupAutoDriveStreamActions({
+        currentGroupId,
+        messagesMap,
+        unreadCounts,
+        autoDriveStateMap,
+        autoDriveStreamingMap,
+        autoDriveConnectionMap,
+        autoDriveErrorMap,
+        groupStore
+    })
+
+    const {
+        startAutoDrive,
+        pauseAutoDrive,
+        resumeAutoDrive,
+        stopAutoDrive,
+        fetchAutoDriveState,
+        sendAutoDriveInterject,
+        ensureAutoDriveStream,
+        disconnectAutoDriveStream,
+        clearAutoDriveError
+    } = autoDriveStreamActions
+
+    const currentAutoDriveState = computed(() => {
+        if (!currentGroupId.value) return null
+        return autoDriveStateMap.value['g' + currentGroupId.value] || null
+    })
+
+    const autoDriveConnectionStatus = computed(() => {
+        if (!currentGroupId.value) return 'connected'
+        return autoDriveConnectionMap.value['g' + currentGroupId.value] || 'connected'
+    })
+
+    const autoDriveStreaming = computed(() => {
+        if (!currentGroupId.value) return false
+        return !!autoDriveStreamingMap.value['g' + currentGroupId.value]
+    })
+
+    const selectGroupWithAutoDrive = async (groupId: number) => {
+        await selectGroup(groupId)
+        await fetchAutoDriveState(groupId)
+    }
+
     return {
         currentFriendId,
         unreadCounts,
@@ -137,6 +186,13 @@ export const useSessionStore = defineStore('session', () => {
         setGroupTypingUsers,
         removeGroupTypingUser,
         clearGroupTypingUsers,
+        autoDriveStateMap,
+        autoDriveStreamingMap,
+        autoDriveConnectionMap,
+        autoDriveErrorMap,
+        currentAutoDriveState,
+        autoDriveConnectionStatus,
+        autoDriveStreaming,
         currentMessages,
         currentSessions,
         currentSessionId,
@@ -148,9 +204,18 @@ export const useSessionStore = defineStore('session', () => {
         chatType,
         currentGroupId,
         selectFriend,
-        selectGroup,
+        selectGroup: selectGroupWithAutoDrive,
         sendMessage,
         sendGroupMessage,
+        startAutoDrive,
+        pauseAutoDrive,
+        resumeAutoDrive,
+        stopAutoDrive,
+        fetchAutoDriveState,
+        sendAutoDriveInterject,
+        ensureAutoDriveStream,
+        disconnectAutoDriveStream,
+        clearAutoDriveError,
         fetchFriendMessages,
         fetchGroupMessages,
         loadMoreMessages,

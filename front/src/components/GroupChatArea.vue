@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, ref, watch, nextTick, onBeforeUnmount, onMounted } from 'vue'
+import { computed, ref, watch, nextTick, onBeforeUnmount, onMounted, reactive } from 'vue'
 import { useSessionStore } from '@/stores/session'
 import { parseMessageSegments } from '@/utils/chat'
 import { useFriendStore } from '@/stores/friend'
 import { useGroupStore } from '@/stores/group'
 import { useSettingsStore } from '@/stores/settings'
+import type { AutoDriveEndAction, AutoDriveMode, DebateSide, Message } from '@/types/chat'
 import {
   Dialog,
   DialogContent,
@@ -14,7 +15,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { AlertTriangle, Menu, MoreHorizontal, Brain, MessageSquarePlus } from 'lucide-vue-next'
+import { AlertTriangle, Menu, MoreHorizontal, Brain, MessageSquarePlus, Sparkles, Pause, Play, Square, RefreshCw } from 'lucide-vue-next'
 import { useThinkingModeStore } from '@/stores/thinkingMode'
 import { useLlmStore } from '@/stores/llm'
 import { useEmbeddingStore } from '@/stores/embedding'
@@ -125,6 +126,48 @@ const currentGroupName = computed(() => {
 
 const messages = computed(() => sessionStore.currentMessages)
 
+const autoDriveState = computed(() => sessionStore.currentAutoDriveState)
+const autoDriveConnectionStatus = computed(() => sessionStore.autoDriveConnectionStatus)
+const isAutoDriveActive = computed(() => {
+  return !!autoDriveState.value && ['running', 'paused', 'pausing'].includes(autoDriveState.value.status)
+})
+const isAutoDriveDisconnected = computed(() => autoDriveConnectionStatus.value === 'disconnected')
+const showSummarySelector = computed(() => ['summary', 'both'].includes(autoDriveEndAction.value))
+const showJudgeSelector = computed(() => autoDriveMode.value === 'debate' && ['judge', 'both'].includes(autoDriveEndAction.value))
+
+const groupMembers = computed(() => currentGroup.value?.members || [])
+const groupFriendMembers = computed(() => groupMembers.value.filter(m => m.member_type === 'friend'))
+
+const autoDriveConfigOpen = ref(false)
+const autoDriveMode = ref<AutoDriveMode>('brainstorm')
+const autoDriveTurnLimit = ref(6)
+const autoDriveEndAction = ref<AutoDriveEndAction>('summary')
+const autoDriveJudgeId = ref('user')
+const autoDriveSummaryBy = ref('user')
+
+const brainstormTopic = reactive({
+  theme: '',
+  goal: '',
+  constraints: ''
+})
+
+const decisionTopic = reactive({
+  question: '',
+  options: '',
+  criteria: ''
+})
+
+const debateTopic = reactive({
+  motion: '',
+  affirmative: '',
+  negative: ''
+})
+
+const brainstormParticipants = ref<string[]>([])
+const decisionParticipants = ref<string[]>([])
+const debateAffirmative = ref<string[]>([])
+const debateNegative = ref<string[]>([])
+
 // 检测是否需要显示会话分隔线（session_id 变化时）
 const shouldShowSessionDivider = (index: number): boolean => {
   if (index === 0) return false
@@ -217,6 +260,80 @@ const handleNewChat = async () => {
   await sessionStore.startNewGroupSession()
 }
 
+const handleOpenAutoDrive = () => {
+  if (!sessionStore.currentGroupId) return
+  if (isAutoDriveActive.value) {
+    triggerToast('自驱状态已在上方状态栏展示')
+  } else {
+    autoDriveConfigOpen.value = true
+  }
+}
+
+const handleStartAutoDrive = async () => {
+  if (!sessionStore.currentGroupId) return
+  if (!isLlmConfigured.value) {
+    showNoLlmDialog.value = true
+    return
+  }
+  if (!validateAutoDriveConfig()) return
+  try {
+    await sessionStore.startAutoDrive(sessionStore.currentGroupId, buildAutoDriveConfig(), isThinkingMode.value)
+    autoDriveConfigOpen.value = false
+  } catch (error) {
+    console.error('Failed to start auto-drive:', error)
+    triggerToast('自驱启动失败')
+  }
+}
+
+const handlePauseAutoDrive = async () => {
+  if (!sessionStore.currentGroupId) return
+  try {
+    await sessionStore.pauseAutoDrive(sessionStore.currentGroupId)
+  } catch (error) {
+    console.error('Failed to pause auto-drive:', error)
+    triggerToast('暂停失败')
+  }
+}
+
+const handleResumeAutoDrive = async () => {
+  if (!sessionStore.currentGroupId) return
+  try {
+    await sessionStore.resumeAutoDrive(sessionStore.currentGroupId)
+  } catch (error) {
+    console.error('Failed to resume auto-drive:', error)
+    triggerToast('继续失败')
+  }
+}
+
+const handleStopAutoDrive = async () => {
+  if (!sessionStore.currentGroupId) return
+  try {
+    await sessionStore.stopAutoDrive(sessionStore.currentGroupId)
+  } catch (error) {
+    console.error('Failed to stop auto-drive:', error)
+    triggerToast('终止失败')
+  }
+}
+
+const handleReconnectAutoDrive = async () => {
+  if (!sessionStore.currentGroupId) return
+  await sessionStore.fetchAutoDriveState(sessionStore.currentGroupId)
+  sessionStore.ensureAutoDriveStream(sessionStore.currentGroupId)
+}
+
+const isDebateSideDisabled = (side: 'affirmative' | 'negative', memberId: string) => {
+  const affirmativeSet = new Set(debateAffirmative.value)
+  const negativeSet = new Set(debateNegative.value)
+  if (side === 'affirmative') {
+    if (negativeSet.has(memberId)) return true
+    if (!affirmativeSet.has(memberId) && debateAffirmative.value.length >= 2) return true
+  } else {
+    if (affirmativeSet.has(memberId)) return true
+    if (!negativeSet.has(memberId) && debateNegative.value.length >= 2) return true
+  }
+  return false
+}
+
 const getMemberAvatar = (senderId: string, senderType: string) => {
   if (senderId === 'user') {
     return getStaticUrl(settingsStore.userAvatar) || 'default_avatar.svg'
@@ -235,10 +352,122 @@ const getMemberAvatar = (senderId: string, senderType: string) => {
 const getMemberName = (senderId: string, _senderType: string) => {
   if (senderId === 'user') return '我'
   const member = currentGroup.value?.members?.find(m => m.member_id === senderId)
+  if (member?.member_type === 'user') return '我'
   if (member?.name) return member.name
 
   const friend = friendStore.friends.find(f => String(f.id) === senderId)
   return friend?.name || 'AI'
+}
+
+const autoDriveModeLabels: Record<AutoDriveMode, string> = {
+  brainstorm: '头脑风暴',
+  decision: '决策',
+  debate: '辩论'
+}
+
+const autoDrivePhaseLabels: Record<AutoDriveMode, Record<string, string>> = {
+  brainstorm: {
+    opening: '开场设定',
+    rounds: '轮次推进',
+    summary: '收敛整理'
+  },
+  decision: {
+    opening: '开场设定',
+    rounds: '方案分析',
+    summary: '推荐与落地'
+  },
+  debate: {
+    opening: '立论陈述',
+    free: '自由交锋',
+    summary: '总结陈词',
+    judge: '评委宣判'
+  }
+}
+
+const autoDriveModeLabel = computed(() => {
+  if (!autoDriveState.value) return ''
+  return autoDriveModeLabels[autoDriveState.value.mode] || autoDriveState.value.mode
+})
+
+const autoDrivePhaseLabel = computed(() => {
+  const state = autoDriveState.value
+  if (!state || !state.phase) return ''
+  return autoDrivePhaseLabels[state.mode]?.[state.phase] || state.phase
+})
+
+const autoDriveStatusLabel = computed(() => {
+  const state = autoDriveState.value
+  if (!state) return ''
+  if (state.status === 'pausing') return '等待收尾'
+  if (state.status === 'paused') return '暂停中'
+  if (state.status === 'running') return '运行中'
+  if (state.status === 'ended') return '已结束'
+  return state.status
+})
+
+const autoDriveTopicSummary = computed(() => {
+  const state = autoDriveState.value
+  if (!state) return ''
+  const topic = state.topic || {}
+  if (state.mode === 'brainstorm') return topic.theme || topic.topic || ''
+  if (state.mode === 'decision') return topic.question || ''
+  if (state.mode === 'debate') return topic.motion || ''
+  return ''
+})
+
+const autoDriveProgressLabel = computed(() => {
+  const state = autoDriveState.value
+  if (!state || !state.phase) return ''
+  const phase = state.phase
+  if (phase !== 'rounds' && phase !== 'free') return ''
+
+  let totalTurns = state.turnLimit
+  if (state.mode === 'debate' && phase === 'free') {
+    const order = Array.isArray(state.roles?.order) ? state.roles.order : []
+    const count = order.length || ((state.roles?.affirmative?.length || 0) + (state.roles?.negative?.length || 0))
+    if (count > 0) totalTurns = state.turnLimit * count
+  } else if (state.mode !== 'debate') {
+    const participants = Array.isArray(state.roles?.participants) ? state.roles.participants.length : 0
+    if (participants > 0) totalTurns = state.turnLimit * participants
+  }
+
+  const current = Math.min(state.currentTurn || 0, totalTurns || state.currentTurn || 0)
+  return totalTurns ? `${current}/${totalTurns}` : ''
+})
+
+const autoDriveNextSpeakerName = computed(() => {
+  const state = autoDriveState.value
+  if (!state?.nextSpeakerId) return ''
+  const member = groupMembers.value.find(m => m.member_id === state.nextSpeakerId)
+  if (member?.member_type === 'user') return '我'
+  return member?.name || 'AI'
+})
+
+const getMessageDebateSide = (msg: Message): DebateSide | undefined => {
+  if (msg.debateSide) return msg.debateSide
+  if (msg.sessionType !== 'debate') return undefined
+  if (!autoDriveState.value || autoDriveState.value.sessionId !== msg.sessionId) return undefined
+  const roles = autoDriveState.value.roles || {}
+  if (Array.isArray(roles.affirmative) && roles.affirmative.includes(msg.senderId)) return 'affirmative'
+  if (Array.isArray(roles.negative) && roles.negative.includes(msg.senderId)) return 'negative'
+  return undefined
+}
+
+const getDebateSideLabel = (side?: DebateSide) => {
+  if (side === 'affirmative') return '正方'
+  if (side === 'negative') return '反方'
+  return ''
+}
+
+const isAutoDriveMessage = (msg: Message) => {
+  return !!msg.sessionType && msg.sessionType !== 'normal'
+}
+
+const getMessageSegments = (msg: Message) => {
+  if (isAutoDriveMessage(msg)) {
+    return msg.content ? [msg.content] : ['']
+  }
+  return parseMessageSegments(msg.content)
 }
 
 // Mention Logic
@@ -283,6 +512,18 @@ const filteredMembers = computed(() => {
 watch(filteredMembers, () => {
   selectedIndex.value = 0
 })
+
+watch(
+  () => {
+    if (!sessionStore.currentGroupId) return null
+    return sessionStore.autoDriveErrorMap['g' + sessionStore.currentGroupId] || null
+  },
+  (val) => {
+    if (!val || !sessionStore.currentGroupId) return
+    triggerToast(val)
+    sessionStore.clearAutoDriveError(sessionStore.currentGroupId)
+  }
+)
 
 onBeforeUnmount(() => {
   if (mentionKeydownHandler) {
@@ -363,19 +604,152 @@ const selectMention = (member: any) => {
   }, 0)
 }
 
+const resolveMentionIdsFromText = (content: string) => {
+  const members = groupFriendMembers.value
+  const matchedIds = new Set<string>()
+
+  members.forEach(member => {
+    if (member.name && content.includes(`@${member.name}`)) {
+      matchedIds.add(member.member_id)
+    }
+  })
+
+  const rawMatches = [...content.matchAll(/@([^\s@]+)/g)].map(m => m[1])
+  const unknownNames = rawMatches.filter(name => !members.some(m => m.name === name))
+
+  return { ids: Array.from(matchedIds), unknownNames }
+}
+
+const buildAutoDriveMentions = (content: string) => {
+  const mentionsFromMenu = Array.from(mentionedIds.value).filter(id => content.includes(`@${getMemberName(id, 'friend')}`))
+  const { ids: mentionsFromText, unknownNames } = resolveMentionIdsFromText(content)
+  if (unknownNames.length) {
+    triggerToast(`未找到成员：${unknownNames.join('、')}`)
+  }
+  return Array.from(new Set([...mentionsFromMenu, ...mentionsFromText]))
+}
+
+const validateAutoDriveConfig = () => {
+  const mode = autoDriveMode.value
+  const limit = Number(autoDriveTurnLimit.value)
+  if (!Number.isFinite(limit) || limit < 1) {
+    triggerToast('发言上限至少为 1')
+    return false
+  }
+  if (mode === 'brainstorm') {
+    if (!brainstormTopic.theme.trim() || !brainstormTopic.goal.trim() || !brainstormTopic.constraints.trim()) {
+      triggerToast('请填写头脑风暴的主题、目标与约束')
+      return false
+    }
+    if (brainstormParticipants.value.length === 0) {
+      triggerToast('请至少选择 1 位参与成员')
+      return false
+    }
+  }
+  if (mode === 'decision') {
+    if (!decisionTopic.question.trim() || !decisionTopic.options.trim() || !decisionTopic.criteria.trim()) {
+      triggerToast('请填写决策问题、候选方案与评估标准')
+      return false
+    }
+    if (decisionParticipants.value.length === 0) {
+      triggerToast('请至少选择 1 位参与成员')
+      return false
+    }
+  }
+  if (mode === 'debate') {
+    if (!debateTopic.motion.trim() || !debateTopic.affirmative.trim() || !debateTopic.negative.trim()) {
+      triggerToast('请填写辩题、正方立场与反方立场')
+      return false
+    }
+    if (debateAffirmative.value.length === 0 || debateNegative.value.length === 0) {
+      triggerToast('请为正方与反方各选择 1-2 位成员')
+      return false
+    }
+    if (debateAffirmative.value.length > 2 || debateNegative.value.length > 2) {
+      triggerToast('正反方最多各 2 人')
+      return false
+    }
+    if (debateAffirmative.value.length !== debateNegative.value.length) {
+      triggerToast('正反人数必须相等')
+      return false
+    }
+  }
+  return true
+}
+
+const buildAutoDriveConfig = () => {
+  const mode = autoDriveMode.value
+  if (mode === 'brainstorm') {
+    return {
+      mode,
+      topic: {
+        theme: brainstormTopic.theme.trim(),
+        goal: brainstormTopic.goal.trim(),
+        constraints: brainstormTopic.constraints.trim()
+      },
+      roles: {
+        participants: brainstormParticipants.value
+      },
+      turnLimit: Number(autoDriveTurnLimit.value) || 1,
+      endAction: autoDriveEndAction.value,
+      judgeId: autoDriveJudgeId.value === 'user' ? null : autoDriveJudgeId.value,
+      summaryBy: autoDriveSummaryBy.value === 'user' ? null : autoDriveSummaryBy.value
+    }
+  }
+  if (mode === 'decision') {
+    return {
+      mode,
+      topic: {
+        question: decisionTopic.question.trim(),
+        options: decisionTopic.options.trim(),
+        criteria: decisionTopic.criteria.trim()
+      },
+      roles: {
+        participants: decisionParticipants.value
+      },
+      turnLimit: Number(autoDriveTurnLimit.value) || 1,
+      endAction: autoDriveEndAction.value,
+      judgeId: autoDriveJudgeId.value === 'user' ? null : autoDriveJudgeId.value,
+      summaryBy: autoDriveSummaryBy.value === 'user' ? null : autoDriveSummaryBy.value
+    }
+  }
+  return {
+    mode,
+    topic: {
+      motion: debateTopic.motion.trim(),
+      affirmative: debateTopic.affirmative.trim(),
+      negative: debateTopic.negative.trim()
+    },
+    roles: {
+      affirmative: debateAffirmative.value,
+      negative: debateNegative.value
+    },
+    turnLimit: Number(autoDriveTurnLimit.value) || 1,
+    endAction: autoDriveEndAction.value,
+    judgeId: autoDriveJudgeId.value === 'user' ? null : autoDriveJudgeId.value,
+    summaryBy: autoDriveSummaryBy.value === 'user' ? null : autoDriveSummaryBy.value
+  }
+}
+
 const handleSubmit = async (_e?: any) => {
   if (!input.value.trim()) return
   if (!sessionStore.currentGroupId) return
 
   const content = input.value
-  const mentions = Array.from(mentionedIds.value).filter(id => content.includes(`@${getMemberName(id, 'friend')}`))
+  const mentions = isAutoDriveActive.value
+    ? buildAutoDriveMentions(content)
+    : Array.from(mentionedIds.value).filter(id => content.includes(`@${getMemberName(id, 'friend')}`))
 
   input.value = ''
   mentionedIds.value.clear()
   status.value = 'streaming'
 
   try {
-    await sessionStore.sendGroupMessage(content, mentions, isThinkingMode.value)
+    if (isAutoDriveActive.value) {
+      await sessionStore.sendAutoDriveInterject(content, mentions)
+    } else {
+      await sessionStore.sendGroupMessage(content, mentions, isThinkingMode.value)
+    }
   } catch (err) {
     console.error('Failed to send group message:', err)
     triggerToast('发送失败')
@@ -482,6 +856,47 @@ const handleAvatarClick = (url: string) => {
         </div>
       </div>
 
+      <div v-if="autoDriveState && autoDriveState.status !== 'ended'" class="auto-drive-banner">
+        <div class="auto-drive-row">
+          <div class="auto-drive-left">
+            <span class="auto-drive-tag">{{ autoDriveModeLabel }}</span>
+            <span class="auto-drive-topic" :title="autoDriveTopicSummary">{{ autoDriveTopicSummary || '未设置题目'
+            }}</span>
+          </div>
+          <div class="auto-drive-center">
+            <span class="auto-drive-phase">{{ autoDrivePhaseLabel || autoDriveStatusLabel }}</span>
+            <span v-if="autoDriveProgressLabel" class="auto-drive-progress">{{ autoDriveProgressLabel }}</span>
+          </div>
+          <div class="auto-drive-right">
+            <button v-if="isAutoDriveDisconnected" class="auto-drive-action" @click="handleReconnectAutoDrive">
+              <RefreshCw :size="14" />
+              重连
+            </button>
+            <template v-else>
+              <button v-if="autoDriveState?.status === 'running'" class="auto-drive-action" @click="handlePauseAutoDrive">
+                <Pause :size="14" />
+                暂停
+              </button>
+              <button v-else-if="autoDriveState?.status === 'paused'" class="auto-drive-action"
+                @click="handleResumeAutoDrive">
+                <Play :size="14" />
+                继续
+              </button>
+              <button v-else-if="autoDriveState?.status === 'pausing'" class="auto-drive-action disabled" disabled>
+                等待收尾
+              </button>
+              <button class="auto-drive-action danger" @click="handleStopAutoDrive">
+                <Square :size="14" />
+                终止
+              </button>
+            </template>
+          </div>
+        </div>
+        <div class="auto-drive-row secondary">
+          <span v-if="isAutoDriveDisconnected" class="auto-drive-muted">已断开</span>
+          <span v-else class="auto-drive-muted">下一位：{{ autoDriveNextSpeakerName || '...' }}</span>
+        </div>
+      </div>
 
       <!-- Empty State with WeChat Logo -->
 
@@ -513,20 +928,29 @@ const handleAvatarClick = (url: string) => {
 
             <template v-else-if="msg.role === 'assistant'">
               <!-- AI 回复：动态拆分渲染 -->
-              <div v-for="(segment, sIndex) in parseMessageSegments(msg.content)" :key="msg.id + '-' + sIndex"
+              <div v-for="(segment, sIndex) in getMessageSegments(msg)" :key="msg.id + '-' + sIndex"
                 class="message-group group-assistant">
                 <div class="message-wrapper message-assistant group relative">
                   <!-- Avatar -->
-                  <div class="message-avatar"
+                  <div class="message-avatar" :class="{ 'debate-avatar': getMessageDebateSide(msg) }"
                     @click="handleAvatarClick(getMemberAvatar(msg.senderId || 'assistant', 'assistant'))">
                     <img :src="getMemberAvatar(msg.senderId || 'assistant', 'assistant')" alt="Avatar" />
+                    <span v-if="getMessageDebateSide(msg)" class="debate-badge"
+                      :class="getMessageDebateSide(msg) === 'affirmative' ? 'affirmative' : 'negative'">
+                      {{ getMessageDebateSide(msg) === 'affirmative' ? '正' : '反' }}
+                    </span>
                   </div>
 
                   <!-- Message Bubble -->
                   <div class="message-bubble-container" :class="{ 'message-pop-in': segment }">
                     <!-- Member Name for groups -->
                     <span v-if="sIndex === 0" class="member-name">{{ getMemberName(msg.senderId || 'assistant',
-                      'assistant') }}</span>
+                      'assistant') }}
+                      <span v-if="getMessageDebateSide(msg)" class="debate-name-tag"
+                        :class="getMessageDebateSide(msg) === 'affirmative' ? 'affirmative' : 'negative'">
+                        {{ getDebateSideLabel(getMessageDebateSide(msg)) }}
+                      </span>
+                    </span>
                     <div class="message-bubble">
                       <MessageContent>
                         <MessageResponse :content="segment" />
@@ -601,12 +1025,13 @@ const handleAvatarClick = (url: string) => {
       </Conversation>
 
       <!-- Story 09-10: Group specific typing indicator -->
-      <div v-if="sessionStore.isStreaming && sessionStore.groupTypingUsers.length > 0" class="group-typing-area">
+      <div v-if="!isAutoDriveActive && sessionStore.isStreaming && sessionStore.groupTypingUsers.length > 0"
+        class="group-typing-area">
         <span class="typing-text">
           {{sessionStore.groupTypingUsers.map(u => u.name).join('、')}} 正在输入中...
         </span>
       </div>
-      <div v-else-if="sessionStore.isStreaming" class="group-typing-area">
+      <div v-else-if="!isAutoDriveActive && sessionStore.isStreaming" class="group-typing-area">
         <span class="typing-text">正在思考谁来回复...</span>
       </div>
     </div>
@@ -616,6 +1041,9 @@ const handleAvatarClick = (url: string) => {
     <div class="chat-input-area">
       <div class="input-toolbar">
         <EmojiPicker @select="input += $event" />
+        <button class="toolbar-btn auto-drive-btn" title="自驱" @click="handleOpenAutoDrive">
+          <Sparkles :size="18" />
+        </button>
         <button class="toolbar-btn" title="新会话" @click="handleNewChat">
           <MessageSquarePlus :size="22" />
         </button>
@@ -654,6 +1082,155 @@ const handleAvatarClick = (url: string) => {
         </div>
       </PromptInput>
     </div>
+
+    <!-- Auto Drive Config Dialog -->
+    <Dialog v-model:open="autoDriveConfigOpen">
+      <DialogContent class="auto-drive-dialog sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>自驱模式配置</DialogTitle>
+          <DialogDescription>一次配置即可自动多轮对话。</DialogDescription>
+        </DialogHeader>
+        <div class="auto-drive-form">
+          <div class="form-section">
+            <label class="form-label">模式</label>
+            <div class="mode-switch">
+              <button type="button" class="mode-btn" :class="{ active: autoDriveMode === 'brainstorm' }"
+                @click="autoDriveMode = 'brainstorm'">头脑风暴</button>
+              <button type="button" class="mode-btn" :class="{ active: autoDriveMode === 'decision' }"
+                @click="autoDriveMode = 'decision'">决策</button>
+              <button type="button" class="mode-btn" :class="{ active: autoDriveMode === 'debate' }"
+                @click="autoDriveMode = 'debate'">辩论</button>
+            </div>
+          </div>
+
+          <div v-if="autoDriveMode === 'brainstorm'" class="form-section">
+            <label class="form-label">主题</label>
+            <textarea v-model="brainstormTopic.theme" class="form-textarea"
+              placeholder="例如：提升我们产品在大学生群体中的活跃度"></textarea>
+            <label class="form-label">目标</label>
+            <textarea v-model="brainstormTopic.goal" class="form-textarea"
+              placeholder="例如：产出 10 个可执行的增长方案"></textarea>
+            <label class="form-label">约束</label>
+            <textarea v-model="brainstormTopic.constraints" class="form-textarea"
+              placeholder="例如：预算 5 万以内，2 周内落地"></textarea>
+          </div>
+
+          <div v-if="autoDriveMode === 'decision'" class="form-section">
+            <label class="form-label">决策问题</label>
+            <textarea v-model="decisionTopic.question" class="form-textarea"
+              placeholder="例如：是否在本季度推出会员制"></textarea>
+            <label class="form-label">候选方案</label>
+            <textarea v-model="decisionTopic.options" class="form-textarea"
+              placeholder="例如：A. 先小范围内测&#10;B. 直接全量上线&#10;C. 延后至下季度"></textarea>
+            <label class="form-label">评估标准</label>
+            <textarea v-model="decisionTopic.criteria" class="form-textarea"
+              placeholder="例如：用户留存权重 40%，成本权重 30%，风险权重 30%"></textarea>
+          </div>
+
+          <div v-if="autoDriveMode === 'debate'" class="form-section">
+            <label class="form-label">辩题</label>
+            <textarea v-model="debateTopic.motion" class="form-textarea"
+              placeholder="例如：工作压力大时应该主动辞职"></textarea>
+            <label class="form-label">正方立场</label>
+            <textarea v-model="debateTopic.affirmative" class="form-textarea"
+              placeholder="例如：应该辞职，优先保护身心健康"></textarea>
+            <label class="form-label">反方立场</label>
+            <textarea v-model="debateTopic.negative" class="form-textarea"
+              placeholder="例如：不应辞职，应先寻求调整与支持"></textarea>
+          </div>
+
+          <div v-if="autoDriveMode === 'brainstorm'" class="form-section">
+            <label class="form-label">参与成员</label>
+            <div class="member-grid">
+              <label v-for="member in groupFriendMembers" :key="member.member_id" class="member-chip">
+                <input type="checkbox" :value="member.member_id" v-model="brainstormParticipants" />
+                <span>{{ member.name }}</span>
+              </label>
+            </div>
+          </div>
+
+          <div v-else-if="autoDriveMode === 'decision'" class="form-section">
+            <label class="form-label">参与成员</label>
+            <div class="member-grid">
+              <label v-for="member in groupFriendMembers" :key="member.member_id + '-decision'" class="member-chip">
+                <input type="checkbox" :value="member.member_id" v-model="decisionParticipants" />
+                <span>{{ member.name }}</span>
+              </label>
+            </div>
+          </div>
+
+          <div v-if="autoDriveMode === 'debate'" class="form-section">
+            <div class="debate-grid">
+              <div class="debate-col">
+                <label class="form-label">正方成员（1-2 人）</label>
+                <div class="member-grid">
+                  <label v-for="member in groupFriendMembers" :key="member.member_id + '-aff'" class="member-chip">
+                    <input type="checkbox" :value="member.member_id" v-model="debateAffirmative"
+                      :disabled="isDebateSideDisabled('affirmative', member.member_id)" />
+                    <span>{{ member.name }}</span>
+                  </label>
+                </div>
+              </div>
+              <div class="debate-col">
+                <label class="form-label">反方成员（1-2 人）</label>
+                <div class="member-grid">
+                  <label v-for="member in groupFriendMembers" :key="member.member_id + '-neg'" class="member-chip">
+                    <input type="checkbox" :value="member.member_id" v-model="debateNegative"
+                      :disabled="isDebateSideDisabled('negative', member.member_id)" />
+                    <span>{{ member.name }}</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+            <div class="form-hint">正反人数必须相等且每方最多 2 人</div>
+          </div>
+
+          <div class="form-section form-inline">
+            <div class="form-inline-item">
+              <label class="form-label">发言上限</label>
+              <input v-model="autoDriveTurnLimit" type="number" min="1" class="form-input" />
+            </div>
+            <div class="form-inline-item">
+              <label class="form-label">结束动作</label>
+              <select v-model="autoDriveEndAction" class="form-select">
+                <option value="summary">总结</option>
+                <option value="judge">胜负判定</option>
+                <option value="both">两者</option>
+              </select>
+            </div>
+          </div>
+
+          <div v-if="showSummarySelector" class="form-section">
+            <label class="form-label">总结角色</label>
+            <select v-model="autoDriveSummaryBy" class="form-select">
+              <option value="user">我（默认）</option>
+              <option v-for="member in groupFriendMembers" :key="member.member_id + '-summary'"
+                :value="member.member_id">
+                {{ member.name }}
+              </option>
+            </select>
+          </div>
+
+          <div v-if="showJudgeSelector" class="form-section">
+            <label class="form-label">评委角色</label>
+            <select v-model="autoDriveJudgeId" class="form-select">
+              <option value="user">我（默认）</option>
+              <option v-for="member in groupFriendMembers" :key="member.member_id + '-judge'"
+                :value="member.member_id">
+                {{ member.name }}
+              </option>
+            </select>
+          </div>
+        </div>
+        <DialogFooter class="sm:justify-end gap-2">
+          <Button variant="ghost" @click="autoDriveConfigOpen = false">取消</Button>
+          <Button type="button" variant="default" class="bg-emerald-600 hover:bg-emerald-700"
+            @click="handleStartAutoDrive">
+            开始自驱
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
     <!-- Toast Feedback -->
     <Transition name="fade">
@@ -1051,6 +1628,260 @@ const handleAvatarClick = (url: string) => {
   align-items: flex-start;
 }
 
+.debate-avatar {
+  position: relative;
+}
+
+.debate-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.debate-badge.affirmative {
+  background: #22c55e;
+}
+
+.debate-badge.negative {
+  background: #ef4444;
+}
+
+.debate-name-tag {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.debate-name-tag.affirmative {
+  background: #eafaf1;
+  color: #16a34a;
+}
+
+.debate-name-tag.negative {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.auto-drive-banner {
+  background: #ffffff;
+  border-bottom: 1px solid #e5e5e5;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.auto-drive-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.auto-drive-row.secondary {
+  font-size: 12px;
+  color: #888;
+}
+
+.auto-drive-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.auto-drive-tag {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #eafaf1;
+  color: #0f9d58;
+  flex-shrink: 0;
+}
+
+.auto-drive-topic {
+  font-size: 12px;
+  color: #555;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 240px;
+}
+
+.auto-drive-center {
+  font-size: 12px;
+  color: #666;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.auto-drive-progress {
+  color: #999;
+}
+
+.auto-drive-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.auto-drive-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  border-radius: 4px;
+  border: 1px solid #e5e5e5;
+  background: #fafafa;
+  color: #333;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.auto-drive-action:hover {
+  background: #f0f0f0;
+}
+
+.auto-drive-action.danger {
+  background: #fff5f5;
+  border-color: #f5c2c7;
+  color: #c0392b;
+}
+
+.auto-drive-action.disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.auto-drive-muted {
+  font-size: 12px;
+}
+
+.auto-drive-dialog .auto-drive-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.form-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.form-label {
+  font-size: 12px;
+  color: #666;
+}
+
+.form-textarea {
+  min-height: 64px;
+  padding: 8px 10px;
+  font-size: 13px;
+  border-radius: 4px;
+  border: 1px solid #e5e5e5;
+  background: #fff;
+  resize: vertical;
+}
+
+.form-input,
+.form-select {
+  padding: 8px 10px;
+  font-size: 13px;
+  border-radius: 4px;
+  border: 1px solid #e5e5e5;
+  background: #fff;
+}
+
+.form-inline {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.form-inline-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 140px;
+  flex: 1;
+}
+
+.mode-switch {
+  display: flex;
+  gap: 8px;
+}
+
+.mode-btn {
+  padding: 6px 12px;
+  font-size: 12px;
+  border-radius: 4px;
+  border: 1px solid #e5e5e5;
+  background: #fff;
+  cursor: pointer;
+}
+
+.mode-btn.active {
+  background: #07c160;
+  border-color: #07c160;
+  color: #fff;
+}
+
+.member-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.member-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid #e5e5e5;
+  background: #fafafa;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.member-chip input {
+  margin: 0;
+}
+
+.member-chip input:checked + span {
+  color: #07c160;
+  font-weight: 600;
+}
+
+.debate-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.form-hint {
+  font-size: 12px;
+  color: #999;
+}
+
 /* Input Area */
 .chat-input-area {
   position: relative;
@@ -1081,6 +1912,13 @@ const handleAvatarClick = (url: string) => {
 .toolbar-btn:hover {
   background: #e5e5e5;
   color: #333;
+}
+
+.auto-drive-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
 }
 
 .input-box {

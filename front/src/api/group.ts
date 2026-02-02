@@ -51,7 +51,10 @@ export interface GroupMessageRead {
     content: string;
     message_type: 'text' | 'system' | '@';
     mentions?: string[];
+    debate_side?: 'affirmative' | 'negative';
+    session_type?: 'normal' | 'brainstorm' | 'decision' | 'debate';
     create_time: string;
+    update_time?: string;
 }
 
 export interface GroupSessionRead {
@@ -62,6 +65,7 @@ export interface GroupSessionRead {
     update_time: string;
     ended: boolean;
     last_message_time?: string | null;
+    session_type?: 'normal' | 'brainstorm' | 'decision' | 'debate';
 }
 
 async function request<T>(options: { url: string; method: string; data?: any; params?: any }): Promise<T> {
