@@ -1,4 +1,4 @@
-﻿from fastapi import APIRouter, Depends, HTTPException, Body, Query
+﻿from fastapi import APIRouter, Depends, HTTPException, Body, Query, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 import json
@@ -137,5 +137,7 @@ def get_auto_drive_state(
 
     state = group_auto_drive_service.get_state(db, group_id)
     if not state:
-        raise HTTPException(status_code=404, detail="No active auto-drive")
+        return Response(status_code=204)
     return state
+
+

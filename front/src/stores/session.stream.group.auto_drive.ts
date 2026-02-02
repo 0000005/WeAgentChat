@@ -200,6 +200,10 @@ export const createGroupAutoDriveStreamActions = (deps: GroupAutoDriveStreamDeps
     const fetchAutoDriveState = async (groupId: number) => {
         try {
             const state = await groupAutoDriveApi.getState(groupId)
+            if (!state) {
+                setAutoDriveState(groupId, null)
+                return null
+            }
             const mapped = toAutoDriveState(state)
             setAutoDriveState(groupId, mapped)
             if (isActiveStatus(mapped.status)) {

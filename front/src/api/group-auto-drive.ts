@@ -69,6 +69,9 @@ async function request<T>(options: { url: string; method: string; data?: any; pa
         throw new Error(errorBody.detail || `Request failed with status ${response.status}`)
     }
 
+    if (response.status === 204) {
+        return null as T
+    }
     return response.json()
 }
 
@@ -106,7 +109,7 @@ export const groupAutoDriveApi = {
     },
 
     getState: (groupId: number) => {
-        return request<AutoDriveStateRead>({
+        return request<AutoDriveStateRead | null>({
             url: '/group/auto-drive/state',
             method: 'GET',
             params: { group_id: groupId },

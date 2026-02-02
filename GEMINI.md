@@ -130,7 +130,10 @@ Vue 3 frontend implemented with a focus on WeChat's aesthetic.
     *   `ui/`: Base UI primitives (via shadcn-vue, e.g., HoverCard, Dialog, Button).
     *   `common/`: Common reusable components (e.g., `AvatarUploader.vue`, `ToolCallsDetail.vue`).
     *   `ChatArea.vue`: Main message terminal (supports SSE events & reasoning).
+    *   `GroupChatArea.vue`: Group chat main area (supports SSE events & auto-drive).
+    *   `GroupChatArea.css`: Scoped styles for `GroupChatArea.vue`.
     *   `ChatDrawerMenu.vue`: WeChat-style drawer for chat settings and actions.
+    *   `GroupChatDrawer.vue`: Group chat drawer (members, info, actions).
     *   `Sidebar.vue`: Session list and search.
     *   `IconSidebar.vue`: Vertical icon menu (WeChat style).
     *   `SettingsDialog.vue`: Management of LLM, Memory, and System settings.
@@ -139,11 +142,13 @@ Vue 3 frontend implemented with a focus on WeChat's aesthetic.
     *   `AssistantWizard.vue`: AI-guided friend creation wizard.
     *   `FriendGallery.vue`: Friend library (preset personas gallery).
     *   `FriendComposeDialog.vue`: Friend edit/create dialog.
+    *   `GroupComposeDialog.vue`: Group create/edit dialog.
     *   `EmojiPicker.vue`: WeChat-style emoji selection.
     *   `AboutDialog.vue`: About dialog with version info.
     *   `UpdateNotifyDialog.vue`: Update notification dialog.
     *   `WindowControls.vue`: Custom window controls (minimize/maximize/close).
     *   `ToastContainer.vue`: Toast notification container.
+    *   `GroupAutoDriveConfigDialog.vue`: Auto-drive configuration dialog for group chat.
 *   **`stores/`**: Pinia state management.
     *   `session.ts`: 会话状态入口与编排层（仅 state/computed + 组合 action）。
     *   `session.fetch.ts`: 拉取/分页/同步相关逻辑。
