@@ -480,6 +480,8 @@ const autoDriveNextSpeakerName = computed(() => {
   return member?.name || 'AI'
 })
 
+const isEndActionJudge = computed(() => ['judge', 'both'].includes(autoDriveEndAction.value))
+
 const getMessageDebateSide = (msg: Message): DebateSide | undefined => {
   if (msg.debateSide) return msg.debateSide
   if (msg.sessionType !== 'debate') return undefined
@@ -718,6 +720,10 @@ const validateAutoDriveConfig = () => {
     }
     if (debateAffirmative.value.length !== debateNegative.value.length) {
       triggerToast('正反人数必须相等')
+      return false
+    }
+    if (isEndActionJudge.value && autoDriveJudgeId.value === 'user') {
+      triggerToast('胜负判定需要指定评委成员')
       return false
     }
   }
@@ -979,13 +985,9 @@ const handleAvatarClick = (url: string) => {
                 class="message-group group-assistant">
                 <div class="message-wrapper message-assistant group relative">
                   <!-- Avatar -->
-                  <div class="message-avatar" :class="{ 'debate-avatar': getMessageDebateSide(msg) }"
+                  <div class="message-avatar"
                     @click="handleAvatarClick(getMemberAvatar(msg.senderId || 'assistant', 'assistant'))">
                     <img :src="getMemberAvatar(msg.senderId || 'assistant', 'assistant')" alt="Avatar" />
-                    <span v-if="getMessageDebateSide(msg)" class="debate-badge"
-                      :class="getMessageDebateSide(msg) === 'affirmative' ? 'affirmative' : 'negative'">
-                      {{ getMessageDebateSide(msg) === 'affirmative' ? '正' : '反' }}
-                    </span>
                   </div>
 
                   <!-- Message Bubble -->
@@ -1268,6 +1270,9 @@ const handleAvatarClick = (url: string) => {
                 {{ member.name }}
               </option>
             </select>
+            <div v-if="autoDriveJudgeId === 'user'" class="form-hint">
+              选择“我”不会自动生成胜负判断，请改选评委成员
+            </div>
           </div>
         </div>
         <DialogFooter class="sm:justify-end gap-2">
@@ -1674,33 +1679,6 @@ const handleAvatarClick = (url: string) => {
 
 .group-assistant {
   align-items: flex-start;
-}
-
-.debate-avatar {
-  position: relative;
-}
-
-.debate-badge {
-  position: absolute;
-  top: -4px;
-  right: -4px;
-  width: 16px;
-  height: 16px;
-  border-radius: 999px;
-  font-size: 10px;
-  font-weight: 600;
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.debate-badge.affirmative {
-  background: #22c55e;
-}
-
-.debate-badge.negative {
-  background: #ef4444;
 }
 
 .debate-name-tag {
