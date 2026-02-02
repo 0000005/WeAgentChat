@@ -463,7 +463,8 @@ const autoDriveProgressLabel = computed(() => {
     const order = Array.isArray(state.roles?.order) ? state.roles.order : []
     const count = order.length || ((state.roles?.affirmative?.length || 0) + (state.roles?.negative?.length || 0))
     if (count > 0) total = state.turnLimit * count
-    current = state.currentTurn ?? state.currentRound ?? 0
+    const openingCount = (state.roles?.affirmative?.length ? 1 : 0) + (state.roles?.negative?.length ? 1 : 0)
+    current = Math.max((state.currentTurn ?? 0) - openingCount, 0)
   }
 
   const safeTotal = total || 0
