@@ -18,6 +18,7 @@ from app.services.embedding_service import embedding_service
 from app.services.llm_client import set_agents_default_client
 from app.services.memo.bridge import MemoService
 from app.services.memo.constants import DEFAULT_USER_ID, DEFAULT_SPACE_ID
+from app.services.reasoning_stream import extract_reasoning_delta
 from app.prompt import get_prompt
 from app.db.session import SessionLocal
 import re
@@ -84,14 +85,6 @@ def _extract_reasoning_text(raw: object) -> str:
 
 # Initialize logger for this module
 logger = logging.getLogger(__name__)
-
-# SSE Debug logger
-sse_logger = logging.getLogger("sse_debug")
-sse_logger.setLevel(logging.DEBUG)
-if not sse_logger.handlers:
-    handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter('[SSE %(asctime)s.%(msecs)03d] %(message)s', datefmt='%H:%M:%S'))
-    sse_logger.addHandler(handler)
 
 from openai.types.shared import Reasoning
 from openai.types.responses import (
@@ -873,6 +866,9 @@ async def _run_chat_generation_task(
         top_p = friend.top_p if friend and friend.top_p is not None else 0.9
 
         use_litellm = provider_rules.should_use_litellm(llm_config, raw_model_name)
+        if use_litellm and provider_rules.is_gemini_model(llm_config, raw_model_name):
+            if temperature is not None and temperature < 1.0:
+                temperature = 1.0
         model_settings_kwargs = {}
         if _supports_sampling(model_name):
             model_settings_kwargs["temperature"] = temperature
@@ -883,10 +879,16 @@ async def _run_chat_generation_task(
             and provider_rules.supports_reasoning_effort(llm_config)
         ):
             model_settings_kwargs["reasoning"] = Reasoning(
-                effort="low" if enable_thinking else "none"
+                effort=provider_rules.get_reasoning_effort(
+                    llm_config, raw_model_name, enable_thinking
+                )
             )
         if use_litellm and enable_thinking:
-            model_settings_kwargs["reasoning"] = Reasoning(effort="low")
+            model_settings_kwargs["reasoning"] = Reasoning(
+                effort=provider_rules.get_reasoning_effort(
+                    llm_config, raw_model_name, enable_thinking
+                )
+            )
         model_settings = ModelSettings(**model_settings_kwargs)
         if use_litellm:
             from agents.extensions.models.litellm_model import LitellmModel
@@ -929,10 +931,10 @@ async def _run_chat_generation_task(
         async for event in result.stream_events():
             if isinstance(event, RunItemStreamEvent) and event.name == "reasoning_item_created":
                 if enable_thinking and isinstance(event.item, ReasoningItem):
-                    has_reasoning_item = True
                     raw = event.item.raw_item
                     text = _extract_reasoning_text(raw)
                     if text:
+                        has_reasoning_item = True
                         await queue.put({"event": "model_thinking", "data": {"delta": text}})
                 continue
             if isinstance(event, RunItemStreamEvent) and event.name == "tool_called":
@@ -974,6 +976,13 @@ async def _run_chat_generation_task(
                         },
                     })
                 continue
+
+            if event.type == "raw_response_event" and enable_thinking:
+                reasoning_delta = extract_reasoning_delta(event.data)
+                if reasoning_delta:
+                    has_reasoning_item = True
+                    await queue.put({"event": "model_thinking", "data": {"delta": reasoning_delta}})
+                    continue
 
             if event.type == "raw_response_event" and isinstance(event.data, ResponseTextDeltaEvent):
                 delta = event.data.delta
@@ -1021,6 +1030,7 @@ async def _run_chat_generation_task(
 
         if think_fallback_buffer and enable_thinking and not has_reasoning_item:
             await queue.put({"event": "model_thinking", "data": {"delta": think_fallback_buffer}})
+
 
         # 5. Save to DB
         ai_msg = db.query(Message).filter(Message.id == ai_msg_id).first()

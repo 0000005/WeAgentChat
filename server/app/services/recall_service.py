@@ -179,7 +179,9 @@ class RecallService:
             and provider_rules.supports_reasoning_effort(llm_config)
         ):
             model_settings_kwargs["reasoning"] = Reasoning(
-                effort="low"
+                effort=provider_rules.get_reasoning_effort(
+                    llm_config, raw_model_name, True
+                )
             )
         model_settings = ModelSettings(**model_settings_kwargs)
         if use_litellm:

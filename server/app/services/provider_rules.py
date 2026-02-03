@@ -58,15 +58,29 @@ def should_use_litellm(llm_config, model_name: Optional[str]) -> bool:
 def supports_reasoning_effort(llm_config) -> bool:
     provider = _get_provider(llm_config)
     base_url = _get_base_url(llm_config)
-    if provider in ("openai", "deepseek"):
+    if provider in ("openai", "deepseek", "gemini"):
         return True
     if provider == "openai_compatible":
         if "openai.com" in base_url or "deepseek" in base_url:
             return True
         return False
+    if is_gemini_model(llm_config, None):
+        return True
     if "deepseek" in base_url:
         return True
     return False
+
+
+def get_reasoning_effort(
+    llm_config,
+    model_name: Optional[str],
+    enable_thinking: bool,
+) -> str:
+    if not enable_thinking:
+        return "none"
+    if is_gemini_model(llm_config, model_name):
+        return "low"
+    return "low"
 
 
 def needs_gemini_thought_signature(llm_config, model_name: Optional[str]) -> bool:

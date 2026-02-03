@@ -12,6 +12,8 @@ from agents.items import ReasoningItem, ToolCallItem, ToolCallOutputItem
 from agents.stream_events import RunItemStreamEvent
 from openai.types.responses import ResponseTextDeltaEvent
 
+from app.services.reasoning_stream import extract_reasoning_delta
+
 # Story 09-06: 控制符常量
 CTRL_NO_REPLY = "<CTRL:NO_REPLY>"
 
@@ -311,6 +313,7 @@ async def stream_llm_to_queue(
 ) -> str:
     content_buffer = ""
     has_reasoning_item = False
+    reasoning_stream_seen = False
     tool_call_names: Dict[str, str] = {}
     usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
@@ -325,18 +328,19 @@ async def stream_llm_to_queue(
     async for event in result.stream_events():
         if isinstance(event, RunItemStreamEvent) and event.name == "reasoning_item_created":
             if enable_thinking and isinstance(event.item, ReasoningItem):
-                has_reasoning_item = True
-                raw = event.item.raw_item
-                text = _extract_reasoning_text(raw)
-                if text:
-                    await queue.put({
-                        "event": "model_thinking",
-                        "data": {
-                            "sender_id": str(sender_id),
-                            "delta": text,
-                            "message_id": message_id,
-                        },
-                    })
+                if not reasoning_stream_seen:
+                    raw = event.item.raw_item
+                    text = _extract_reasoning_text(raw)
+                    if text:
+                        has_reasoning_item = True
+                        await queue.put({
+                            "event": "model_thinking",
+                            "data": {
+                                "sender_id": str(sender_id),
+                                "delta": text,
+                                "message_id": message_id,
+                            },
+                        })
             continue
 
         if isinstance(event, RunItemStreamEvent) and event.name == "tool_called":
@@ -390,6 +394,21 @@ async def stream_llm_to_queue(
                     },
                 })
             continue
+
+        if event.type == "raw_response_event" and enable_thinking:
+            reasoning_delta = extract_reasoning_delta(event.data)
+            if reasoning_delta:
+                reasoning_stream_seen = True
+                has_reasoning_item = True
+                await queue.put({
+                    "event": "model_thinking",
+                    "data": {
+                        "sender_id": str(sender_id),
+                        "delta": reasoning_delta,
+                        "message_id": message_id,
+                    },
+                })
+                continue
 
         if event.type == "raw_response_event" and isinstance(event.data, ResponseTextDeltaEvent):
             delta = event.data.delta
