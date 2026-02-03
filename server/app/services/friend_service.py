@@ -8,14 +8,13 @@ from app.services.llm_service import llm_service
 from app.schemas.friend import (
     FriendCreate,
     FriendUpdate,
-    FriendRecommendationResponse,
 )
 from app.services import provider_rules
 from app.services.llm_client import set_agents_default_client
 from app.prompt.loader import load_prompt
 from openai.types.responses import ResponseOutputText, ResponseTextDeltaEvent
-from agents import Agent, ModelSettings, RunConfig, Runner
-from agents.items import MessageOutputItem
+from agents import Agent, ModelSettings, RunConfig, Runner, function_tool
+from agents.items import MessageOutputItem, ToolCallItem, ToolCallOutputItem
 from agents.stream_events import RunItemStreamEvent
 import json
 import logging
@@ -89,6 +88,7 @@ async def _stream_agent_events(
     user_input: str,
     run_config: RunConfig,
     full_parts: list[str],
+    tool_payloads: list[object],
 ):
     result = Runner.run_streamed(
         agent,
@@ -112,6 +112,35 @@ async def _stream_agent_events(
                 if message_text:
                     full_parts.append(message_text)
                     yield {"event": "delta", "data": {"delta": message_text}}
+            continue
+
+        if isinstance(event, RunItemStreamEvent) and event.name == "tool_called":
+            if isinstance(event.item, ToolCallItem):
+                raw = event.item.raw_item
+                if isinstance(raw, dict):
+                    name = raw.get("name")
+                    arguments = raw.get("arguments")
+                else:
+                    name = getattr(raw, "name", None)
+                    arguments = getattr(raw, "arguments", None)
+                if name == "submit_recommendations" and arguments:
+                    payload = None
+                    if isinstance(arguments, dict):
+                        payload = arguments
+                    elif isinstance(arguments, str):
+                        try:
+                            payload = json.loads(arguments)
+                        except json.JSONDecodeError:
+                            payload = None
+                    if payload is not None:
+                        tool_payloads.append(payload)
+            continue
+
+        if isinstance(event, RunItemStreamEvent) and event.name == "tool_call_output":
+            if isinstance(event.item, ToolCallOutputItem):
+                output = event.item.output
+                if isinstance(output, dict):
+                    tool_payloads.append(output)
             continue
 
 def get_friends(db: Session, skip: int = 0, limit: int = 100) -> List[Friend]:
@@ -290,61 +319,46 @@ async def recommend_friends_by_topic_stream(db: Session, topic: str, exclude_nam
     else:
         agent_model = model_name
 
-    output_type = FriendRecommendationResponse if provider_rules.supports_json_mode(
-        llm_config,
-        raw_model_name,
-    ) else None
-
     model_settings = ModelSettings(temperature=0.7) if _supports_sampling(model_name) else ModelSettings()
+    tool_description = "提交好友推荐结果，参数必须为 JSON 对象：{recommendations: [{name, reason, description_hint}]}"
+
+    @function_tool(
+        name_override="submit_recommendations",
+        description_override=tool_description,
+        strict_mode=False,
+    )
+    async def submit_recommendations(recommendations: List[dict]) -> dict:
+        return {"recommendations": recommendations}
+
     agent = Agent(
         name="FriendRecommendation",
         instructions=system_prompt,
         model=agent_model,
         model_settings=model_settings,
-        output_type=output_type,
+        tools=[submit_recommendations],
     )
 
     run_config = RunConfig(trace_include_sensitive_data=True)
     full_parts: list[str] = []
+    tool_payloads: list[object] = []
     try:
         async for event_data in _stream_agent_events(
             agent,
-            "请开始生成推荐结果。",
+            "请生成推荐结果并调用 submit_recommendations 工具提交。",
             run_config,
             full_parts,
+            tool_payloads,
         ):
             yield event_data
     except Exception as e:
-        if output_type and provider_rules.is_json_mode_unsupported_error(e):
-            logger.warning(f"[FriendRecommendationStream] JSON mode unsupported, fallback to normal call: {e}")
-            full_parts = []
-            agent = Agent(
-                name="FriendRecommendation",
-                instructions=system_prompt,
-                model=agent_model,
-                model_settings=model_settings,
-            )
-            try:
-                async for event_data in _stream_agent_events(
-                    agent,
-                    "请开始生成推荐结果。",
-                    run_config,
-                    full_parts,
-                ):
-                    yield event_data
-            except Exception as e2:
-                logger.error(f"[FriendRecommendationStream] LLM call failed: {e2}")
-                yield {"event": "error", "data": {"detail": f"AI 调用失败: {str(e2)}"}}
-                return
-        else:
-            logger.error(f"[FriendRecommendationStream] LLM call failed: {e}")
-            yield {"event": "error", "data": {"detail": f"AI 调用失败: {str(e)}"}}
-            return
+        logger.error(f"[FriendRecommendationStream] LLM call failed: {e}")
+        yield {"event": "error", "data": {"detail": f"AI 调用失败: {str(e)}"}}
+        return
 
     full_content = "".join(full_parts)
     
     # 5. Parse Final Result
-    if not full_content:
+    if not full_content and not tool_payloads:
         yield {"event": "error", "data": {"detail": "AI 返回了空结果"}}
         return
     
@@ -354,20 +368,25 @@ async def recommend_friends_by_topic_stream(db: Session, topic: str, exclude_nam
     result_text = _strip_json_code_fences(full_content) or ""
     logger.debug(f"[FriendRecommendationStream] Raw result_text:\n{result_text}")
 
-    try:
-        data = json.loads(result_text)
-    except json.JSONDecodeError:
-        repaired_text = _repair_json_text(result_text)
-        logger.debug(f"[FriendRecommendationStream] Repaired result_text:\n{repaired_text}")
+    data = None
+    if tool_payloads:
+        data = tool_payloads[-1]
+    else:
+        logger.warning("[FriendRecommendationStream] Tool call missing; fallback to parse text output.")
         try:
-            data = json.loads(repaired_text)
+            data = json.loads(result_text)
         except json.JSONDecodeError:
-            data = _extract_first_json_value(repaired_text)
-            if data is None:
-                logger.error("[FriendRecommendationStream] JSON parse failed: unable to extract valid JSON object/array.")
-                logger.error(f"[FriendRecommendationStream] Failed to parse text:\n{repaired_text}")
-                yield {"event": "error", "data": {"detail": "AI 返回的格式无法解析"}}
-                return
+            repaired_text = _repair_json_text(result_text)
+            logger.debug(f"[FriendRecommendationStream] Repaired result_text:\n{repaired_text}")
+            try:
+                data = json.loads(repaired_text)
+            except json.JSONDecodeError:
+                data = _extract_first_json_value(repaired_text)
+                if data is None:
+                    logger.error("[FriendRecommendationStream] JSON parse failed: unable to extract valid JSON object/array.")
+                    logger.error(f"[FriendRecommendationStream] Failed to parse text:\n{repaired_text}")
+                    yield {"event": "error", "data": {"detail": "AI 返回的格式无法解析"}}
+                    return
     
     # Extract recommendations (期望为对象结构)
     raw_list = []
