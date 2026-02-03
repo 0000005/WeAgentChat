@@ -5,9 +5,18 @@ from datetime import datetime, timezone
 from app.models.friend import Friend
 from app.models.chat import ChatSession, Message
 from app.services.llm_service import llm_service
-from app.schemas.friend import FriendCreate, FriendUpdate, FriendRecommendationItem
+from app.schemas.friend import (
+    FriendCreate,
+    FriendUpdate,
+    FriendRecommendationResponse,
+)
+from app.services import provider_rules
+from app.services.llm_client import set_agents_default_client
 from app.prompt.loader import load_prompt
-from openai import AsyncOpenAI
+from openai.types.responses import ResponseOutputText, ResponseTextDeltaEvent
+from agents import Agent, ModelSettings, RunConfig, Runner
+from agents.items import MessageOutputItem
+from agents.stream_events import RunItemStreamEvent
 import json
 import logging
 
@@ -15,6 +24,17 @@ def get_friend(db: Session, friend_id: int) -> Optional[Friend]:
     return db.query(Friend).filter(Friend.id == friend_id, Friend.deleted == False).first()
 
 import re
+
+def _strip_json_code_fences(content: Optional[str]) -> Optional[str]:
+    if not content:
+        return content
+    text = content.strip()
+    match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text, re.IGNORECASE)
+    if match:
+        return match.group(1).strip()
+    text = re.sub(r"^```(?:json)?", "", text, flags=re.IGNORECASE).strip()
+    text = re.sub(r"```$", "", text).strip()
+    return text
 
 def _strip_message_tags(content: Optional[str]) -> Optional[str]:
     if not content:
@@ -25,6 +45,74 @@ def _strip_message_tags(content: Optional[str]) -> Optional[str]:
         return " ".join(part.strip() for part in parts if part.strip())
     # 兜底：如果没有匹配到完整标签但包含标签字符，直接剔除所有标签文本
     return re.sub(r'</?message>', '', content).strip()
+
+def _model_base_name(model_name: Optional[str]) -> str:
+    if not model_name:
+        return ""
+    return model_name.split("/", 1)[-1].lower()
+
+def _supports_sampling(model_name: Optional[str]) -> bool:
+    return not _model_base_name(model_name).startswith("gpt-5")
+
+def _repair_json_text(text: str) -> str:
+    repaired = re.sub(r':\s*([《【])', r': "\1', text)
+    repaired = re.sub(r'([^\\])""', r'\1"', repaired)
+    repaired = re.sub(r'([。！？\.\!\?])""', r'\1"', repaired)
+
+    def _quote_bare_value(match: re.Match) -> str:
+        prefix = match.group("prefix")
+        value = match.group("value").strip()
+        value = value.replace('"', '\\"')
+        return f'{prefix}"{value}"'
+
+    repaired = re.sub(
+        r'(?P<prefix>"(?:name|reason|description_hint)"\s*:\s*)(?P<value>[^"\{\[\d\-tfn][^,\n}]*)',
+        _quote_bare_value,
+        repaired,
+        flags=re.IGNORECASE,
+    )
+    return repaired
+
+def _extract_first_json_value(text: str) -> Optional[object]:
+    decoder = json.JSONDecoder()
+    for match in re.finditer(r'[\{\[]', text):
+        start = match.start()
+        try:
+            value, _ = decoder.raw_decode(text[start:])
+            return value
+        except json.JSONDecodeError:
+            continue
+    return None
+
+async def _stream_agent_events(
+    agent: Agent,
+    user_input: str,
+    run_config: RunConfig,
+    full_parts: list[str],
+):
+    result = Runner.run_streamed(
+        agent,
+        user_input,
+        run_config=run_config,
+    )
+    async for event in result.stream_events():
+        if event.type == "raw_response_event" and isinstance(event.data, ResponseTextDeltaEvent):
+            delta = event.data.delta
+            if delta:
+                full_parts.append(delta)
+                yield {"event": "delta", "data": {"delta": delta}}
+            continue
+
+        if isinstance(event, RunItemStreamEvent) and event.name == "message_output_created":
+            if isinstance(event.item, MessageOutputItem):
+                message_text = ""
+                for part in event.item.raw_item.content:
+                    if isinstance(part, ResponseOutputText):
+                        message_text += part.text or ""
+                if message_text:
+                    full_parts.append(message_text)
+                    yield {"event": "delta", "data": {"delta": message_text}}
+            continue
 
 def get_friends(db: Session, skip: int = 0, limit: int = 100) -> List[Friend]:
     # 子查询：获取每个好友的最新消息ID（通过 ChatSession 连接）
@@ -182,28 +270,78 @@ async def recommend_friends_by_topic_stream(db: Session, topic: str, exclude_nam
         yield {"event": "error", "data": {"detail": "请先在设置中配置 LLM 模型"}}
         return
     
-    # 4. Call LLM in Stream Mode
-    client = AsyncOpenAI(base_url=llm_config.base_url, api_key=llm_config.api_key, timeout=60.0)
-    
-    full_content = ""
-    try:
-        stream = await client.chat.completions.create(
-            model=llm_config.model_name,
-            messages=[{"role": "system", "content": system_prompt}],
-            temperature=0.7,
-            stream=True
+    # 4. Call LLM in Stream Mode (Agents)
+    set_agents_default_client(llm_config, timeout=60.0, use_for_tracing=True)
+
+    raw_model_name = llm_config.model_name
+    model_name = llm_service.normalize_model_name(raw_model_name)
+    use_litellm = provider_rules.should_use_litellm(llm_config, raw_model_name)
+
+    if use_litellm:
+        from agents.extensions.models.litellm_model import LitellmModel
+
+        gemini_model_name = provider_rules.normalize_gemini_model_name(raw_model_name)
+        gemini_base_url = provider_rules.normalize_gemini_base_url(llm_config.base_url)
+        agent_model = LitellmModel(
+            model=gemini_model_name,
+            base_url=gemini_base_url,
+            api_key=llm_config.api_key,
         )
-        
-        async for chunk in stream:
-            if chunk.choices and chunk.choices[0].delta.content:
-                delta = chunk.choices[0].delta.content
-                full_content += delta
-                yield {"event": "delta", "data": {"delta": delta}}
-                
+    else:
+        agent_model = model_name
+
+    output_type = FriendRecommendationResponse if provider_rules.supports_json_mode(
+        llm_config,
+        raw_model_name,
+    ) else None
+
+    model_settings = ModelSettings(temperature=0.7) if _supports_sampling(model_name) else ModelSettings()
+    agent = Agent(
+        name="FriendRecommendation",
+        instructions=system_prompt,
+        model=agent_model,
+        model_settings=model_settings,
+        output_type=output_type,
+    )
+
+    run_config = RunConfig(trace_include_sensitive_data=True)
+    full_parts: list[str] = []
+    try:
+        async for event_data in _stream_agent_events(
+            agent,
+            "请开始生成推荐结果。",
+            run_config,
+            full_parts,
+        ):
+            yield event_data
     except Exception as e:
-        logger.error(f"[FriendRecommendationStream] LLM call failed: {e}")
-        yield {"event": "error", "data": {"detail": f"AI 调用失败: {str(e)}"}}
-        return
+        if output_type and provider_rules.is_json_mode_unsupported_error(e):
+            logger.warning(f"[FriendRecommendationStream] JSON mode unsupported, fallback to normal call: {e}")
+            full_parts = []
+            agent = Agent(
+                name="FriendRecommendation",
+                instructions=system_prompt,
+                model=agent_model,
+                model_settings=model_settings,
+            )
+            try:
+                async for event_data in _stream_agent_events(
+                    agent,
+                    "请开始生成推荐结果。",
+                    run_config,
+                    full_parts,
+                ):
+                    yield event_data
+            except Exception as e2:
+                logger.error(f"[FriendRecommendationStream] LLM call failed: {e2}")
+                yield {"event": "error", "data": {"detail": f"AI 调用失败: {str(e2)}"}}
+                return
+        else:
+            logger.error(f"[FriendRecommendationStream] LLM call failed: {e}")
+            yield {"event": "error", "data": {"detail": f"AI 调用失败: {str(e)}"}}
+            return
+
+    full_content = "".join(full_parts)
     
     # 5. Parse Final Result
     if not full_content:
@@ -213,32 +351,36 @@ async def recommend_friends_by_topic_stream(db: Session, topic: str, exclude_nam
     logger.info(f"[FriendRecommendationStream] Full LLM response:\n{full_content}")
     
     # Cleanup markdown
-    result_text = full_content
-    if "```json" in result_text:
-        result_text = result_text.split("```json")[1].split("```")[0].strip()
-    elif "```" in result_text:
-        result_text = result_text.split("```")[1].split("```")[0].strip()
-    
-    # 预处理修复常见 LLM JSON 格式错误
-    result_text = re.sub(r':\s*([《【\[])', r': "\1', result_text)
-    result_text = re.sub(r'([^\\])""', r'\1"', result_text)
-    result_text = re.sub(r'([。！？\.\!\?])""', r'\1"', result_text)
-    
-    logger.debug(f"[FriendRecommendationStream] Cleaned result_text:\n{result_text}")
-    
+    result_text = _strip_json_code_fences(full_content) or ""
+    logger.debug(f"[FriendRecommendationStream] Raw result_text:\n{result_text}")
+
     try:
         data = json.loads(result_text)
-    except json.JSONDecodeError as e:
-        logger.error(f"[FriendRecommendationStream] JSON parse failed: {e}")
-        logger.error(f"[FriendRecommendationStream] Failed to parse text:\n{result_text}")
-        yield {"event": "error", "data": {"detail": "AI 返回的格式无法解析"}}
-        return
+    except json.JSONDecodeError:
+        repaired_text = _repair_json_text(result_text)
+        logger.debug(f"[FriendRecommendationStream] Repaired result_text:\n{repaired_text}")
+        try:
+            data = json.loads(repaired_text)
+        except json.JSONDecodeError:
+            data = _extract_first_json_value(repaired_text)
+            if data is None:
+                logger.error("[FriendRecommendationStream] JSON parse failed: unable to extract valid JSON object/array.")
+                logger.error(f"[FriendRecommendationStream] Failed to parse text:\n{repaired_text}")
+                yield {"event": "error", "data": {"detail": "AI 返回的格式无法解析"}}
+                return
     
-    # Extract recommendations
+    # Extract recommendations (期望为对象结构)
     raw_list = []
     if isinstance(data, dict):
-        raw_list = data.get("recommendations", []) or next((v for v in data.values() if isinstance(v, list)), [])
+        raw_list = data.get("recommendations", [])
+        if not isinstance(raw_list, list):
+            raw_list = []
+        if not raw_list:
+            raw_list = next((v for v in data.values() if isinstance(v, list)), [])
+            if raw_list:
+                logger.warning("[FriendRecommendationStream] LLM returned object without recommendations key; fallback to first list value.")
     elif isinstance(data, list):
+        logger.warning("[FriendRecommendationStream] LLM returned array; wrapping into object.")
         raw_list = data
     
     items = []

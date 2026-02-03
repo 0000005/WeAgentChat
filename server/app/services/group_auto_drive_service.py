@@ -15,10 +15,10 @@ from app.schemas import group_auto_drive as ad_schemas
 from app.services import group_chat_shared, provider_rules
 from app.services.llm_service import llm_service
 from app.services.memo.constants import DEFAULT_USER_ID
+from app.services.llm_client import set_agents_default_client
 
-from openai import AsyncOpenAI
 from openai.types.shared import Reasoning
-from agents import Agent, ModelSettings, function_tool, set_default_openai_client, set_default_openai_api
+from agents import Agent, ModelSettings, function_tool
 
 logger = logging.getLogger(__name__)
 
@@ -914,9 +914,7 @@ class GroupAutoDriveService:
             json.dumps(agent_messages, ensure_ascii=False, indent=2),
         )
 
-        client = AsyncOpenAI(base_url=llm_config.base_url, api_key=llm_config.api_key)
-        set_default_openai_client(client)
-        set_default_openai_api("chat_completions")
+        set_agents_default_client(llm_config, use_for_tracing=True)
 
         enable_thinking = runtime.enable_thinking
         if llm_config and enable_thinking and not llm_config.capability_reasoning:

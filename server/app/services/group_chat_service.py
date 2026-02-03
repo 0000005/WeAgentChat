@@ -18,11 +18,11 @@ from app.prompt import get_prompt
 from app.db.session import SessionLocal
 from app.services.memo.constants import DEFAULT_USER_ID, DEFAULT_SPACE_ID
 from app.services.memo.bridge import MemoService
+from app.services.llm_client import set_agents_default_client
 
 
-from openai import AsyncOpenAI
 from openai.types.shared import Reasoning
-from agents import Agent, ModelSettings, RunConfig, Runner, function_tool, set_default_openai_client, set_default_openai_api
+from agents import Agent, ModelSettings, RunConfig, Runner, function_tool
 
 logger = logging.getLogger(__name__)
 
@@ -287,9 +287,7 @@ class GroupChatService:
         manager_prompt = get_prompt("chat/group_manager.txt").strip()
         few_shots = GroupChatService._load_manager_few_shots()
 
-        client = AsyncOpenAI(base_url=llm_config.base_url, api_key=llm_config.api_key)
-        set_default_openai_client(client, use_for_tracing=True)
-        set_default_openai_api("chat_completions")
+        set_agents_default_client(llm_config, use_for_tracing=True)
 
         raw_model_name = llm_config.model_name
         model_name = llm_service.normalize_model_name(raw_model_name)
@@ -688,9 +686,7 @@ class GroupChatService:
                 logger.info(f"[GroupGenTask] AI Context (Items) for {friend_name} (ID: {friend_id}):\n{json.dumps(agent_messages, ensure_ascii=False, indent=2)}")
 
                 # 6. 调用 LLM
-                client = AsyncOpenAI(base_url=llm_config.base_url, api_key=llm_config.api_key)
-                set_default_openai_client(client)
-                set_default_openai_api("chat_completions")
+                set_agents_default_client(llm_config, use_for_tracing=True)
                 
                 temperature = friend.temperature if friend.temperature is not None else 0.8
                 top_p = friend.top_p if friend.top_p is not None else 0.9

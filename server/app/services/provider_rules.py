@@ -75,3 +75,39 @@ def needs_gemini_thought_signature(llm_config, model_name: Optional[str]) -> boo
 
 def needs_deepseek_reasoning_item(llm_config, model_name: Optional[str]) -> bool:
     return is_deepseek_model(llm_config, model_name)
+
+
+def supports_json_mode(llm_config, model_name: Optional[str] = None) -> bool:
+    provider = _get_provider(llm_config)
+    base_url = _get_base_url(llm_config)
+    if provider in ("openai", "deepseek"):
+        return True
+    if provider == "openai_compatible":
+        if "openai.com" in base_url or "deepseek" in base_url:
+            return True
+        return False
+    if "openai.com" in base_url or "deepseek" in base_url:
+        return True
+    if is_gemini_model(llm_config, model_name):
+        return False
+    return False
+
+
+def json_mode_response_format(llm_config, model_name: Optional[str] = None) -> Optional[dict]:
+    if supports_json_mode(llm_config, model_name):
+        return {"response_format": {"type": "json_object"}}
+    return None
+
+
+def is_json_mode_unsupported_error(error: Exception) -> bool:
+    message = str(error).lower()
+    if "response_format" in message and ("not supported" in message or "unsupported" in message):
+        return True
+    if "response_format" in message and ("invalid" in message or "unknown" in message):
+        return True
+    if "json" in message and "response_format" in message:
+        return True
+    status_code = getattr(error, "status_code", None)
+    if status_code == 400 and "response_format" in message:
+        return True
+    return False

@@ -5,9 +5,8 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from agents import Agent, ModelSettings, Runner, RunConfig, function_tool, set_default_openai_api, set_default_openai_client
+from agents import Agent, ModelSettings, Runner, RunConfig, function_tool
 from agents.items import ReasoningItem, ToolCallItem, ToolCallOutputItem
-from openai import AsyncOpenAI
 from openai.types.shared import Reasoning
 from sqlalchemy.orm import Session
 
@@ -15,6 +14,7 @@ from app.services.memo.bridge import MemoService
 from app.services.llm_service import llm_service
 from app.services.settings_service import SettingsService
 from app.services import provider_rules
+from app.services.llm_client import set_agents_default_client
 from app.prompt import get_prompt
 
 
@@ -157,12 +157,7 @@ class RecallService:
             )
 
         # 3. 设置 OpenAI 客户端
-        client = AsyncOpenAI(
-            base_url=llm_config.base_url,
-            api_key=llm_config.api_key,
-        )
-        set_default_openai_client(client, use_for_tracing=True)
-        set_default_openai_api("chat_completions")
+        set_agents_default_client(llm_config, use_for_tracing=True)
 
         # 4. 初始化 RecallAgent
         # 内部逻辑使用 UTC，但给 RecallAgent 的指示词建议使用北京时间以便更好地进行相对时间检索

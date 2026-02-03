@@ -15,6 +15,7 @@ from app.services.settings_service import SettingsService
 from app.services import provider_rules
 from app.services.llm_service import llm_service
 from app.services.embedding_service import embedding_service
+from app.services.llm_client import set_agents_default_client
 from app.services.memo.bridge import MemoService
 from app.services.memo.constants import DEFAULT_USER_ID, DEFAULT_SPACE_ID
 from app.prompt import get_prompt
@@ -92,13 +93,12 @@ if not sse_logger.handlers:
     handler.setFormatter(logging.Formatter('[SSE %(asctime)s.%(msecs)03d] %(message)s', datefmt='%H:%M:%S'))
     sse_logger.addHandler(handler)
 
-from openai import AsyncOpenAI
 from openai.types.shared import Reasoning
 from openai.types.responses import (
     ResponseOutputText,
     ResponseTextDeltaEvent,
 )
-from agents import Agent, ModelSettings, RunConfig, Runner, function_tool, set_default_openai_client, set_default_openai_api
+from agents import Agent, ModelSettings, RunConfig, Runner, function_tool
 from agents.items import MessageOutputItem, ReasoningItem, ToolCallItem, ToolCallOutputItem
 from agents.stream_events import RunItemStreamEvent
 
@@ -867,9 +867,7 @@ async def _run_chat_generation_task(
         if injected_recall_messages and inject_as_tool:
             agent_messages.extend(injected_recall_messages)
 
-        client = AsyncOpenAI(base_url=llm_config.base_url, api_key=llm_config.api_key)
-        set_default_openai_client(client, use_for_tracing=True)
-        set_default_openai_api("chat_completions")
+        set_agents_default_client(llm_config, use_for_tracing=True)
 
         temperature = friend.temperature if friend and friend.temperature is not None else 0.8
         top_p = friend.top_p if friend and friend.top_p is not None else 0.9

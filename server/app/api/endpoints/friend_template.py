@@ -61,18 +61,6 @@ def create_friend_from_template(
     return friend_template_service.create_friend_from_payload(db, payload)
 
 
-@router.post("/generate", response_model=persona_schemas.PersonaGenerateResponse)
-async def generate_persona(
-    *,
-    db: Session = Depends(deps.get_db),
-    payload: persona_schemas.PersonaGenerateRequest,
-):
-    """
-    根据描述自动生成 Persona 设定
-    """
-    return await persona_generator_service.generate_persona(db, payload)
-
-
 @router.post("/generate/stream")
 async def generate_persona_stream(
     *,

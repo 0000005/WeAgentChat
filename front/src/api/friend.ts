@@ -178,7 +178,10 @@ export async function* recommendFriendsStream(
 
       if (dataString) {
         try {
-          const data = JSON.parse(dataString)
+          let data = JSON.parse(dataString)
+          if (eventType === 'result' && Array.isArray(data)) {
+            data = { recommendations: data }
+          }
           yield { event: eventType, data }
         } catch (e) {
           console.error('Failed to parse SSE data JSON:', e)

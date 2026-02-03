@@ -3,9 +3,7 @@ import logging
 import re
 from typing import Optional
 
-from agents import Agent, Runner, RunConfig, set_default_openai_api, set_default_openai_client
-from fastapi import HTTPException
-from openai import AsyncOpenAI
+from agents import Agent, Runner, RunConfig
 from openai.types.responses import ResponseOutputText, ResponseTextDeltaEvent
 from sqlalchemy.orm import Session
 from agents.items import MessageOutputItem
@@ -13,93 +11,55 @@ from agents.stream_events import RunItemStreamEvent
 
 from app.prompt import get_prompt
 from app.schemas.persona_generator import PersonaGenerateRequest, PersonaGenerateResponse
+from app.services.llm_client import set_agents_default_client
 from app.services.llm_service import llm_service
+from app.services import provider_rules
 
 logger = logging.getLogger(__name__)
+
+def _strip_json_code_fences(content: Optional[str]) -> Optional[str]:
+    if not content:
+        return content
+    text = content.strip()
+    match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text, re.IGNORECASE)
+    if match:
+        return match.group(1).strip()
+    text = re.sub(r"^```(?:json)?", "", text, flags=re.IGNORECASE).strip()
+    text = re.sub(r"```$", "", text).strip()
+    return text
 
 
 class PersonaGeneratorService:
     @staticmethod
-    async def generate_persona(
-        db: Session,
-        request: PersonaGenerateRequest
-    ) -> PersonaGenerateResponse:
-        # 1. 获取 LLM 配置
-        llm_config = llm_service.get_active_config(db)
-        if not llm_config:
-            raise HTTPException(
-                status_code=500,
-                detail="LLM configuration not found. Please configure LLM settings first."
-            )
-
-        # 2. 设置 OpenAI 客户端
-        client = AsyncOpenAI(
-            base_url=llm_config.base_url,
-            api_key=llm_config.api_key,
+    async def _stream_agent_events(
+        agent: Agent,
+        user_input: str,
+        run_config: RunConfig,
+        full_parts: list[str],
+    ):
+        result = Runner.run_streamed(
+            agent,
+            user_input,
+            run_config=run_config,
         )
-        set_default_openai_client(client, use_for_tracing=True)
-        set_default_openai_api("chat_completions")
+        async for event in result.stream_events():
+            if event.type == "raw_response_event" and isinstance(event.data, ResponseTextDeltaEvent):
+                delta = event.data.delta
+                if delta:
+                    full_parts.append(delta)
+                    yield {"event": "delta", "data": {"delta": delta}}
+                continue
 
-        # 3. 初始化 GeneratorAgent
-        instructions = get_prompt("persona/generate_instructions.txt").strip()
-        model_name = llm_service.normalize_model_name(llm_config.model_name)
-
-        agent = Agent(
-            name="PersonaGenerator",
-            instructions=instructions,
-            model=model_name,
-        )
-
-        # 4. 准备输入
-        user_input = f"请为我生成一个角色。用户描述：{request.description}"
-        if request.name:
-            user_input += f"\n姓名：{request.name}"
-
-        # 5. 运行 Agent
-        try:
-            result = await Runner.run(
-                agent,
-                user_input,
-                run_config=RunConfig(trace_include_sensitive_data=True),
-            )
-        except Exception as e:
-            logger.error(f"LLM call failed: {e}")
-            raise HTTPException(
-                status_code=502,
-                detail=f"LLM call failed: {str(e)}"
-            )
-        
-        # 6. 解析结果
-        content = result.final_output
-        if not content:
-            raise HTTPException(
-                status_code=502,
-                detail="LLM returned empty response."
-            )
-        
-        # 尝试解析 JSON
-        parsed = PersonaGeneratorService._parse_llm_json(content)
-        if not parsed:
-            # 解析失败，记录原始响应到日志
-            logger.error(f"Failed to parse LLM JSON response. Raw output:\n{content}")
-            raise HTTPException(
-                status_code=502,
-                detail=f"Failed to parse LLM response as JSON. Check server logs for raw output."
-            )
-        
-        missing_fields = [key for key in ["name", "description", "system_prompt", "initial_message"] if not parsed.get(key)]
-        if missing_fields:
-            raise HTTPException(
-                status_code=502,
-                detail=f"LLM response missing required fields: {', '.join(missing_fields)}"
-            )
-
-        return PersonaGenerateResponse(
-            name=parsed["name"],
-            description=parsed["description"],
-            system_prompt=parsed["system_prompt"],
-            initial_message=parsed["initial_message"]
-        )
+            if isinstance(event, RunItemStreamEvent) and event.name == "message_output_created":
+                if isinstance(event.item, MessageOutputItem):
+                    message_text = ""
+                    for part in event.item.raw_item.content:
+                        if isinstance(part, ResponseOutputText):
+                            message_text += part.text or ""
+                    if message_text:
+                        full_parts.append(message_text)
+                        yield {"event": "delta", "data": {"delta": message_text}}
+                continue
 
     @staticmethod
     async def generate_persona_stream(
@@ -117,57 +77,68 @@ class PersonaGeneratorService:
             }
             return
 
-        client = AsyncOpenAI(
-            base_url=llm_config.base_url,
-            api_key=llm_config.api_key,
-        )
-        set_default_openai_client(client, use_for_tracing=True)
-        set_default_openai_api("chat_completions")
+        set_agents_default_client(llm_config, use_for_tracing=True)
 
         instructions = get_prompt("persona/generate_instructions.txt").strip()
         model_name = llm_service.normalize_model_name(llm_config.model_name)
+        output_type = PersonaGenerateResponse if provider_rules.supports_json_mode(
+            llm_config,
+            llm_config.model_name,
+        ) else None
         agent = Agent(
             name="PersonaGenerator",
             instructions=instructions,
             model=model_name,
+            output_type=output_type,
         )
 
         user_input = f"请为我生成一个角色。用户描述：{request.description}"
         if request.name:
             user_input += f"\n姓名：{request.name}"
 
-        full_content = ""
+        run_config = RunConfig(trace_include_sensitive_data=True)
+        full_parts: list[str] = []
         try:
-            result = Runner.run_streamed(
+            async for event_data in PersonaGeneratorService._stream_agent_events(
                 agent,
                 user_input,
-                run_config=RunConfig(trace_include_sensitive_data=True),
-            )
-            async for event in result.stream_events():
-                if event.type == "raw_response_event" and isinstance(event.data, ResponseTextDeltaEvent):
-                    delta = event.data.delta
-                    if delta:
-                        full_content += delta
-                        yield {"event": "delta", "data": {"delta": delta}}
-                    continue
-
-                if isinstance(event, RunItemStreamEvent) and event.name == "message_output_created":
-                    if isinstance(event.item, MessageOutputItem):
-                        message_text = ""
-                        for part in event.item.raw_item.content:
-                            if isinstance(part, ResponseOutputText):
-                                message_text += part.text or ""
-                        if message_text:
-                            full_content += message_text
-                            yield {"event": "delta", "data": {"delta": message_text}}
-                    continue
+                run_config,
+                full_parts,
+            ):
+                yield event_data
         except Exception as e:
-            logger.error(f"LLM stream failed: {e}")
-            yield {
-                "event": "error",
-                "data": {"code": "llm_error", "detail": f"LLM call failed: {str(e)}"}
-            }
-            return
+            if provider_rules.is_json_mode_unsupported_error(e):
+                logger.warning(f"JSON mode unsupported, fallback to normal call: {e}")
+                full_parts = []
+                agent = Agent(
+                    name="PersonaGenerator",
+                    instructions=instructions,
+                    model=model_name,
+                )
+                try:
+                    async for event_data in PersonaGeneratorService._stream_agent_events(
+                        agent,
+                        user_input,
+                        run_config,
+                        full_parts,
+                    ):
+                        yield event_data
+                except Exception as e2:
+                    logger.error(f"LLM stream failed: {e2}")
+                    yield {
+                        "event": "error",
+                        "data": {"code": "llm_error", "detail": f"LLM call failed: {str(e2)}"}
+                    }
+                    return
+            else:
+                logger.error(f"LLM stream failed: {e}")
+                yield {
+                    "event": "error",
+                    "data": {"code": "llm_error", "detail": f"LLM call failed: {str(e)}"}
+                }
+                return
+
+        full_content = "".join(full_parts)
 
         if not full_content:
             yield {
@@ -222,17 +193,9 @@ class PersonaGeneratorService:
             return None
         
         # 清理内容
-        content = content.strip()
-        
-        # 移除代码块围栏，保留中间内容
-        lines = []
-        for line in content.split('\n'):
-            stripped = line.strip()
-            if stripped.startswith('```'):
-                continue
-            lines.append(line)
-
-        json_str = '\n'.join(lines).strip()
+        json_str = _strip_json_code_fences(content)
+        if not json_str:
+            return None
 
         try:
             return json.loads(json_str)

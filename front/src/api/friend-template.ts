@@ -70,20 +70,6 @@ export interface FriendTemplateCreateFriend {
 /**
  * 根据描述自动生成 Persona 设定
  */
-export async function generatePersona(payload: PersonaGenerateRequest): Promise<PersonaGenerateResponse> {
-  const url = withApiBase('/api/friend-templates/generate')
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  })
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Failed to generate persona' }))
-    throw new Error(error.detail || 'Failed to generate persona')
-  }
-  return response.json()
-}
-
 export async function getFriendTemplateTags(): Promise<string[]> {
   const url = withApiBase('/api/friend-templates/tags')
   const response = await fetch(url)
