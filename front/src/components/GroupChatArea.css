@@ -191,6 +191,61 @@
   gap: 16px;
 }
 
+/* Pagination Indicators */
+.load-more-trigger {
+  width: 100%;
+}
+
+.loading-more-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 10px 0;
+  width: 100%;
+}
+
+.loading-dots {
+  display: flex;
+  gap: 4px;
+}
+
+.loading-dots span {
+  width: 6px;
+  height: 6px;
+  background-color: #ccc;
+  border-radius: 50%;
+  animation: dots-wave 1.4s infinite ease-in-out both;
+}
+
+.loading-dots span:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.loading-dots span:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+@keyframes dots-wave {
+  0%,
+  80%,
+  100% {
+    transform: scale(0);
+  }
+
+  40% {
+    transform: scale(1.0);
+  }
+}
+
+.no-more-messages {
+  text-align: center;
+  color: #bbb;
+  font-size: 12px;
+  padding: 10px 0;
+  width: 100%;
+  user-select: none;
+}
+
 .message-wrapper {
   display: flex;
   gap: 10px;

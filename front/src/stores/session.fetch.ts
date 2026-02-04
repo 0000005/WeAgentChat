@@ -96,6 +96,21 @@ export const createSessionFetch = (deps: SessionFetchDeps) => {
         }
     }
 
+    const loadMoreGroupMessages = async (groupId: number): Promise<boolean> => {
+        if (isLoadingMore.value) return false // Return false when already loading, don't assume there's more
+
+        const currentMsgs = messagesMap.value['g' + groupId] || []
+        const skip = currentMsgs.length
+
+        isLoadingMore.value = true
+        try {
+            const count = await fetchGroupMessages(groupId, skip, INITIAL_MESSAGE_LIMIT)
+            return count >= INITIAL_MESSAGE_LIMIT // If we got full page, there might be more
+        } finally {
+            isLoadingMore.value = false
+        }
+    }
+
     const syncLatestMessages = async (friendId: number) => {
         try {
             // Get latest 10 messages to check for updates
@@ -177,6 +192,7 @@ export const createSessionFetch = (deps: SessionFetchDeps) => {
         fetchFriendMessages,
         fetchGroupMessages,
         loadMoreMessages,
+        loadMoreGroupMessages,
         syncLatestMessages,
         clearFriendHistory,
         clearGroupHistory

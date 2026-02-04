@@ -127,6 +127,78 @@ const currentGroupName = computed(() => {
 
 const messages = computed(() => sessionStore.currentMessages)
 
+// Pagination state
+const hasMoreMessages = ref(true)
+const conversationRef = ref<InstanceType<typeof Conversation> | null>(null)
+
+// Reset hasMore when group changes
+watch(() => sessionStore.currentGroupId, () => {
+  hasMoreMessages.value = true
+})
+
+// Pagination using IntersectionObserver - triggers when top sentinel becomes visible
+const loadMoreTriggerRef = ref<HTMLElement | null>(null)
+let intersectionObserver: IntersectionObserver | null = null
+
+const loadMore = async () => {
+  if (!hasMoreMessages.value || sessionStore.isLoadingMore || !sessionStore.currentGroupId) return
+
+  const scrollEl = currentScrollEl
+  const prevHeight = scrollEl?.scrollHeight || 0
+  const prevScrollTop = scrollEl?.scrollTop || 0
+
+  const more = await sessionStore.loadMoreGroupMessages(sessionStore.currentGroupId)
+  hasMoreMessages.value = more
+
+  // Maintain scroll position after DOM updates
+  if (scrollEl) {
+    nextTick(() => {
+      const newHeight = scrollEl.scrollHeight
+      const heightDiff = newHeight - prevHeight
+      scrollEl.scrollTop = prevScrollTop + heightDiff
+    })
+  }
+}
+
+// Track scroll element to maintain position
+let currentScrollEl: HTMLElement | null = null
+
+watch(
+  () => {
+    const conv = conversationRef.value as any
+    if (!conv) return undefined
+    const scrollRefComputed = conv.scrollRef
+    const element = scrollRefComputed?.value ?? scrollRefComputed
+    return element as HTMLElement | undefined
+  },
+  (scrollEl) => {
+    currentScrollEl = scrollEl || null
+  },
+  { immediate: true, flush: 'post' }
+)
+
+// Setup IntersectionObserver for load-more trigger
+watch(loadMoreTriggerRef, (el) => {
+  if (intersectionObserver) {
+    intersectionObserver.disconnect()
+    intersectionObserver = null
+  }
+
+  if (el) {
+    intersectionObserver = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0]
+        if (entry && entry.isIntersecting) {
+          console.log('[Pagination] Group load more triggered by IntersectionObserver')
+          loadMore()
+        }
+      },
+      { threshold: 0.1 }
+    )
+    intersectionObserver.observe(el)
+  }
+}, { immediate: true })
+
 const autoDriveState = computed(() => sessionStore.currentAutoDriveState)
 const autoDriveConnectionStatus = computed(() => sessionStore.autoDriveConnectionStatus)
 const isAutoDriveActive = computed(() => {
@@ -492,6 +564,10 @@ onBeforeUnmount(() => {
     window.removeEventListener('keydown', mentionKeydownHandler)
     mentionKeydownHandler = null
   }
+  if (intersectionObserver) {
+    intersectionObserver.disconnect()
+    intersectionObserver = null
+  }
 })
 
 const lastCursorPosition = ref(0)
@@ -775,8 +851,20 @@ const handleAvatarClick = (url: string) => {
         </div>
       </div>
 
-      <Conversation v-else class="flex-1 w-full overflow-hidden">
+      <Conversation ref="conversationRef" v-else class="flex-1 w-full overflow-hidden">
         <ConversationContent class="messages-content">
+          <!-- Load More Trigger (observed by IntersectionObserver) -->
+          <div ref="loadMoreTriggerRef" class="load-more-trigger">
+            <div v-if="sessionStore.isLoadingMore" class="loading-more-container">
+              <div class="loading-dots">
+                <span></span><span></span><span></span>
+              </div>
+            </div>
+            <div v-else-if="!hasMoreMessages && messages.length >= sessionStore.INITIAL_MESSAGE_LIMIT"
+              class="no-more-messages">
+              已无更多消息
+            </div>
+          </div>
           <template v-for="(msg, index) in messages" :key="msg.id">
             <!-- 会话分隔线（session_id 变化时显示） -->
             <div v-if="shouldShowSessionDivider(index)" class="session-divider">

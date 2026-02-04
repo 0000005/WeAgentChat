@@ -75,6 +75,7 @@ export const useSessionStore = defineStore('session', () => {
         fetchFriendMessages,
         fetchGroupMessages,
         loadMoreMessages,
+        loadMoreGroupMessages,
         syncLatestMessages,
         clearFriendHistory,
         clearGroupHistory
@@ -219,6 +220,7 @@ export const useSessionStore = defineStore('session', () => {
         fetchFriendMessages,
         fetchGroupMessages,
         loadMoreMessages,
+        loadMoreGroupMessages,
         syncLatestMessages,
         fetchFriendSessions,
         loadSpecificSession,
