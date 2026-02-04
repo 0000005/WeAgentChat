@@ -15,7 +15,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { AlertTriangle, Menu, MoreHorizontal, Brain, MessageSquarePlus, Sparkles, Pause, Play, Square, RefreshCw } from 'lucide-vue-next'
+import { AlertTriangle, Menu, MoreHorizontal, Brain, MessageSquarePlus, Sparkles, Pause, Play, Square, RefreshCw, Share2 } from 'lucide-vue-next'
 import { useThinkingModeStore } from '@/stores/thinkingMode'
 import { useLlmStore } from '@/stores/llm'
 import { useEmbeddingStore } from '@/stores/embedding'
@@ -30,6 +30,8 @@ import { StreamMarkdown } from 'streamdown-vue'
 import ToolCallsDetail from '@/components/common/ToolCallsDetail.vue'
 import EmojiPicker from '@/components/EmojiPicker.vue'
 import { getStaticUrl } from '@/api/base'
+import ChatImageExportDialog from '@/components/common/ChatImageExportDialog.vue'
+import type { ExportMessage } from '@/types/export'
 
 import {
   PromptInput,
@@ -259,6 +261,65 @@ const triggerToast = (message: string) => {
   toastTimeout = setTimeout(() => {
     showToast.value = false
   }, 2000)
+}
+
+// Chat export selection state
+const isSelectMode = ref(false)
+const selectedMessageIds = ref<number[]>([])
+const exportDialogOpen = ref(false)
+
+const selectableMessages = computed(() => messages.value.filter(msg => msg.role !== 'system' && msg.content))
+const selectedMessages = computed(() =>
+  selectableMessages.value.filter(msg => selectedMessageIds.value.includes(msg.id))
+)
+
+const exportMessages = computed<ExportMessage[]>(() =>
+  selectedMessages.value.map(msg => {
+    const isUser = msg.role === 'user'
+    const senderId = msg.senderId || (isUser ? 'user' : 'assistant')
+    const senderType = msg.senderType || (isUser ? 'user' : 'assistant')
+    return {
+      id: msg.id,
+      content: msg.content,
+      isUser,
+      avatar: getMemberAvatar(senderId, senderType),
+      name: isUser ? '我' : getMemberName(senderId, senderType),
+      showName: !isUser,
+    }
+  })
+)
+
+const enterSelectMode = () => {
+  if (!selectableMessages.value.length) {
+    triggerToast('暂无可导出的消息')
+    return
+  }
+  isSelectMode.value = true
+  selectedMessageIds.value = []
+}
+
+const exitSelectMode = () => {
+  isSelectMode.value = false
+  selectedMessageIds.value = []
+}
+
+const isMessageSelected = (id: number) => selectedMessageIds.value.includes(id)
+
+const toggleMessageSelection = (id: number) => {
+  const index = selectedMessageIds.value.indexOf(id)
+  if (index === -1) {
+    selectedMessageIds.value.push(id)
+  } else {
+    selectedMessageIds.value.splice(index, 1)
+  }
+}
+
+const handleGenerateExport = () => {
+  if (!selectedMessageIds.value.length) {
+    triggerToast('请先选择消息')
+    return
+  }
+  exportDialogOpen.value = true
 }
 
 const handleCopyContent = async (content: string) => {
@@ -753,7 +814,7 @@ const handleAvatarClick = (url: string) => {
 </script>
 
 <template>
-  <div class="wechat-chat-area group-chat">
+  <div class="wechat-chat-area group-chat" :class="{ 'select-mode': isSelectMode }">
     <header class="chat-header" :class="{ 'electron-mode': isElectron }" @contextmenu="handleHeaderContextMenu">
       <button v-if="isSidebarCollapsed" @click="emit('toggle-sidebar')" class="mobile-menu-btn">
         <Menu :size="20" />
@@ -773,6 +834,9 @@ const handleAvatarClick = (url: string) => {
       </div>
 
       <div class="header-actions">
+        <button class="more-btn export-btn" title="分享/导出" @click="enterSelectMode">
+          <Share2 :size="18" />
+        </button>
         <!-- "更多"按钮 - Web 模式回退 -->
         <button v-if="!isElectron" class="more-btn" @click="handleOpenDrawer">
           <MoreHorizontal :size="20" />
@@ -875,91 +939,103 @@ const handleAvatarClick = (url: string) => {
             </div>
 
             <template v-else-if="msg.role === 'assistant'">
-              <!-- AI 回复：动态拆分渲染 -->
-              <div v-for="(segment, sIndex) in getMessageSegments(msg)" :key="msg.id + '-' + sIndex"
-                class="message-group group-assistant">
-                <div class="message-wrapper message-assistant group relative">
-                  <!-- Avatar -->
-                  <div class="message-avatar"
-                    @click="handleAvatarClick(getMemberAvatar(msg.senderId || 'assistant', 'assistant'))">
-                    <img :src="getMemberAvatar(msg.senderId || 'assistant', 'assistant')" alt="Avatar" />
-                  </div>
+              <div class="message-row" :class="{ 'is-selected': isMessageSelected(msg.id) }">
+                <button v-if="isSelectMode" class="select-checkbox" :class="{ selected: isMessageSelected(msg.id) }"
+                  @click.stop="toggleMessageSelection(msg.id)" aria-label="选择消息"></button>
+                <div class="message-stack">
+                  <!-- AI 回复：动态拆分渲染 -->
+                  <div v-for="(segment, sIndex) in getMessageSegments(msg)" :key="msg.id + '-' + sIndex"
+                    class="message-group group-assistant">
+                    <div class="message-wrapper message-assistant group relative">
+                      <!-- Avatar -->
+                      <div class="message-avatar"
+                        @click="handleAvatarClick(getMemberAvatar(msg.senderId || 'assistant', 'assistant'))">
+                        <img :src="getMemberAvatar(msg.senderId || 'assistant', 'assistant')" alt="Avatar" />
+                      </div>
 
-                  <!-- Message Bubble -->
-                  <div class="message-bubble-container" :class="{ 'message-pop-in': segment }">
-                    <!-- Member Name for groups -->
-                    <span v-if="sIndex === 0" class="member-name">{{ getMemberName(msg.senderId || 'assistant',
-                      'assistant') }}
-                      <span v-if="getMessageDebateSide(msg)" class="debate-name-tag"
-                        :class="getMessageDebateSide(msg) === 'affirmative' ? 'affirmative' : 'negative'">
-                        {{ getDebateSideLabel(getMessageDebateSide(msg)) }}
-                      </span>
-                    </span>
-                    <div class="message-bubble">
-                      <MessageContent>
-                        <MessageResponse :content="segment" />
-                      </MessageContent>
+                      <!-- Message Bubble -->
+                      <div class="message-bubble-container" :class="{ 'message-pop-in': segment }">
+                        <!-- Member Name for groups -->
+                        <span v-if="sIndex === 0" class="member-name">{{ getMemberName(msg.senderId || 'assistant',
+                          'assistant') }}
+                          <span v-if="getMessageDebateSide(msg)" class="debate-name-tag"
+                            :class="getMessageDebateSide(msg) === 'affirmative' ? 'affirmative' : 'negative'">
+                            {{ getDebateSideLabel(getMessageDebateSide(msg)) }}
+                          </span>
+                        </span>
+                        <div class="message-bubble">
+                          <MessageContent>
+                            <MessageResponse :content="segment" />
+                          </MessageContent>
+                        </div>
+                      </div>
+
+                      <!-- Message Action Menu -->
+                      <div class="message-actions">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger as-child>
+                            <button
+                              class="message-action-btn opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100 transition-opacity">
+                              <MoreHorizontal :size="16" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start">
+                            <DropdownMenuItem @click="handleCopyContent(segment)">
+                              <span>复制</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem v-if="hasThinking(msg)" @click="handleOpenThinking(msg)">
+                              <span>查看思考过程</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem v-if="hasToolCalls(msg)" @click="handleOpenToolCalls(msg)">
+                              <span>查看工具调用</span>
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+
+                        </DropdownMenu>
+                      </div>
                     </div>
-                  </div>
-
-                  <!-- Message Action Menu -->
-                  <div class="message-actions">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger as-child>
-                        <button
-                          class="message-action-btn opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100 transition-opacity">
-                          <MoreHorizontal :size="16" />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start">
-                        <DropdownMenuItem @click="handleCopyContent(segment)">
-                          <span>复制</span>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem v-if="hasThinking(msg)" @click="handleOpenThinking(msg)">
-                          <span>查看思考过程</span>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem v-if="hasToolCalls(msg)" @click="handleOpenToolCalls(msg)">
-                          <span>查看工具调用</span>
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-
-                    </DropdownMenu>
                   </div>
                 </div>
               </div>
             </template>
 
-            <div v-else class="message-group group-user">
-              <div class="message-wrapper message-user group relative">
-                <!-- Avatar -->
-                <div class="message-avatar" @click="handleAvatarClick(getMemberAvatar('user', 'user'))">
-                  <img :src="getMemberAvatar('user', 'user')" alt="Avatar" />
-                </div>
+            <div v-else class="message-row" :class="{ 'is-selected': isMessageSelected(msg.id) }">
+              <button v-if="isSelectMode" class="select-checkbox" :class="{ selected: isMessageSelected(msg.id) }"
+                @click.stop="toggleMessageSelection(msg.id)" aria-label="选择消息"></button>
+              <div class="message-stack">
+                <div class="message-group group-user">
+                  <div class="message-wrapper message-user group relative">
+                    <!-- Avatar -->
+                    <div class="message-avatar" @click="handleAvatarClick(getMemberAvatar('user', 'user'))">
+                      <img :src="getMemberAvatar('user', 'user')" alt="Avatar" />
+                    </div>
 
-                <!-- Message Bubble -->
-                <div class="message-bubble-container" :class="{ 'message-pop-in': msg.content }">
-                  <div v-if="msg.content" class="message-bubble">
-                    <MessageContent>
-                      <MessageResponse :content="msg.content" />
-                    </MessageContent>
+                    <!-- Message Bubble -->
+                    <div class="message-bubble-container" :class="{ 'message-pop-in': msg.content }">
+                      <div v-if="msg.content" class="message-bubble">
+                        <MessageContent>
+                          <MessageResponse :content="msg.content" />
+                        </MessageContent>
+                      </div>
+                    </div>
+
+                    <!-- Message Action Menu -->
+                    <div class="message-actions">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger as-child>
+                          <button
+                            class="message-action-btn opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100 transition-opacity">
+                            <MoreHorizontal :size="16" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem @click="handleCopyContent(msg.content)">
+                            <span>复制</span>
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </div>
-                </div>
-
-                <!-- Message Action Menu -->
-                <div class="message-actions">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger as-child>
-                      <button
-                        class="message-action-btn opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100 transition-opacity">
-                        <MoreHorizontal :size="16" />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem @click="handleCopyContent(msg.content)">
-                        <span>复制</span>
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
                 </div>
               </div>
             </div>
@@ -982,7 +1058,7 @@ const handleAvatarClick = (url: string) => {
 
 
     <!-- Input Area -->
-    <div class="chat-input-area">
+    <div v-if="!isSelectMode" class="chat-input-area">
       <div class="input-toolbar">
         <EmojiPicker @select="input += $event" />
         <button class="toolbar-btn auto-drive-btn" title="接力讨论" @click="handleOpenAutoDrive">
@@ -1026,10 +1102,18 @@ const handleAvatarClick = (url: string) => {
         </div>
       </PromptInput>
     </div>
+    <div v-else class="export-selection-bar">
+      <button class="selection-btn cancel" @click="exitSelectMode">取消</button>
+      <span class="selection-count">已选 {{ selectedMessageIds.length }} 条</span>
+      <button class="selection-btn primary" :disabled="selectedMessageIds.length === 0"
+        @click="handleGenerateExport">生成图片</button>
+    </div>
 
     <!-- Auto Drive Config Dialog -->
     <GroupAutoDriveConfigDialog ref="autoDriveConfigRef" v-model:open="autoDriveConfigOpen"
       :group-friend-members="groupFriendMembers" @submit="handleStartAutoDrive" @toast="triggerToast" />
+
+    <ChatImageExportDialog v-model:open="exportDialogOpen" :messages="exportMessages" title="聊天记录图片预览" />
 
     <!-- Toast Feedback -->
     <Transition name="fade">

@@ -130,7 +130,10 @@ Vue 3 frontend implemented with a focus on WeChat's aesthetic.
     *   `ui/`: Base UI primitives (via shadcn-vue, e.g., HoverCard, Dialog, Button).
     *   `common/`: Common reusable components (e.g., `AvatarUploader.vue`, `ToolCallsDetail.vue`).
     *   `ChatArea.vue`: Main message terminal (supports SSE events & reasoning).
+    *   `GroupChatArea.vue`: Group chat main area (supports SSE events & 接力讨论/原自驱).
+        *   `GroupChatArea.css`: Scoped styles for `GroupChatArea.vue`.
     *   `ChatDrawerMenu.vue`: WeChat-style drawer for chat settings and actions.
+    *   `GroupChatDrawer.vue`: Group chat drawer (members, info, actions).
     *   `Sidebar.vue`: Session list and search.
     *   `IconSidebar.vue`: Vertical icon menu (WeChat style).
     *   `SettingsDialog.vue`: Management of LLM, Memory, and System settings.
@@ -139,25 +142,29 @@ Vue 3 frontend implemented with a focus on WeChat's aesthetic.
     *   `AssistantWizard.vue`: AI-guided friend creation wizard.
     *   `FriendGallery.vue`: Friend library (preset personas gallery).
     *   `FriendComposeDialog.vue`: Friend edit/create dialog.
+    *   `GroupComposeDialog.vue`: Group create/edit dialog.
     *   `EmojiPicker.vue`: WeChat-style emoji selection.
     *   `AboutDialog.vue`: About dialog with version info.
     *   `UpdateNotifyDialog.vue`: Update notification dialog.
     *   `WindowControls.vue`: Custom window controls (minimize/maximize/close).
     *   `ToastContainer.vue`: Toast notification container.
+    *   `GroupAutoDriveConfigDialog.vue`: 接力讨论（原自驱）配置对话框。
 *   **`stores/`**: Pinia state management.
     *   `session.ts`: 会话状态入口与编排层（仅 state/computed + 组合 action）。
     *   `session.fetch.ts`: 拉取/分页/同步相关逻辑。
     *   `session.sessions.ts`: 会话管理相关逻辑（切换/删除/新会话）。
     *   `session.stream.friend.ts`: 单聊 SSE 流式处理（发送/重生成/撤回）。
     *   `session.stream.group.ts`: 群聊 SSE 流式处理与 typing 状态管理。
+    *   `session.stream.group.auto_drive.ts`: 接力讨论 SSE 流式状态与控制逻辑。
     *   `friend.ts`: Persona/Friend metadata and state.
+    *   `group.ts`: Group Chat metadata and state.
     *   `llm.ts` & `embedding.ts`: Global config synchronization with backend.
     *   `settings.ts`: System-wide settings (e.g., memory expiration).
     *   `memory.ts`: Long-term memory and recall state.
     *   `thinkingMode.ts`: Global setting for LLM reasoning display.
 *   **`api/`**: Strongly typed REST & SSE clients.
     *   `base.ts`: Base API configuration and Electron port handling.
-    *   `chat.ts`, `friend.ts`, `friend-template.ts`, `llm.ts`, `embedding.ts`, `settings.ts`, `memory.ts`, `health.ts`, `upload.ts`.
+    *   `chat.ts`, `friend.ts`, `friend-template.ts`, `group.ts`, `llm.ts`, `embedding.ts`, `settings.ts`, `memory.ts`, `health.ts`, `upload.ts`.
 *   **`composables/`**: Reusable Vue Composition API logic.
     *   `useChat.ts`: Chat interaction logic.
     *   `useToast.ts`: Toast notification management.
@@ -167,6 +174,16 @@ Vue 3 frontend implemented with a focus on WeChat's aesthetic.
 *   **`utils/`**: Shared utilities.
     *   `chat.ts`: `parseMessageSegments` 与 `INITIAL_MESSAGE_LIMIT`。
 *   **`lib/`**: Utility functions (e.g., `utils.ts` for Tailwind/CSS classes).
+
+#### 接力讨论（原自驱）相关文件
+Frontend:
+- `front/src/components/GroupChatArea.vue`: 入口与状态展示（接力讨论工具栏、状态栏、控制按钮）。
+- `front/src/components/GroupAutoDriveConfigDialog.vue`: 接力讨论配置面板（模式、参与成员、流程）。
+- `front/src/components/GroupChatArea.css`: 接力讨论状态条与按钮样式。
+- `front/src/api/group-auto-drive.ts`: 接力讨论接口客户端（start/pause/resume/stop/state/stream/interject）。
+- `front/src/stores/session.stream.group.auto_drive.ts`: 接力讨论 SSE 流式状态与控制逻辑。
+- `front/src/types/chat.ts`: 接力讨论相关类型（`AutoDriveMode`/`AutoDriveState`/`AutoDriveConfig`）。
+注：接口路径与内部命名仍沿用 `auto-drive`/`auto_drive`。
 
 #### 📁 Configuration
 *   `vite.config.js`, `tailwind.config.js`, `components.json` (shadcn config).
@@ -181,6 +198,8 @@ FastAPI backend with a modular service-oriented architecture.
     *   `chat.py`: Real-time SSE streaming.
     *   `profile.py` & `friend.py`: User profile and AI persona management.
     *   `friend_template.py`: Preset friend templates API.
+    *   `group_chat.py`: Group chat messaging and management API.
+    *   `group_auto_drive.py`: 群聊接力讨论（原自驱）API（start/stream/pause/resume/stop/state）。
     *   `upload.py`: File upload API (avatars, etc.).
     *   `settings.py`: System configuration API.
     *   `llm.py` & `embedding.py`: AI model provider management.
@@ -188,20 +207,25 @@ FastAPI backend with a modular service-oriented architecture.
 *   **`services/`**: Business logic layer.
     *   `chat_service.py`: LLM orchestration, message persistence, and memory RAG.
     *   `recall_service.py`: Multi-step memory recall and agent orchestration.
+    *   `group_chat_service.py`: Group chat core logic.
+    *   `group_service.py`: Group metadata management.
+    *   `group_auto_drive_service.py`: 群聊接力讨论（原自驱）编排与状态流转。
+    *   `group_chat_shared.py`: Shared utilities for group chat.
     *   `llm_service.py` & `embedding_service.py`: Model provider abstraction.
     *   `friend_service.py`: Persona and friendship management.
     *   `friend_template_service.py`: Preset friend template management.
     *   `persona_generator_service.py`: AI-powered persona generation.
     *   `provider_rules.py`: Lightweight rule module for provider-level differences (base_url normalization, reasoning injection, etc.).
+    *   `reasoning_stream.py`: Reasoning stream handling.
     *   `memo/`: Memory system bridge.
         *   `bridge.py`: Interface to the embedded Memobase SDK.
         *   `constants.py`: Memory system constants and configuration.
         *   `default_profile_config.py`: Default configuration for user profile memory extraction.
     *   `settings_service.py`: Config defaults and DB persistence.
 *   **`models/`**: SQLAlchemy ORM definitions (SQLite target).
-    *   `chat.py`, `friend.py`, `friend_template.py`, `system_setting.py`, `llm.py`, `embedding.py`.
+    *   `chat.py`, `friend.py`, `friend_template.py`, `group.py`, `system_setting.py`, `llm.py`, `embedding.py`.
 *   **`schemas/`**: Pydantic data validation and serialization.
-    *   `chat.py`, `friend.py`, `friend_template.py`, `llm.py`, `embedding.py`, `memory.py`, `sse_events.py`, `system_setting.py`, `persona_generator.py`.
+    *   `chat.py`, `friend.py`, `friend_template.py`, `group.py`, `group_auto_drive.py`, `llm.py`, `embedding.py`, `memory.py`, `sse_events.py`, `system_setting.py`, `persona_generator.py`.
 *   **`db/`**: Database initialization and session management.
     *   `init_db.py`: Database initialization logic.
     *   `init.sql`: Core schema initialization.
@@ -212,6 +236,16 @@ FastAPI backend with a modular service-oriented architecture.
 *   **`core/`**: Core system configuration and `logging.py`.
 *   **`vendor/`**: Third-party modules embedded as SDKs.
     *   **`memobase_server/`**: The core Memory Engine (Event Extraction, RAG).
+
+#### 接力讨论（原自驱）相关文件
+Backend:
+- `server/app/api/api.py`: 接力讨论路由挂载（`group_auto_drive`）。
+- `server/app/api/endpoints/group_auto_drive.py`: 接力讨论 API（start/stream/pause/resume/stop/state）。
+- `server/app/services/group_auto_drive_service.py`: 接力讨论主流程与状态机。
+- `server/app/schemas/group_auto_drive.py`: 接力讨论请求/响应模型。
+- `server/app/models/group.py`: `group_auto_drive_runs` 数据表模型。
+- `server/app/prompt/auto_drive/`: 接力讨论提示词（目录名仍为 `auto_drive`）。
+- `server/alembic/versions/9c4b1a2d3e5f_add_group_auto_drive.py`: 接力讨论数据表迁移。
 
 #### 📁 Infrastructure
 *   **`alembic/`**: Production-ready database migrations.

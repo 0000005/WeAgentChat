@@ -4,7 +4,7 @@ import { useSessionStore } from '@/stores/session'
 import { parseMessageSegments } from '@/utils/chat'
 import type { ToolCall } from '@/types/chat'
 import { useFriendStore } from '@/stores/friend'
-import { Menu, MoreHorizontal, Brain, MessageSquarePlus, AlertTriangle, Sparkles } from 'lucide-vue-next'
+import { Menu, MoreHorizontal, Brain, MessageSquarePlus, AlertTriangle, Sparkles, Share2 } from 'lucide-vue-next'
 import {
   Conversation,
   ConversationContent,
@@ -24,6 +24,7 @@ import { useChat } from '@/composables/useChat'
 import EmojiPicker from '@/components/EmojiPicker.vue'
 import ChatDrawerMenu from '@/components/ChatDrawerMenu.vue'
 import ToolCallsDetail from '@/components/common/ToolCallsDetail.vue'
+import ChatImageExportDialog from '@/components/common/ChatImageExportDialog.vue'
 import {
   Tooltip,
   TooltipContent,
@@ -31,6 +32,7 @@ import {
   TooltipTrigger
 } from '@/components/ui/tooltip'
 import { useLlmStore } from '@/stores/llm'
+import type { ExportMessage } from '@/types/export'
 import {
   Dialog,
   DialogContent,
@@ -195,6 +197,60 @@ const triggerToast = (message: string) => {
   toastTimeout = setTimeout(() => {
     showToast.value = false
   }, 2000)
+}
+
+// Chat export selection state
+const isSelectMode = ref(false)
+const selectedMessageIds = ref<number[]>([])
+const exportDialogOpen = ref(false)
+
+const selectableMessages = computed(() => messages.value.filter(msg => msg.role !== 'system' && msg.content))
+const selectedMessages = computed(() =>
+  selectableMessages.value.filter(msg => selectedMessageIds.value.includes(msg.id))
+)
+
+const exportMessages = computed<ExportMessage[]>(() =>
+  selectedMessages.value.map(msg => ({
+    id: msg.id,
+    content: msg.content,
+    isUser: msg.role === 'user',
+    avatar: msg.role === 'user' ? getUserAvatar() : getAssistantAvatar(),
+    name: msg.role === 'assistant' ? currentFriendName.value : '我',
+    showName: msg.role === 'assistant',
+  }))
+)
+
+const enterSelectMode = () => {
+  if (!selectableMessages.value.length) {
+    triggerToast('暂无可导出的消息')
+    return
+  }
+  isSelectMode.value = true
+  selectedMessageIds.value = []
+}
+
+const exitSelectMode = () => {
+  isSelectMode.value = false
+  selectedMessageIds.value = []
+}
+
+const isMessageSelected = (id: number) => selectedMessageIds.value.includes(id)
+
+const toggleMessageSelection = (id: number) => {
+  const index = selectedMessageIds.value.indexOf(id)
+  if (index === -1) {
+    selectedMessageIds.value.push(id)
+  } else {
+    selectedMessageIds.value.splice(index, 1)
+  }
+}
+
+const handleGenerateExport = () => {
+  if (!selectedMessageIds.value.length) {
+    triggerToast('请先选择消息')
+    return
+  }
+  exportDialogOpen.value = true
 }
 
 const handleToggleThinking = () => {
@@ -489,7 +545,7 @@ const handleAvatarClick = (url: string) => {
 </script>
 
 <template>
-  <div class="wechat-chat-area">
+  <div class="wechat-chat-area" :class="{ 'select-mode': isSelectMode }">
     <!-- Header -->
     <header class="chat-header" :class="{ 'electron-mode': isElectron }" @contextmenu="handleHeaderContextMenu">
       <button v-if="isSidebarCollapsed" @click="emit('toggle-sidebar')" class="mobile-menu-btn">
@@ -522,6 +578,9 @@ const handleAvatarClick = (url: string) => {
       </div>
 
       <div class="header-actions">
+        <button class="more-btn export-btn" title="分享/导出" @click="enterSelectMode">
+          <Share2 :size="18" />
+        </button>
         <!-- 
           "更多"按钮 - Web 模式回退
           仅在 Web 浏览器模式下显示 (v-if="!isElectron")
@@ -598,88 +657,100 @@ const handleAvatarClick = (url: string) => {
             </div>
 
             <template v-else-if="msg.role === 'assistant'">
-              <!-- AI 回复：动态拆分渲染 -->
-              <div v-for="(segment, sIndex) in parseMessageSegments(msg.content)" :key="msg.id + '-' + sIndex"
-                class="message-group group-assistant">
-                <div class="message-wrapper message-assistant group relative">
-                  <!-- Avatar -->
-                  <div class="message-avatar" @click="handleAvatarClick(getAssistantAvatar())">
-                    <img :src="getAssistantAvatar()" alt="Avatar" />
-                  </div>
+              <div class="message-row" :class="{ 'is-selected': isMessageSelected(msg.id) }">
+                <button v-if="isSelectMode" class="select-checkbox" :class="{ selected: isMessageSelected(msg.id) }"
+                  @click.stop="toggleMessageSelection(msg.id)" aria-label="选择消息"></button>
+                <div class="message-stack">
+                  <!-- AI 回复：动态拆分渲染 -->
+                  <div v-for="(segment, sIndex) in parseMessageSegments(msg.content)" :key="msg.id + '-' + sIndex"
+                    class="message-group group-assistant">
+                    <div class="message-wrapper message-assistant group relative">
+                      <!-- Avatar -->
+                      <div class="message-avatar" @click="handleAvatarClick(getAssistantAvatar())">
+                        <img :src="getAssistantAvatar()" alt="Avatar" />
+                      </div>
 
-                  <!-- Message Bubble -->
-                  <div class="message-bubble-container" :class="{ 'message-pop-in': segment }">
-                    <div class="message-bubble">
-                      <MessageContent>
-                        <MessageResponse :content="segment" />
-                      </MessageContent>
+                      <!-- Message Bubble -->
+                      <div class="message-bubble-container" :class="{ 'message-pop-in': segment }">
+                        <div class="message-bubble">
+                          <MessageContent>
+                            <MessageResponse :content="segment" />
+                          </MessageContent>
+                        </div>
+                      </div>
+
+                      <!-- Message Action Menu -->
+                      <div class="message-actions">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger as-child>
+                            <button
+                              class="message-action-btn opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100 transition-opacity">
+                              <MoreHorizontal :size="16" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start">
+                            <DropdownMenuItem @click="handleCopyContent(segment)">
+                              <span>复制</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem v-if="hasThinking(msg)" @click="handleOpenThinking(msg)">
+                              <span>查看思考过程</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem v-if="hasToolCalls(msg)" @click="handleOpenToolCalls(msg)">
+                              <span>查看工具调用</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem v-if="canRegenerate(msg, index)" @click="handleRegenerate(msg)">
+                              <span>重新回答</span>
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                     </div>
-                  </div>
-
-                  <!-- Message Action Menu -->
-                  <div class="message-actions">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger as-child>
-                        <button
-                          class="message-action-btn opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100 transition-opacity">
-                          <MoreHorizontal :size="16" />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start">
-                        <DropdownMenuItem @click="handleCopyContent(segment)">
-                          <span>复制</span>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem v-if="hasThinking(msg)" @click="handleOpenThinking(msg)">
-                          <span>查看思考过程</span>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem v-if="hasToolCalls(msg)" @click="handleOpenToolCalls(msg)">
-                          <span>查看工具调用</span>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem v-if="canRegenerate(msg, index)" @click="handleRegenerate(msg)">
-                          <span>重新回答</span>
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
                   </div>
                 </div>
               </div>
             </template>
 
-            <div v-else class="message-group group-user">
-              <div class="message-wrapper message-user group relative">
-                <!-- Avatar -->
-                <div class="message-avatar" @click="handleAvatarClick(getUserAvatar())">
-                  <img :src="getUserAvatar()" alt="Avatar" />
-                </div>
+            <div v-else class="message-row" :class="{ 'is-selected': isMessageSelected(msg.id) }">
+              <button v-if="isSelectMode" class="select-checkbox" :class="{ selected: isMessageSelected(msg.id) }"
+                @click.stop="toggleMessageSelection(msg.id)" aria-label="选择消息"></button>
+              <div class="message-stack">
+                <div class="message-group group-user">
+                  <div class="message-wrapper message-user group relative">
+                    <!-- Avatar -->
+                    <div class="message-avatar" @click="handleAvatarClick(getUserAvatar())">
+                      <img :src="getUserAvatar()" alt="Avatar" />
+                    </div>
 
-                <!-- Message Bubble -->
-                <div class="message-bubble-container" :class="{ 'message-pop-in': msg.content }">
-                  <!-- Normal message content -->
-                  <div v-if="msg.content" class="message-bubble">
-                    <MessageContent>
-                      <MessageResponse :content="msg.content" />
-                    </MessageContent>
+                    <!-- Message Bubble -->
+                    <div class="message-bubble-container" :class="{ 'message-pop-in': msg.content }">
+                      <!-- Normal message content -->
+                      <div v-if="msg.content" class="message-bubble">
+                        <MessageContent>
+                          <MessageResponse :content="msg.content" />
+                        </MessageContent>
+                      </div>
+                    </div>
+
+                    <!-- Message Action Menu -->
+                    <div class="message-actions">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger as-child>
+                          <button
+                            class="message-action-btn opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100 transition-opacity">
+                            <MoreHorizontal :size="16" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem @click="handleCopyContent(msg.content)">
+                            <span>复制</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem v-if="canRecall(msg)" @click="handleRecallClick(msg)">
+                            <span class="text-red-500">撤回</span>
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </div>
-                </div>
-
-                <!-- Message Action Menu -->
-                <div class="message-actions">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger as-child>
-                      <button
-                        class="message-action-btn opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100 transition-opacity">
-                        <MoreHorizontal :size="16" />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem @click="handleCopyContent(msg.content)">
-                        <span>复制</span>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem v-if="canRecall(msg)" @click="handleRecallClick(msg)">
-                        <span class="text-red-500">撤回</span>
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
                 </div>
               </div>
             </div>
@@ -693,7 +764,7 @@ const handleAvatarClick = (url: string) => {
 
 
     <!-- Input Area -->
-    <div class="chat-input-area">
+    <div v-if="!isSelectMode" class="chat-input-area">
       <div class="input-toolbar">
         <EmojiPicker @select="input += $event" />
         <button class="toolbar-btn" title="新会话" @click="handleNewChat">
@@ -715,6 +786,12 @@ const handleAvatarClick = (url: string) => {
           <PromptInputSubmit :status="status" :loading="status === 'streaming'" class="send-btn" />
         </div>
       </PromptInput>
+    </div>
+    <div v-else class="export-selection-bar">
+      <button class="selection-btn cancel" @click="exitSelectMode">取消</button>
+      <span class="selection-count">已选 {{ selectedMessageIds.length }} 条</span>
+      <button class="selection-btn primary" :disabled="selectedMessageIds.length === 0"
+        @click="handleGenerateExport">生成图片</button>
     </div>
 
     <!-- Toast Feedback -->
@@ -796,6 +873,8 @@ const handleAvatarClick = (url: string) => {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <ChatImageExportDialog v-model:open="exportDialogOpen" :messages="exportMessages" title="聊天记录图片预览" />
 
     <!-- Recall Confirmation Dialog -->
     <Dialog v-model:open="recallDialogOpen">
@@ -1092,6 +1171,65 @@ const handleAvatarClick = (url: string) => {
   gap: 16px;
 }
 
+.message-row {
+  display: flex;
+  width: 100%;
+  align-items: flex-start;
+}
+
+.message-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+}
+
+.select-checkbox {
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  border: 1.5px solid #c7c7c7;
+  background: #fff;
+  margin-top: 6px;
+  flex-shrink: 0;
+  position: relative;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.select-checkbox.selected {
+  border-color: #07c160;
+  background: #07c160;
+}
+
+.select-checkbox.selected::after {
+  content: '';
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  background: #fff;
+  border-radius: 999px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.wechat-chat-area.select-mode .message-row {
+  gap: 12px;
+}
+
+.wechat-chat-area.select-mode .message-row .message-wrapper {
+  opacity: 0.75;
+}
+
+.wechat-chat-area.select-mode .message-row.is-selected .message-wrapper {
+  opacity: 1;
+}
+
+.wechat-chat-area.select-mode .message-actions {
+  display: none;
+}
+
 .message-wrapper {
   display: flex;
   gap: 10px;
@@ -1284,6 +1422,48 @@ const handleAvatarClick = (url: string) => {
   background: #f5f5f5;
   border-top: 1px solid #e5e5e5;
   padding: 8px 16px 16px;
+}
+
+.export-selection-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: #f5f5f5;
+  border-top: 1px solid #e5e5e5;
+  gap: 12px;
+}
+
+.selection-count {
+  font-size: 13px;
+  color: #666;
+}
+
+.selection-btn {
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: 1px solid #e5e5e5;
+  background: #fff;
+  color: #333;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.selection-btn:hover {
+  background: #f0f0f0;
+}
+
+.selection-btn.primary {
+  background: #07c160;
+  border-color: #07c160;
+  color: #fff;
+}
+
+.selection-btn.primary:disabled {
+  background: #a0d8b7;
+  border-color: #a0d8b7;
+  cursor: not-allowed;
 }
 
 .input-toolbar {
