@@ -253,6 +253,10 @@ const handleGenerateExport = () => {
   exportDialogOpen.value = true
 }
 
+defineExpose({
+  enterSelectMode,
+})
+
 const handleToggleThinking = () => {
   toggleThinkingMode()
   // Toast text based on new state
@@ -578,7 +582,7 @@ const handleAvatarClick = (url: string) => {
       </div>
 
       <div class="header-actions">
-        <button class="more-btn export-btn" title="分享/导出" @click="enterSelectMode">
+        <button v-if="!isElectron" class="more-btn export-btn" title="分享/导出" @click="enterSelectMode">
           <Share2 :size="18" />
         </button>
         <!-- 

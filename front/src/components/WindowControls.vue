@@ -20,15 +20,17 @@
  * - 这不是重复代码，而是针对不同运行环境的适配
  */
 import { ref, onMounted, onBeforeUnmount } from 'vue'
-import { MoreHorizontal } from 'lucide-vue-next'
+import { MoreHorizontal, Share2 } from 'lucide-vue-next'
 
 // Props: showMore 控制是否显示"更多"按钮 (仅在聊天页面为 true)
 const props = defineProps<{
   showMore?: boolean
+  showExport?: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'more-click'): void
+  (e: 'export-click'): void
 }>()
 
 const isElectron = Boolean(window.WeAgentChat?.windowControls)
@@ -93,12 +95,16 @@ defineExpose({
 
 <template>
   <div v-if="isElectron" class="window-controls">
-    <!-- More Action (only in specific contexts like chat) -->
+    <!-- Export / More Actions (only in specific contexts like chat) -->
+    <button v-if="showExport" class="window-btn export-action-btn" title="分享/导出"
+      @click="emit('export-click')" @mousedown.stop>
+      <Share2 :size="16" />
+    </button>
     <button v-if="showMore" class="window-btn more-action-btn" title="更多" @click="emit('more-click')">
       <MoreHorizontal :size="18" />
     </button>
-    
-    <div class="controls-divider" v-if="showMore"></div>
+
+    <div class="controls-divider" v-if="showMore || showExport"></div>
 
     <button class="window-btn" title="最小化" @click="handleMinimize">
       <svg class="window-icon" viewBox="0 0 10 10" aria-hidden="true">
@@ -127,6 +133,7 @@ defineExpose({
   display: flex;
   align-items: center;
   -webkit-app-region: no-drag;
+  pointer-events: auto;
 }
 
 .window-btn {
@@ -140,10 +147,19 @@ defineExpose({
   justify-content: center;
   cursor: pointer;
   outline: none;
+  -webkit-app-region: no-drag;
+  pointer-events: auto;
 }
 
 .window-btn:hover {
   background: #e5e5e5;
+}
+
+.window-btn svg,
+.window-btn path,
+.window-btn rect {
+  -webkit-app-region: no-drag;
+  pointer-events: none;
 }
 
 .window-btn.close:hover {
@@ -154,6 +170,18 @@ defineExpose({
 .more-action-btn {
   margin-right: 2px;
   color: #666;
+}
+
+.export-action-btn {
+  margin-right: 2px;
+  color: #666;
+  position: relative;
+}
+
+.export-action-btn::before {
+  content: '';
+  position: absolute;
+  inset: -6px -4px;
 }
 
 .controls-divider {

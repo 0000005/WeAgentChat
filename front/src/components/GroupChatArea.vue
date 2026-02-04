@@ -327,6 +327,10 @@ const handleGenerateExport = () => {
   exportDialogOpen.value = true
 }
 
+defineExpose({
+  enterSelectMode,
+})
+
 const handleCopyContent = async (content: string) => {
   if (!content) return
   try {
@@ -839,7 +843,7 @@ const handleAvatarClick = (url: string) => {
       </div>
 
       <div class="header-actions">
-        <button class="more-btn export-btn" title="分享/导出" @click="enterSelectMode">
+        <button v-if="!isElectron" class="more-btn export-btn" title="分享/导出" @click="enterSelectMode">
           <Share2 :size="18" />
         </button>
         <!-- "更多"按钮 - Web 模式回退 -->

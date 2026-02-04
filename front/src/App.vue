@@ -31,6 +31,8 @@ const isFriendComposeOpen = ref(false)
 const isGroupComposeOpen = ref(false)
 const friendComposeMode = ref<'add' | 'edit'>('add')
 const friendComposeId = ref<number | null>(null)
+const chatAreaRef = ref<InstanceType<typeof ChatArea> | null>(null)
+const groupChatAreaRef = ref<InstanceType<typeof GroupChatArea> | null>(null)
 const sessionStore = useSessionStore()
 const settingsStore = useSettingsStore()
 const settingsDefaultTab = ref('llm')
@@ -78,6 +80,15 @@ const handleEditFriend = (id: number) => {
   friendComposeMode.value = 'edit'
   friendComposeId.value = id
   isFriendComposeOpen.value = true
+}
+
+const handleExportClick = () => {
+  if (activeTab.value !== 'chat') return
+  if (sessionStore.chatType === 'group') {
+    groupChatAreaRef.value?.enterSelectMode?.()
+  } else {
+    chatAreaRef.value?.enterSelectMode?.()
+  }
 }
 
 // Global focus handler to stop notification flashing
@@ -145,8 +156,8 @@ const handleSetupComplete = () => {
       
       注意: 这不是重复代码，而是针对不同运行环境的适配逻辑。
     -->
-    <WindowControls class="global-window-controls" :show-more="activeTab === 'chat'"
-      @more-click="isDrawerOpen = true" />
+    <WindowControls class="global-window-controls" :show-more="activeTab === 'chat'" :show-export="activeTab === 'chat'"
+      @more-click="isDrawerOpen = true" @export-click="handleExportClick" />
 
     <div class="wechat-app">
       <!-- Icon Sidebar (always visible on desktop) -->
@@ -177,9 +188,11 @@ const handleSetupComplete = () => {
       <main class="chat-container">
         <FriendGallery v-if="activeTab === 'gallery'" @back-chat="updateActiveTab('chat')" />
         <template v-else>
-          <GroupChatArea v-if="sessionStore.chatType === 'group'" :is-sidebar-collapsed="!isSidebarOpen"
+          <GroupChatArea v-if="sessionStore.chatType === 'group'" ref="groupChatAreaRef"
+            :is-sidebar-collapsed="!isSidebarOpen"
             @toggle-sidebar="toggleSidebar" @open-drawer="isDrawerOpen = true" @open-settings="handleOpenSettings" />
-          <ChatArea v-else :is-sidebar-collapsed="!isSidebarOpen" @toggle-sidebar="toggleSidebar"
+          <ChatArea v-else ref="chatAreaRef" :is-sidebar-collapsed="!isSidebarOpen"
+            @toggle-sidebar="toggleSidebar"
             @open-drawer="isDrawerOpen = true" @edit-friend="handleEditFriend" @open-settings="handleOpenSettings" />
         </template>
       </main>
@@ -235,6 +248,8 @@ const handleSetupComplete = () => {
   right: 0;
   z-index: 9999;
   background: transparent;
+  -webkit-app-region: no-drag;
+  pointer-events: auto;
 }
 
 .wechat-app {
