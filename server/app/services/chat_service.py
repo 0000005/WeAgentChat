@@ -901,12 +901,13 @@ async def _run_chat_generation_task(
             )
         else:
             agent_model = model_name
+        tools = [tool_recall] if enable_recall else []
         agent = Agent(
             name=friend_name,
             instructions=final_instructions,
             model=agent_model,
             model_settings=model_settings,
-            tools=[tool_recall],
+            tools=tools,
         )
 
         full_ai_content = ""

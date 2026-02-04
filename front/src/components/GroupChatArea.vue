@@ -235,7 +235,7 @@ const handleNewChat = async () => {
 const handleOpenAutoDrive = () => {
   if (!sessionStore.currentGroupId) return
   if (isAutoDriveActive.value) {
-    triggerToast('自驱状态已在上方状态栏展示')
+    triggerToast('接力讨论状态已在上方状态栏展示')
   } else {
     autoDriveConfigOpen.value = true
   }
@@ -254,7 +254,7 @@ const handleStartAutoDrive = async () => {
     autoDriveConfigOpen.value = false
   } catch (error) {
     console.error('Failed to start auto-drive:', error)
-    triggerToast('自驱启动失败')
+    triggerToast('接力讨论启动失败')
   }
 }
 
@@ -897,7 +897,7 @@ const handleAvatarClick = (url: string) => {
     <div class="chat-input-area">
       <div class="input-toolbar">
         <EmojiPicker @select="input += $event" />
-        <button class="toolbar-btn auto-drive-btn" title="自驱" @click="handleOpenAutoDrive">
+        <button class="toolbar-btn auto-drive-btn" title="接力讨论" @click="handleOpenAutoDrive">
           <Sparkles :size="18" />
         </button>
         <button class="toolbar-btn" title="新会话" @click="handleNewChat">

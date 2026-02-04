@@ -323,7 +323,7 @@ export const createGroupAutoDriveStreamActions = (deps: GroupAutoDriveStreamDeps
                 }
 
                 if (event === 'auto_drive_error') {
-                    const detail = (data && (data.detail || data.message)) || '自驱运行中断'
+                    const detail = (data && (data.detail || data.message)) || '接力讨论运行中断'
                     setAutoDriveError(groupId, String(detail))
                     continue
                 }

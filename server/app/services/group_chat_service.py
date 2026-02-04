@@ -520,8 +520,13 @@ class GroupChatService:
                 profile_data = ""
                 injected_recall_messages = []
                 enable_recall = SettingsService.get_setting(db, "memory", "recall_enabled", True)
-                
-                if enable_recall and embedding_service.get_active_setting(db):
+
+                if enable_recall:
+                    if not embedding_service.get_active_setting(db):
+                        logger.warning("[GroupGenTask] Recall skipped: Embedding not configured.")
+                        enable_recall = False
+
+                if enable_recall:
                     try:
                         # 获取用户画像
                         from app.services.memo.bridge import MemoService
@@ -712,16 +717,18 @@ class GroupChatService:
                 else:
                     agent_model = model_name
 
+                agent_tools = group_chat_shared.build_agent_tools(
+                    tool_recall if enable_recall else None,
+                    tool_get_other_members_messages,
+                    tool_is_mentioned,
+                )
+
                 agent = Agent(
                     name=friend.name,
                     instructions=final_instructions,
                     model=agent_model,
                     model_settings=model_settings,
-                    tools=group_chat_shared.build_agent_tools(
-                        tool_recall,
-                        tool_get_other_members_messages,
-                        tool_is_mentioned,
-                    ),
+                    tools=agent_tools,
                 )
                 
                 await group_chat_shared.stream_llm_to_queue(

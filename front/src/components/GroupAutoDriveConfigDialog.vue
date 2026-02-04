@@ -243,7 +243,7 @@ defineExpose({ getConfig })
     <DialogContent class="auto-drive-dialog sm:max-w-3xl">
       <DialogHeader class="dialog-header">
         <div class="dialog-title-wrap">
-          <DialogTitle>自驱模式配置</DialogTitle>
+          <DialogTitle>接力讨论模式配置</DialogTitle>
           <span class="dialog-tag">多轮自动对话</span>
         </div>
         <DialogDescription>AI 好友将自动接力回复，多轮互动更轻松。</DialogDescription>
@@ -407,7 +407,7 @@ defineExpose({ getConfig })
       <DialogFooter class="dialog-footer">
         <Button variant="ghost" @click="open = false">取消</Button>
         <Button type="button" variant="default" class="btn-primary" @click="handleSubmit">
-          开始自驱
+          开始接力讨论
         </Button>
       </DialogFooter>
     </DialogContent>
