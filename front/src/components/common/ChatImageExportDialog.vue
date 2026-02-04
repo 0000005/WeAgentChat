@@ -45,6 +45,8 @@ const previewImages = ref<string[]>([])
 const activePage = ref(0)
 
 const measureRef = ref<HTMLElement | null>(null)
+const measureItemRef = ref<HTMLElement | null>(null)
+const measurePayload = ref<ExportMessage | null>(null)
 const pageRefs = ref<(HTMLElement | null)[]>([])
 
 const scaleOptions = [
@@ -99,6 +101,64 @@ const normalizedMessages = computed<ExportMessage[]>(() => {
   })
   return output
 })
+
+const toChars = (text: string) => Array.from(text)
+const fromChars = (chars: string[]) => chars.join('')
+
+const measureMessageHeight = async (msg: ExportMessage) => {
+  measurePayload.value = msg
+  await nextTick()
+  const el = measureItemRef.value
+  if (!el) return 0
+  return Math.ceil(el.getBoundingClientRect().height)
+}
+
+const splitMessageToFit = async (msg: ExportMessage, availableHeight: number) => {
+  const chars = toChars(msg.content || '')
+  if (!chars.length) {
+    return { fit: null, rest: null, height: 0 }
+  }
+
+  let left = 1
+  let right = chars.length
+  let best = 0
+  let bestHeight = 0
+
+  while (left <= right) {
+    const mid = Math.floor((left + right) / 2)
+    const candidate: ExportMessage = {
+      ...msg,
+      content: fromChars(chars.slice(0, mid)),
+    }
+    const height = await measureMessageHeight(candidate)
+    if (height <= availableHeight) {
+      best = mid
+      bestHeight = height
+      left = mid + 1
+    } else {
+      right = mid - 1
+    }
+  }
+
+  if (best === 0) {
+    return { fit: null, rest: msg, height: 0 }
+  }
+
+  const fit: ExportMessage = {
+    ...msg,
+    content: fromChars(chars.slice(0, best)),
+  }
+  const restContent = fromChars(chars.slice(best))
+  const rest = restContent
+    ? {
+        ...msg,
+        content: restContent,
+        showName: false,
+      }
+    : null
+
+  return { fit, rest, height: bestHeight }
+}
 
 const currentImage = computed(() => previewImages.value[activePage.value] || '')
 const hasMultiplePages = computed(() => previewImages.value.length > 1)
@@ -163,23 +223,73 @@ const generatePreview = async () => {
     isGenerating.value = false
     return
   }
+  if (document.fonts?.ready) {
+    await document.fonts.ready
+  }
 
-  const nodes = Array.from(measureEl.querySelectorAll('.export-message')) as HTMLElement[]
   const nextPages: ExportMessage[][] = []
   let current: ExportMessage[] = []
   let currentHeight = 0
 
-  nodes.forEach((node, idx) => {
-    const height = node.getBoundingClientRect().height
-    const extraGap = current.length ? contentGap.value : 0
-    if (current.length && currentHeight + extraGap + height > CONTENT_HEIGHT) {
-      nextPages.push(current)
-      current = []
-      currentHeight = 0
+  for (const msg of normalizedMessages.value) {
+    let remaining: ExportMessage | null = msg
+    while (remaining) {
+      const gap = current.length ? contentGap.value : 0
+      const available = CONTENT_HEIGHT - currentHeight - gap
+
+      const fullHeight = await measureMessageHeight(remaining)
+      if (fullHeight <= available) {
+        currentHeight += gap + fullHeight
+        current.push(remaining)
+        remaining = null
+        continue
+      }
+
+      if (current.length && fullHeight <= CONTENT_HEIGHT) {
+        nextPages.push(current)
+        current = []
+        currentHeight = 0
+        continue
+      }
+
+      const { fit, rest, height } = await splitMessageToFit(remaining, available)
+      if (!fit) {
+        if (current.length) {
+          nextPages.push(current)
+          current = []
+          currentHeight = 0
+          continue
+        }
+
+        const chars = toChars(remaining.content || '')
+        const forcedContent = fromChars(chars.slice(0, 1))
+        const forced: ExportMessage = { ...remaining, content: forcedContent }
+        const forcedHeight = await measureMessageHeight(forced)
+        current.push(forced)
+        currentHeight = forcedHeight
+
+        const restContent = fromChars(chars.slice(1))
+        remaining = restContent
+          ? { ...remaining, content: restContent, showName: false }
+          : null
+
+        nextPages.push(current)
+        current = []
+        currentHeight = 0
+        continue
+      }
+
+      currentHeight += gap + height
+      current.push(fit)
+      remaining = rest
+
+      if (remaining) {
+        nextPages.push(current)
+        current = []
+        currentHeight = 0
+      }
     }
-    currentHeight += extraGap + height
-    current.push(normalizedMessages.value[idx])
-  })
+  }
 
   if (current.length) nextPages.push(current)
 
@@ -307,13 +417,14 @@ watch(scaleValue, async () => {
   <!-- Hidden render root for measurement and capture -->
   <div v-if="open" class="export-render-root" :style="scaleStyle" aria-hidden="true">
     <div ref="measureRef" class="export-measure" :style="{ width: `${CONTENT_WIDTH}px` }">
-      <div v-for="msg in normalizedMessages" :key="msg.id" class="export-message" :class="{ user: msg.isUser }">
+      <div v-if="measurePayload" ref="measureItemRef" class="export-message"
+        :class="{ user: measurePayload.isUser }">
         <div class="export-avatar">
-          <img :src="msg.avatar" crossorigin="anonymous" alt="avatar" />
+          <img :src="measurePayload.avatar" crossorigin="anonymous" alt="avatar" />
         </div>
         <div class="export-body">
-          <div v-if="msg.showName" class="export-name">{{ msg.name }}</div>
-          <div class="export-bubble" :class="{ user: msg.isUser }">{{ msg.content }}</div>
+          <div v-if="measurePayload.showName" class="export-name">{{ measurePayload.name }}</div>
+          <div class="export-bubble" :class="{ user: measurePayload.isUser }">{{ measurePayload.content }}</div>
         </div>
       </div>
     </div>

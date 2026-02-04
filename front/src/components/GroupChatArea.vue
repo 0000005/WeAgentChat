@@ -278,12 +278,17 @@ const exportMessages = computed<ExportMessage[]>(() =>
     const isUser = msg.role === 'user'
     const senderId = msg.senderId || (isUser ? 'user' : 'assistant')
     const senderType = msg.senderType || (isUser ? 'user' : 'assistant')
+    const debateSide = getMessageDebateSide(msg)
+    const debateLabel = debateSide ? getDebateSideLabel(debateSide) : ''
+    const baseName = isUser ? '我' : getMemberName(senderId, senderType)
+    const displayName = debateLabel ? `${baseName}（${debateLabel}）` : baseName
+    const userAvatar = getStaticUrl(settingsStore.userAvatar) || 'default_avatar.svg'
     return {
       id: msg.id,
       content: msg.content,
       isUser,
-      avatar: getMemberAvatar(senderId, senderType),
-      name: isUser ? '我' : getMemberName(senderId, senderType),
+      avatar: isUser ? userAvatar : getMemberAvatar(senderId, senderType),
+      name: displayName,
       showName: !isUser,
     }
   })
