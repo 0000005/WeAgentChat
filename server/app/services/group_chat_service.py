@@ -172,10 +172,9 @@ class GroupChatService:
             db.query(GroupSession)
             .filter(
                 GroupSession.group_id == group_id,
-                GroupSession.session_type == "normal",
                 GroupSession.ended == False,
             )
-            .order_by(GroupSession.id.desc())
+            .order_by(GroupSession.update_time.desc(), GroupSession.id.desc())
             .first()
         )
 

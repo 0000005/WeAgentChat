@@ -396,12 +396,6 @@ class GroupAutoDriveService:
         db.commit()
         db.refresh(run)
 
-        session = db.query(GroupSession).filter(GroupSession.id == run.session_id).first()
-        if session:
-            session.ended = True
-            session.update_time = run.ended_at
-            db.commit()
-
         runtime = self._runtimes.get(group_id)
         if runtime:
             runtime.stop_event.set()
@@ -1018,12 +1012,6 @@ class GroupAutoDriveService:
         db.commit()
         db.refresh(run)
 
-        session = db.query(GroupSession).filter(GroupSession.id == run.session_id).first()
-        if session:
-            session.ended = True
-            session.update_time = run.ended_at
-            db.commit()
-
         await runtime.queue.put({"event": "auto_drive_state", "data": self._state_payload(run)})
         await runtime.queue.put({"event": "auto_drive_done", "data": {"run_id": run.id}})
 
@@ -1049,12 +1037,6 @@ class GroupAutoDriveService:
                 run.update_time = now_time
                 run.next_speaker_id = None
                 db.commit()
-
-                session = db.query(GroupSession).filter(GroupSession.id == run.session_id).first()
-                if session:
-                    session.ended = True
-                    session.update_time = now_time
-                    db.commit()
 
                 runtime = self._runtimes.get(run.group_id)
                 if runtime:
