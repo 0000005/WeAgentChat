@@ -28,6 +28,7 @@ const autoDriveTurnLimit = ref(6)
 const autoDriveEndAction = ref<AutoDriveEndAction>('summary')
 const autoDriveJudgeId = ref('user')
 const autoDriveSummaryBy = ref('user')
+const debateNeedJudge = ref(false)
 
 const brainstormTopic = reactive({
   theme: '',
@@ -52,20 +53,8 @@ const decisionParticipants = ref<string[]>([])
 const debateAffirmative = ref<string[]>([])
 const debateNegative = ref<string[]>([])
 
-const showSummarySelector = computed(() => ['summary', 'both'].includes(autoDriveEndAction.value))
-const showJudgeSelector = computed(() => autoDriveMode.value === 'debate' && ['judge', 'both'].includes(autoDriveEndAction.value))
-const availableEndActions = computed(() => {
-  if (autoDriveMode.value === 'debate') {
-    return [
-      { value: 'summary', label: '总结' },
-      { value: 'judge', label: '胜负判定' },
-      { value: 'both', label: '两者' }
-    ]
-  }
-  return [{ value: 'summary', label: '总结' }]
-})
-
-const isEndActionJudge = computed(() => ['judge', 'both'].includes(autoDriveEndAction.value))
+const showSummarySelector = computed(() => autoDriveMode.value !== 'debate')
+const showJudgeSelector = computed(() => autoDriveMode.value === 'debate' && debateNeedJudge.value)
 
 const resetAutoDriveConfig = () => {
   autoDriveMode.value = 'brainstorm'
@@ -73,6 +62,7 @@ const resetAutoDriveConfig = () => {
   autoDriveEndAction.value = 'summary'
   autoDriveJudgeId.value = 'user'
   autoDriveSummaryBy.value = 'user'
+  debateNeedJudge.value = false
 
   brainstormTopic.theme = ''
   brainstormTopic.goal = ''
@@ -149,9 +139,15 @@ const validateAutoDriveConfig = () => {
       emit('toast', '正反人数必须相等')
       return false
     }
-    if (isEndActionJudge.value && autoDriveJudgeId.value === 'user') {
-      emit('toast', '胜负判定需要指定评委成员')
-      return false
+    if (debateNeedJudge.value) {
+      if (autoDriveJudgeId.value === 'user') {
+        emit('toast', '胜负判定需要指定评委成员')
+        return false
+      }
+      if (debateAffirmative.value.includes(autoDriveJudgeId.value) || debateNegative.value.includes(autoDriveJudgeId.value)) {
+        emit('toast', '评委不能是辩论选手')
+        return false
+      }
     }
   }
   return true
@@ -205,9 +201,9 @@ const buildAutoDriveConfig = (): AutoDriveConfig => {
       negative: debateNegative.value
     },
     turnLimit: Number(autoDriveTurnLimit.value) || 1,
-    endAction: autoDriveEndAction.value,
-    judgeId: autoDriveJudgeId.value === 'user' ? null : autoDriveJudgeId.value,
-    summaryBy: autoDriveSummaryBy.value === 'user' ? null : autoDriveSummaryBy.value
+    endAction: debateNeedJudge.value ? 'judge' : 'summary',
+    judgeId: debateNeedJudge.value && autoDriveJudgeId.value !== 'user' ? autoDriveJudgeId.value : null,
+    summaryBy: null
   }
 }
 
@@ -227,6 +223,15 @@ watch(open, (val) => {
 watch(autoDriveMode, (mode) => {
   if (mode !== 'debate' && autoDriveEndAction.value !== 'summary') {
     autoDriveEndAction.value = 'summary'
+  }
+  if (mode !== 'debate') {
+    debateNeedJudge.value = false
+  }
+})
+
+watch(debateNeedJudge, (need) => {
+  if (!need) {
+    autoDriveJudgeId.value = 'user'
   }
 })
 
@@ -352,13 +357,18 @@ defineExpose({ getConfig })
               <label class="form-label">发言上限</label>
               <input v-model="autoDriveTurnLimit" type="number" min="1" class="form-input" />
             </div>
-            <div class="form-inline-item">
+            <div v-if="autoDriveMode !== 'debate'" class="form-inline-item">
               <label class="form-label">结束动作</label>
-              <select v-model="autoDriveEndAction" class="form-select" :disabled="availableEndActions.length === 1">
-                <option v-for="action in availableEndActions" :key="action.value" :value="action.value">
-                  {{ action.label }}
-                </option>
+              <select v-model="autoDriveEndAction" class="form-select" disabled>
+                <option value="summary">总结</option>
               </select>
+            </div>
+            <div v-else class="form-inline-item">
+              <label class="form-label">胜负判定</label>
+              <label class="form-checkbox">
+                <input v-model="debateNeedJudge" type="checkbox" />
+                <span>需要评委判定</span>
+              </label>
             </div>
           </div>
         </section>
@@ -380,15 +390,17 @@ defineExpose({ getConfig })
           <div class="form-card-title">评委角色</div>
           <div class="form-section">
             <select v-model="autoDriveJudgeId" class="form-select">
-              <option value="user">我（默认）</option>
+              <option value="user" :disabled="debateNeedJudge">我（默认）</option>
               <option v-for="member in props.groupFriendMembers" :key="member.member_id + '-judge'"
-                :value="member.member_id">
+                :value="member.member_id"
+                :disabled="debateAffirmative.includes(member.member_id) || debateNegative.includes(member.member_id)">
                 {{ member.name }}
               </option>
             </select>
             <div v-if="autoDriveJudgeId === 'user'" class="form-hint">
               选择“我”不会自动生成胜负判断，请改选评委成员
             </div>
+            <div v-else class="form-hint">评委不能是辩论选手</div>
           </div>
         </section>
       </div>
@@ -481,6 +493,42 @@ defineExpose({ getConfig })
   border: 1px solid #e5e7eb;
   background: #fff;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.form-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #3f4a5a;
+  cursor: pointer;
+  user-select: none;
+}
+
+.form-checkbox input {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  border: 1px solid #cfd4dc;
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+}
+
+.form-checkbox input:checked {
+  border-color: #07c160;
+  background: #07c160;
+}
+
+.form-checkbox input:checked::after {
+  content: '';
+  width: 4px;
+  height: 8px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
 }
 
 .form-textarea:focus,

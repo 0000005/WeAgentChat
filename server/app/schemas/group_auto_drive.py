@@ -77,6 +77,11 @@ class AutoDriveConfig(BaseModel):
                 raise ValueError("debate 正反方最多 2 人")
             if len(affirmative) != len(negative):
                 raise ValueError("debate 正反人数必须相等")
+            if self.end_action in ("judge", "both"):
+                if not self.judge_id:
+                    raise ValueError("debate 需要评委成员")
+                if self.judge_id in affirmative or self.judge_id in negative:
+                    raise ValueError("评委不能是辩论选手")
 
         return self
 

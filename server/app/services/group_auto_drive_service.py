@@ -677,42 +677,42 @@ class GroupAutoDriveService:
             db.commit()
             db.refresh(run)
 
-        if config.end_action in ("summary", "both"):
-            summary_order = [negative[0], affirmative[0]]
-            for member_id in summary_order:
-                if not await self._wait_if_paused(db, runtime, run):
-                    return
-                friend = friend_map[member_id]
-                current_turn += 1
-                await self._update_state(
-                    db,
-                    runtime,
-                    run,
-                    status="running",
-                    phase="summary",
-                    current_round=run.current_round,
-                    current_turn=current_turn,
-                    next_speaker_id=member_id,
-                    pause_reason=None,
-                )
-                host_message = self._build_host_message(
-                    "debate",
-                    "summary",
-                    run.current_round,
-                    friend.name,
-                    topic,
-                    side_map.get(member_id),
-                )
-                await self._dispatch_speaker(
-                    db,
-                    runtime,
-                    run,
-                    friend,
-                    host_message,
-                    member_id,
-                    "(empty)",
-                    debate_side=side_map.get(member_id),
-                )
+        # 辩论必须包含总结陈词阶段
+        summary_order = [negative[0], affirmative[0]]
+        for member_id in summary_order:
+            if not await self._wait_if_paused(db, runtime, run):
+                return
+            friend = friend_map[member_id]
+            current_turn += 1
+            await self._update_state(
+                db,
+                runtime,
+                run,
+                status="running",
+                phase="summary",
+                current_round=run.current_round,
+                current_turn=current_turn,
+                next_speaker_id=member_id,
+                pause_reason=None,
+            )
+            host_message = self._build_host_message(
+                "debate",
+                "summary",
+                run.current_round,
+                friend.name,
+                topic,
+                side_map.get(member_id),
+            )
+            await self._dispatch_speaker(
+                db,
+                runtime,
+                run,
+                friend,
+                host_message,
+                member_id,
+                "(empty)",
+                debate_side=side_map.get(member_id),
+            )
 
         if config.end_action in ("judge", "both") and config.judge_id and config.judge_id != DEFAULT_USER_ID:
             judge = friend_map.get(str(config.judge_id))
