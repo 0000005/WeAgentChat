@@ -830,7 +830,7 @@ class GroupAutoDriveService:
             group_id=run.group_id,
             session_id=run.session_id,
             before_id=user_msg_id,
-            limit=15,
+            limit=None,
         )
 
         name_map = group_chat_shared.build_name_map(

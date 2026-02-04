@@ -723,7 +723,6 @@ async def _run_chat_generation_task(
                 Message.id != ai_msg_id
             )
             .order_by(Message.create_time.desc())
-            .limit(10)
             .all()
         )
         history.reverse()

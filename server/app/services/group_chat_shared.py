@@ -113,14 +113,17 @@ def fetch_group_history(
     group_id: int,
     session_id: Optional[int],
     before_id: Optional[int] = None,
-    limit: int = 15,
+    limit: Optional[int] = None,
 ) -> List[GroupMessage]:
     query = db.query(GroupMessage).filter(GroupMessage.group_id == group_id)
     if session_id is not None:
         query = query.filter(GroupMessage.session_id == session_id)
     if before_id is not None:
         query = query.filter(GroupMessage.id < before_id)
-    history_msgs = query.order_by(GroupMessage.create_time.desc()).limit(limit).all()
+    query = query.order_by(GroupMessage.create_time.desc())
+    if limit is not None:
+        query = query.limit(limit)
+    history_msgs = query.all()
     history_msgs.reverse()
     return history_msgs
 

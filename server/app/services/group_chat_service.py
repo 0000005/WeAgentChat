@@ -249,7 +249,6 @@ class GroupChatService:
         history_msgs = (
             history_query
             .order_by(GroupMessage.create_time.desc())
-            .limit(20)
             .all()
         )
         history_msgs.reverse()
@@ -507,7 +506,7 @@ class GroupChatService:
                     group_id=group_id,
                     session_id=session_id,
                     before_id=user_msg_id,
-                    limit=15,
+                    limit=None,
                 )
 
                 # 姓名映射 (用于让 AI 区分谁在说话)
