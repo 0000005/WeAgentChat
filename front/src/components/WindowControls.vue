@@ -20,18 +20,18 @@
  * - 这不是重复代码，而是针对不同运行环境的适配
  */
 import { ref, onMounted, onBeforeUnmount } from 'vue'
-import { MoreHorizontal, Share2 } from 'lucide-vue-next'
+import { MoreHorizontal } from 'lucide-vue-next'
 
 // Props: showMore 控制是否显示"更多"按钮 (仅在聊天页面为 true)
 const props = defineProps<{
   showMore?: boolean
-  showExport?: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'more-click'): void
-  (e: 'export-click'): void
 }>()
+
+const debugHitArea = false
 
 const isElectron = Boolean(window.WeAgentChat?.windowControls)
 const isMaximized = ref(false)
@@ -91,20 +91,20 @@ defineExpose({
   showSystemMenu,
   handleToggleMaximize
 })
+
 </script>
 
 <template>
-  <div v-if="isElectron" class="window-controls">
-    <!-- Export / More Actions (only in specific contexts like chat) -->
-    <button v-if="showExport" class="window-btn export-action-btn" title="分享/导出"
-      @click="emit('export-click')" @mousedown.stop>
-      <Share2 :size="16" />
-    </button>
-    <button v-if="showMore" class="window-btn more-action-btn" title="更多" @click="emit('more-click')">
-      <MoreHorizontal :size="18" />
-    </button>
+  <div v-if="isElectron" class="window-controls" :class="{ 'debug-hit': debugHitArea }">
+    <!-- More Actions (only in specific contexts like chat) -->
+    <div class="window-actions" @mousedown.stop>
+      <button v-if="showMore" class="window-btn more-action-btn" title="更多"
+        @click="emit('more-click')">
+        <MoreHorizontal :size="18" />
+      </button>
+    </div>
 
-    <div class="controls-divider" v-if="showMore || showExport"></div>
+    <div class="controls-divider" v-if="showMore"></div>
 
     <button class="window-btn" title="最小化" @click="handleMinimize">
       <svg class="window-icon" viewBox="0 0 10 10" aria-hidden="true">
@@ -136,6 +136,21 @@ defineExpose({
   pointer-events: auto;
 }
 
+.window-actions {
+  display: flex;
+  align-items: center;
+  -webkit-app-region: no-drag;
+  pointer-events: auto;
+  position: relative;
+  z-index: 2;
+}
+
+.window-actions * {
+  -webkit-app-region: no-drag;
+  pointer-events: auto;
+}
+
+
 .window-btn {
   width: 38px;
   height: 28px;
@@ -149,6 +164,7 @@ defineExpose({
   outline: none;
   -webkit-app-region: no-drag;
   pointer-events: auto;
+  flex: 0 0 38px;
 }
 
 .window-btn:hover {
@@ -172,17 +188,6 @@ defineExpose({
   color: #666;
 }
 
-.export-action-btn {
-  margin-right: 2px;
-  color: #666;
-  position: relative;
-}
-
-.export-action-btn::before {
-  content: '';
-  position: absolute;
-  inset: -6px -4px;
-}
 
 .controls-divider {
   width: 1px;

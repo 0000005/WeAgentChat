@@ -843,9 +843,6 @@ const handleAvatarClick = (url: string) => {
       </div>
 
       <div class="header-actions">
-        <button v-if="!isElectron" class="more-btn export-btn" title="分享/导出" @click="enterSelectMode">
-          <Share2 :size="18" />
-        </button>
         <!-- "更多"按钮 - Web 模式回退 -->
         <button v-if="!isElectron" class="more-btn" @click="handleOpenDrawer">
           <MoreHorizontal :size="20" />
@@ -1075,6 +1072,9 @@ const handleAvatarClick = (url: string) => {
         </button>
         <button class="toolbar-btn" title="新会话" @click="handleNewChat">
           <MessageSquarePlus :size="22" />
+        </button>
+        <button class="toolbar-btn" title="分享/导出" @click="enterSelectMode">
+          <Share2 :size="18" />
         </button>
       </div>
 
