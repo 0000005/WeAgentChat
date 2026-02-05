@@ -525,6 +525,59 @@ function registerIpcHandlers() {
     }
   })
 
+  ipcMain.handle('export:save-images', async (event, payload) => {
+    try {
+      const win = BrowserWindow.fromWebContents(event.sender)
+      if (!win) return { canceled: true, error: 'Window not available' }
+      const images = Array.isArray(payload?.images) ? payload.images : []
+      const mode = payload?.mode === 'single' ? 'single' : 'all'
+      if (!images.length) return { canceled: true, error: 'No images' }
+
+      const baseName = String(payload?.baseName || 'weagentchat_share')
+      const timestamp = Date.now()
+
+      const parseDataUrl = (dataUrl) => {
+        const match = /^data:(image\/png|image\/jpeg);base64,(.*)$/.exec(dataUrl || '')
+        if (!match) {
+          throw new Error('Invalid image data')
+        }
+        return Buffer.from(match[2], 'base64')
+      }
+
+      if (mode === 'single') {
+        const defaultPath = `${baseName}_${timestamp}.png`
+        const { canceled, filePath } = await dialog.showSaveDialog(win, {
+          title: '保存图片',
+          defaultPath,
+          filters: [{ name: 'PNG 图片', extensions: ['png'] }],
+        })
+        if (canceled || !filePath) return { canceled: true }
+        const buffer = parseDataUrl(images[0])
+        fs.writeFileSync(filePath, buffer)
+        return { canceled: false, saved: [filePath] }
+      }
+
+      const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+        title: '选择保存目录',
+        properties: ['openDirectory', 'createDirectory'],
+      })
+      if (canceled || !filePaths?.length) return { canceled: true }
+      const dir = filePaths[0]
+      const saved = []
+      for (let i = 0; i < images.length; i += 1) {
+        const buffer = parseDataUrl(images[i])
+        const filename = `${baseName}_${timestamp}_${i + 1}.png`
+        const targetPath = path.join(dir, filename)
+        fs.writeFileSync(targetPath, buffer)
+        saved.push(targetPath)
+      }
+      return { canceled: false, saved }
+    } catch (error) {
+      console.error('[export:save-images] failed:', error)
+      return { canceled: false, error: String(error?.message || error) }
+    }
+  })
+
   // Notification flash handlers for new message alerts
   ipcMain.on('notification:flash', () => {
     startTrayFlash()

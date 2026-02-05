@@ -40,9 +40,11 @@ const CONTENT_WIDTH = EXPORT_PAGE_WIDTH - EXPORT_PADDING * 2
 const CONTENT_HEIGHT = EXPORT_PAGE_HEIGHT - EXPORT_PADDING * 2 - EXPORT_FOOTER_HEIGHT
 
 const isGenerating = ref(false)
+const isSaving = ref(false)
 const pages = ref<ExportMessage[][]>([])
 const previewImages = ref<string[]>([])
 const activePage = ref(0)
+const isElectron = Boolean(window.WeAgentChat?.isElectron ?? window.WeAgentChat?.windowControls)
 
 const measureRef = ref<HTMLElement | null>(null)
 const measureItemRef = ref<HTMLElement | null>(null)
@@ -317,12 +319,51 @@ const generatePreview = async () => {
   isGenerating.value = false
 }
 
-const handleSaveCurrent = () => {
-  if (!currentImage.value) return
+const saveImagesElectron = async (images: string[], mode: 'single' | 'all') => {
+  const saver = window.WeAgentChat?.export?.saveImages
+  if (!saver) return false
+  try {
+    const result = await saver({
+      images,
+      mode,
+      baseName: 'weagentchat_share',
+    })
+    if (result?.error) {
+      console.error('[Export] saveImages failed:', result.error)
+      return false
+    }
+    return Boolean(!result?.canceled)
+  } catch (error) {
+    console.error('[Export] saveImages error:', error)
+    return false
+  }
+}
+
+const handleSaveCurrent = async () => {
+  if (!currentImage.value || isSaving.value) return
+  if (isElectron && window.WeAgentChat?.export?.saveImages) {
+    isSaving.value = true
+    try {
+      await saveImagesElectron([String(currentImage.value)], 'single')
+    } finally {
+      isSaving.value = false
+    }
+    return
+  }
   downloadImage(currentImage.value, activePage.value + 1)
 }
 
-const handleSaveAll = () => {
+const handleSaveAll = async () => {
+  if (!previewImages.value.length || isSaving.value) return
+  if (isElectron && window.WeAgentChat?.export?.saveImages) {
+    isSaving.value = true
+    try {
+      await saveImagesElectron([...previewImages.value], 'all')
+    } finally {
+      isSaving.value = false
+    }
+    return
+  }
   previewImages.value.forEach((img, index) => {
     downloadImage(img, index + 1)
   })
@@ -333,10 +374,12 @@ watch(
   async (open) => {
     if (!open) {
       resetState()
+      isSaving.value = false
       return
     }
     if (!normalizedMessages.value.length) {
       resetState()
+      isSaving.value = false
       return
     }
     await generatePreview()
@@ -402,11 +445,11 @@ watch(scaleValue, async () => {
 
       <DialogFooter class="export-footer">
         <Button variant="outline" @click="handleClose">关闭</Button>
-        <Button variant="outline" :disabled="!currentImage" @click="handleSaveCurrent">
+        <Button variant="outline" :disabled="!currentImage || isSaving" @click="handleSaveCurrent">
           <Download class="mr-2 h-4 w-4" />
           保存当前页
         </Button>
-        <Button :disabled="!previewImages.length" @click="handleSaveAll" class="bg-emerald-600 hover:bg-emerald-700">
+        <Button :disabled="!previewImages.length || isSaving" @click="handleSaveAll" class="bg-emerald-600 hover:bg-emerald-700">
           <Download class="mr-2 h-4 w-4" />
           保存全部
         </Button>

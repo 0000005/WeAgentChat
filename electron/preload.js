@@ -38,4 +38,7 @@ contextBridge.exposeInMainWorld('WeAgentChat', {
     openLogs: () => ipcRenderer.send('shell:open-logs'),
     openExternal: (url) => ipcRenderer.send('shell:open-external', url),
   },
+  export: {
+    saveImages: (payload) => ipcRenderer.invoke('export:save-images', payload),
+  },
 })
