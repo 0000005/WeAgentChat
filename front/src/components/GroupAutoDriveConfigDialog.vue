@@ -12,8 +12,9 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 
-const props = withDefaults(defineProps<{ groupFriendMembers: GroupMember[] }>(), {
-  groupFriendMembers: () => []
+const props = withDefaults(defineProps<{ groupFriendMembers: GroupMember[]; submitting?: boolean }>(), {
+  groupFriendMembers: () => [],
+  submitting: false
 })
 
 const emit = defineEmits<{
@@ -213,6 +214,7 @@ const getConfig = () => {
 }
 
 const handleSubmit = () => {
+  if (props.submitting) return
   emit('submit')
 }
 
@@ -406,8 +408,10 @@ defineExpose({ getConfig })
       </div>
       <DialogFooter class="dialog-footer">
         <Button variant="ghost" @click="open = false">取消</Button>
-        <Button type="button" variant="default" class="btn-primary" @click="handleSubmit">
-          开始接力讨论
+        <Button type="button" variant="default" class="btn-primary" :class="{ 'is-loading': props.submitting }"
+          :disabled="props.submitting" :aria-busy="props.submitting" @click="handleSubmit">
+          <span v-if="props.submitting" class="btn-spinner" aria-hidden="true"></span>
+          <span>开始接力讨论</span>
         </Button>
       </DialogFooter>
     </DialogContent>
@@ -678,11 +682,33 @@ defineExpose({ getConfig })
 }
 
 .btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   background: #07c160;
   color: #fff;
 }
 
 .btn-primary:hover {
   background: #06ad56;
+}
+
+.btn-primary.is-loading {
+  opacity: 0.92;
+}
+
+.btn-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #fff;
+  animation: btn-spin 0.8s linear infinite;
+}
+
+@keyframes btn-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 </style>

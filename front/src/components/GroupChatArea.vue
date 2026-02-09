@@ -213,6 +213,7 @@ const groupFriendMembers = computed(() => groupMembers.value.filter(m => m.membe
 
 const autoDriveConfigOpen = ref(false)
 const autoDriveConfigRef = ref<InstanceType<typeof GroupAutoDriveConfigDialog> | null>(null)
+const isAutoDriveSubmitting = ref(false)
 
 // 检测是否需要显示会话分隔线（session_id 变化时）
 const shouldShowSessionDivider = (index: number): boolean => {
@@ -391,12 +392,16 @@ const handleStartAutoDrive = async () => {
   }
   const config = autoDriveConfigRef.value?.getConfig()
   if (!config) return
+  if (isAutoDriveSubmitting.value) return
+  isAutoDriveSubmitting.value = true
   try {
     await sessionStore.startAutoDrive(sessionStore.currentGroupId, config, isThinkingMode.value)
     autoDriveConfigOpen.value = false
   } catch (error) {
     console.error('Failed to start auto-drive:', error)
     triggerToast('接力讨论启动失败')
+  } finally {
+    isAutoDriveSubmitting.value = false
   }
 }
 
@@ -1120,7 +1125,8 @@ const handleAvatarClick = (url: string) => {
 
     <!-- Auto Drive Config Dialog -->
     <GroupAutoDriveConfigDialog ref="autoDriveConfigRef" v-model:open="autoDriveConfigOpen"
-      :group-friend-members="groupFriendMembers" @submit="handleStartAutoDrive" @toast="triggerToast" />
+      :group-friend-members="groupFriendMembers" :submitting="isAutoDriveSubmitting" @submit="handleStartAutoDrive"
+      @toast="triggerToast" />
 
     <ChatImageExportDialog v-model:open="exportDialogOpen" :messages="exportMessages" title="聊天记录图片预览" />
 

@@ -153,10 +153,10 @@ const splitMessageToFit = async (msg: ExportMessage, availableHeight: number) =>
   const restContent = fromChars(chars.slice(best))
   const rest = restContent
     ? {
-        ...msg,
-        content: restContent,
-        showName: false,
-      }
+      ...msg,
+      content: restContent,
+      showName: false,
+    }
     : null
 
   return { fit, rest, height: bestHeight }
@@ -449,7 +449,8 @@ watch(scaleValue, async () => {
           <Download class="mr-2 h-4 w-4" />
           保存当前页
         </Button>
-        <Button :disabled="!previewImages.length || isSaving" @click="handleSaveAll" class="bg-emerald-600 hover:bg-emerald-700">
+        <Button :disabled="!previewImages.length || isSaving" @click="handleSaveAll"
+          class="bg-emerald-600 hover:bg-emerald-700">
           <Download class="mr-2 h-4 w-4" />
           保存全部
         </Button>
@@ -460,8 +461,7 @@ watch(scaleValue, async () => {
   <!-- Hidden render root for measurement and capture -->
   <div v-if="open" class="export-render-root" :style="scaleStyle" aria-hidden="true">
     <div ref="measureRef" class="export-measure" :style="{ width: `${CONTENT_WIDTH}px` }">
-      <div v-if="measurePayload" ref="measureItemRef" class="export-message"
-        :class="{ user: measurePayload.isUser }">
+      <div v-if="measurePayload" ref="measureItemRef" class="export-message" :class="{ user: measurePayload.isUser }">
         <div class="export-avatar">
           <img :src="measurePayload.avatar" crossorigin="anonymous" alt="avatar" />
         </div>
@@ -473,17 +473,12 @@ watch(scaleValue, async () => {
     </div>
 
     <div class="export-pages">
-      <div
-        v-for="(page, index) in pages"
-        :key="`page-${index}`"
-        :ref="(el) => setPageRef(el as HTMLElement | null, index)"
-        class="export-page"
-        :style="{
+      <div v-for="(page, index) in pages" :key="`page-${index}`"
+        :ref="(el) => setPageRef(el as HTMLElement | null, index)" class="export-page" :style="{
           width: `${EXPORT_PAGE_WIDTH}px`,
           height: `${EXPORT_PAGE_HEIGHT}px`,
           padding: `${EXPORT_PADDING}px`,
-        }"
-      >
+        }">
         <div class="export-content" :style="{ gap: `${contentGap}px` }">
           <div v-for="msg in page" :key="msg.id" class="export-message" :class="{ user: msg.isUser }">
             <div class="export-avatar">
@@ -496,7 +491,7 @@ watch(scaleValue, async () => {
           </div>
         </div>
         <div class="export-footer-mark">
-          <span>对话由 WeAgentChat（唯信）生成</span>
+          <span>由支持长期记忆的AI社交沙盒<b>WeAgentChat（唯信）</b>生成</span>
         </div>
       </div>
     </div>
