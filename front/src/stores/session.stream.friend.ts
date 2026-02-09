@@ -10,6 +10,7 @@ type FriendStoreLike = {
 export type FriendStreamDeps = {
     currentFriendId: Ref<number | null>
     currentSessionId: Ref<number | null>
+    forceNewNextMessageMap: Ref<Record<string, boolean>>
     messagesMap: Ref<Record<string, Message[]>>
     streamingMap: Ref<Record<string, boolean>>
     unreadCounts: Ref<Record<string, number>>
@@ -21,6 +22,7 @@ export const createFriendStreamActions = (deps: FriendStreamDeps) => {
     const {
         currentFriendId,
         currentSessionId,
+        forceNewNextMessageMap,
         messagesMap,
         streamingMap,
         unreadCounts,
@@ -33,6 +35,31 @@ export const createFriendStreamActions = (deps: FriendStreamDeps) => {
         if (!currentFriendId.value) return
 
         const friendId = currentFriendId.value
+        const friendKey = 'f' + friendId
+        const existingMessages = messagesMap.value[friendKey] || []
+        const lastMessage = existingMessages.length > 0 ? existingMessages[existingMessages.length - 1] : undefined
+        const hasManualNewSessionMarker = !!(
+            lastMessage &&
+            lastMessage.role === 'system' &&
+            lastMessage.content === '新会话'
+        )
+        const forceNewForNextMessage = (
+            !currentSessionId.value &&
+            (!!forceNewNextMessageMap.value[friendKey] || hasManualNewSessionMarker)
+        )
+        if (forceNewForNextMessage) {
+            // 一次性消费：仅“手动新建会话”后的下一条消息强制新会话
+            forceNewNextMessageMap.value[friendKey] = false
+        }
+        console.log(
+            '[SessionStream] sendMessage routing',
+            {
+                friendId,
+                currentSessionId: currentSessionId.value,
+                forceNewFlag: forceNewForNextMessage,
+                marker: hasManualNewSessionMarker
+            }
+        )
 
         // 1. Add user message locally
         const userMsg: Message = {
@@ -63,7 +90,11 @@ export const createFriendStreamActions = (deps: FriendStreamDeps) => {
             // 如果当前正在查看特定会话，则按会话 ID 发送消息；否则按好友 ID 发送（由后端自动寻址）
             const stream = currentSessionId.value
                 ? ChatAPI.sendMessageStream(currentSessionId.value, { content, enable_thinking: enableThinking })
-                : ChatAPI.sendMessageToFriendStream(friendId, { content, enable_thinking: enableThinking })
+                : ChatAPI.sendMessageToFriendStream(
+                    friendId,
+                    { content, enable_thinking: enableThinking },
+                    { forceNewSession: forceNewForNextMessage }
+                )
 
             for await (const { event, data } of stream) {
                 if (event === 'start') {

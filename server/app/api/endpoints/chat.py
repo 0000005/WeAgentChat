@@ -178,15 +178,24 @@ async def send_message_to_friend(
     db: Session = Depends(deps.get_db),
     friend_id: int,
     message_in: chat_schemas.MessageCreate,
+    force_new_session: bool = False,
 ):
     """
     Send a message to a friend. This will find or create an appropriate session.
     """
-    # Get or create a session for this friend
-    session = chat_service.get_or_create_session_for_friend(db, friend_id=friend_id)
-    
+    logger.info(
+        "[SmartContext] Friend message API request friend=%s force_new_session=%s",
+        friend_id,
+        force_new_session,
+    )
+
     async def event_generator():
-        async for event_data in chat_service.send_message_stream(db, session_id=session.id, message_in=message_in):
+        async for event_data in chat_service.send_message_to_friend_stream(
+            db,
+            friend_id=friend_id,
+            message_in=message_in,
+            force_new_session=force_new_session,
+        ):
             event_type = event_data.get("event", "message")
             data_payload = event_data.get("data", {})
             json_data = json.dumps(data_payload, ensure_ascii=False)

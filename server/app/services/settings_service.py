@@ -96,6 +96,8 @@ class SettingsService:
         try:
             defaults = [
                 ("session", "passive_timeout", 1800, "int", "会话判定过期的非活跃时长 (秒)"),
+                ("session", "smart_context_enabled", False, "bool", "超时后是否启用智能上下文复活判定"),
+                ("session", "smart_context_model", "", "string", "智能上下文判定模型配置ID（留空则回退主聊天模型）"),
                 ("chat", "enable_thinking", False, "bool", "是否启用深度思考模式"),
                 ("system", "auto_launch", False, "bool", "是否开机自启并最小化"),
                 ("memory", "recall_enabled", True, "bool", "是否启用记忆召回功能"),

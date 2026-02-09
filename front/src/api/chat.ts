@@ -40,6 +40,10 @@ export interface MessageCreate {
   enable_thinking?: boolean
 }
 
+export interface SendToFriendOptions {
+  forceNewSession?: boolean
+}
+
 export async function getSessions(skip: number = 0, limit: number = 100): Promise<ChatSession[]> {
   const params = new URLSearchParams({
     skip: skip.toString(),
@@ -217,7 +221,11 @@ export async function getFriendSessions(friendId: number): Promise<ChatSession[]
   return response.json()
 }
 
-export async function* sendMessageToFriendStream(friendId: number, message: MessageCreate): AsyncGenerator<{ event: string, data: any }> {
+export async function* sendMessageToFriendStream(
+  friendId: number,
+  message: MessageCreate,
+  options?: SendToFriendOptions
+): AsyncGenerator<{ event: string, data: any }> {
   // SSE Debug timing
   const sseStartTime = performance.now()
   let sseFrameCount = 0
@@ -225,7 +233,16 @@ export async function* sendMessageToFriendStream(friendId: number, message: Mess
 
   console.log(`[SSE-FE ${new Date().toLocaleTimeString()}] Starting fetch for friend ${friendId}`)
 
-  const response = await fetch(withApiBase(`/api/chat/friends/${friendId}/messages`), {
+  const params = new URLSearchParams()
+  if (options?.forceNewSession) {
+    params.set('force_new_session', 'true')
+  }
+  const url = params.toString()
+    ? withApiBase(`/api/chat/friends/${friendId}/messages?${params.toString()}`)
+    : withApiBase(`/api/chat/friends/${friendId}/messages`)
+  console.log('[ChatAPI] sendMessageToFriendStream url=', url, 'options=', options)
+
+  const response = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

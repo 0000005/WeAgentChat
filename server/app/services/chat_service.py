@@ -1,11 +1,10 @@
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 import re
 import json
 import time
 import logging
 import asyncio
-from asyncio import Queue
 from app.models.chat import ChatSession, Message
 from app.models.friend import Friend
 from app.schemas import chat as chat_schemas
@@ -21,7 +20,6 @@ from app.services.memo.constants import DEFAULT_USER_ID, DEFAULT_SPACE_ID
 from app.services.reasoning_stream import extract_reasoning_delta
 from app.prompt import get_prompt
 from app.db.session import SessionLocal
-import re
 
 def _strip_message_tags(content: Optional[str]) -> Optional[str]:
     if not content:
@@ -97,6 +95,11 @@ from agents.stream_events import RunItemStreamEvent
 
 # Global queue for memory generation tasks (processed by background worker)
 _memory_generation_queue: List[int] = []
+_friend_message_locks: Dict[int, asyncio.Lock] = {}
+_friend_message_locks_guard = asyncio.Lock()
+
+SMART_CONTEXT_RELEVANCE_THRESHOLD = 6.0
+HARD_ARCHIVE_TIMEOUT_SECONDS = 24 * 60 * 60
 
 def _schedule_memory_generation(db: Session, session_id: int):
     """
@@ -495,6 +498,558 @@ def get_sessions_with_stats_by_friend(db: Session, friend_id: int) -> List[dict]
         result.append(res_dict)
         
     return result
+
+
+def _get_latest_active_session_for_friend(db: Session, friend_id: int) -> Optional[ChatSession]:
+    return (
+        db.query(ChatSession)
+        .filter(
+            ChatSession.friend_id == friend_id,
+            ChatSession.deleted == False,
+            ChatSession.memory_generated == 0,
+        )
+        .order_by(ChatSession.id.desc())
+        .first()
+    )
+
+
+def _get_latest_session_for_friend_any_state(db: Session, friend_id: int) -> Optional[ChatSession]:
+    return (
+        db.query(ChatSession)
+        .filter(
+            ChatSession.friend_id == friend_id,
+            ChatSession.deleted == False,
+        )
+        .order_by(ChatSession.id.desc())
+        .first()
+    )
+
+
+def _get_latest_archived_session_for_friend(db: Session, friend_id: int) -> Optional[ChatSession]:
+    return (
+        db.query(ChatSession)
+        .filter(
+            ChatSession.friend_id == friend_id,
+            ChatSession.deleted == False,
+            ChatSession.memory_generated != 0,
+        )
+        .order_by(ChatSession.id.desc())
+        .first()
+    )
+
+
+def _session_message_count(db: Session, session_id: int) -> int:
+    return (
+        db.query(Message)
+        .filter(
+            Message.session_id == session_id,
+            Message.deleted == False,
+        )
+        .count()
+    )
+
+
+def _create_new_session_for_friend(db: Session, friend_id: int) -> ChatSession:
+    from app.schemas.chat import ChatSessionCreate
+
+    return create_session(db, session_in=ChatSessionCreate(friend_id=friend_id))
+
+
+def _parse_context_judgment_payload(payload: Any) -> Optional[Dict[str, int]]:
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except Exception:
+            return None
+    if not isinstance(payload, dict):
+        return None
+
+    required_fields = ("topic_relevance", "intent_continuity", "entity_reference")
+    normalized: Dict[str, int] = {}
+    for field in required_fields:
+        value = payload.get(field)
+        if isinstance(value, bool):
+            return None
+        if not isinstance(value, int):
+            return None
+        if value < 0 or value > 10:
+            return None
+        normalized[field] = value
+    return normalized
+
+
+def _extract_tool_call(item: ToolCallItem) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    raw = item.raw_item
+    if isinstance(raw, dict):
+        return raw.get("name"), raw.get("call_id"), raw.get("arguments")
+    name = getattr(raw, "name", None)
+    call_id = getattr(raw, "call_id", None)
+    arguments = getattr(raw, "arguments", None)
+    return name, call_id, arguments
+
+
+def _resolve_smart_context_llm_config(db: Session):
+    configured = SettingsService.get_setting(db, "session", "smart_context_model", None)
+    configured_id: Optional[int] = None
+
+    if isinstance(configured, int):
+        configured_id = configured
+    elif isinstance(configured, str):
+        stripped = configured.strip()
+        if stripped:
+            try:
+                configured_id = int(stripped)
+            except ValueError:
+                logger.warning(
+                    "[SmartContext] Invalid smart_context_model setting value: %s",
+                    configured,
+                )
+
+    if configured_id is not None:
+        config = llm_service.get_config_by_id(db, configured_id)
+        if config:
+            logger.info(
+                "[SmartContext] Using dedicated judge model config_id=%s model=%s",
+                configured_id,
+                config.model_name,
+            )
+            return config
+        logger.warning(
+            "[SmartContext] Config %s not found, fallback to active chat model.",
+            configured_id,
+        )
+
+    active_config = llm_service.get_active_config(db)
+    if active_config:
+        logger.info(
+            "[SmartContext] Using active chat model config_id=%s model=%s",
+            active_config.id,
+            active_config.model_name,
+        )
+    return active_config
+
+
+async def _judge_smart_context_relevance(
+    db: Session,
+    session: ChatSession,
+    current_message: str,
+) -> bool:
+    logger.info(
+        "[SmartContext] Start judgment for session=%s friend=%s",
+        session.id,
+        session.friend_id,
+    )
+    llm_config = _resolve_smart_context_llm_config(db)
+    if not llm_config:
+        logger.warning("[SmartContext] Missing LLM config, fallback to new session.")
+        return False
+
+    if not llm_config.capability_function_call:
+        logger.warning(
+            "[SmartContext] Model %s does not support function call, fallback to new session.",
+            llm_config.model_name,
+        )
+        return False
+
+    history = (
+        db.query(Message)
+        .filter(
+            Message.session_id == session.id,
+            Message.deleted == False,
+        )
+        .order_by(Message.id.desc())
+        .limit(6)
+        .all()
+    )
+    history.reverse()
+    logger.info(
+        "[SmartContext] Judgment context loaded for session=%s, history_count=%s",
+        session.id,
+        len(history),
+    )
+
+    history_lines: List[str] = []
+    for msg in history:
+        content = (msg.content or "").strip()
+        if not content:
+            continue
+        role_name = "用户" if msg.role == "user" else ("AI" if msg.role == "assistant" else "系统")
+        history_lines.append(f"{role_name}: {content}")
+
+    history_text = "\n".join(history_lines) if history_lines else "(无历史消息)"
+    prompt = get_prompt("chat/smart_context_judgment.txt").strip()
+    user_input = (
+        f"【最近对话历史】\n{history_text}\n\n"
+        f"【用户新消息】\n{(current_message or '').strip()}"
+    )
+
+    @function_tool(
+        name_override="context_judgment",
+        description_override="评估用户新消息与会话历史的关联程度，按维度打分。",
+    )
+    async def context_judgment(
+        topic_relevance: int,
+        intent_continuity: int,
+        entity_reference: int,
+    ) -> Dict[str, int]:
+        return {
+            "topic_relevance": topic_relevance,
+            "intent_continuity": intent_continuity,
+            "entity_reference": entity_reference,
+        }
+
+    set_agents_default_client(llm_config, use_for_tracing=True)
+    raw_model_name = llm_config.model_name
+    if not raw_model_name:
+        logger.warning("[SmartContext] Empty model_name, fallback to new session.")
+        return False
+    model_name = llm_service.normalize_model_name(raw_model_name)
+    use_litellm = provider_rules.should_use_litellm(llm_config, raw_model_name)
+
+    model_settings_kwargs: Dict[str, Any] = {}
+    if _supports_sampling(model_name):
+        temperature = 0.2
+        if use_litellm and provider_rules.is_gemini_model(llm_config, raw_model_name):
+            temperature = 1.0
+        model_settings_kwargs["temperature"] = temperature
+        model_settings_kwargs["top_p"] = 0.8
+    if (
+        llm_config.capability_reasoning
+        and not use_litellm
+        and provider_rules.supports_reasoning_effort(llm_config)
+    ):
+        model_settings_kwargs["reasoning"] = Reasoning(
+            effort=provider_rules.get_reasoning_effort(llm_config, raw_model_name, False)
+        )
+    model_settings = ModelSettings(**model_settings_kwargs)
+
+    if use_litellm:
+        from agents.extensions.models.litellm_model import LitellmModel
+
+        gemini_model_name = provider_rules.normalize_gemini_model_name(raw_model_name)
+        gemini_base_url = provider_rules.normalize_gemini_base_url(llm_config.base_url)
+        agent_model = LitellmModel(
+            model=gemini_model_name,
+            base_url=gemini_base_url,
+            api_key=llm_config.api_key,
+        )
+    else:
+        agent_model = model_name
+
+    agent = Agent(
+        name="SmartContextJudge",
+        instructions=prompt,
+        model=agent_model,
+        model_settings=model_settings,
+        tools=[context_judgment],
+    )
+
+    try:
+        logger.info(
+            "[SmartContext] Invoking judge model=%s for session=%s",
+            llm_config.model_name,
+            session.id,
+        )
+        result = await asyncio.wait_for(
+            Runner.run(
+                agent,
+                [{"role": "user", "content": user_input}],
+                run_config=RunConfig(trace_include_sensitive_data=True),
+            ),
+            timeout=20.0,
+        )
+        logger.info("[SmartContext] Judge completed for session=%s", session.id)
+    except Exception as e:
+        logger.warning(
+            "[SmartContext] LLM judgment failed, fallback to new session. session=%s model=%s error_type=%s error=%r",
+            session.id,
+            llm_config.model_name,
+            type(e).__name__,
+            e,
+            exc_info=True,
+        )
+        return False
+
+    scores: Optional[Dict[str, int]] = None
+    for item in result.new_items:
+        if isinstance(item, ToolCallOutputItem):
+            parsed = _parse_context_judgment_payload(item.output)
+            if parsed:
+                scores = parsed
+        elif isinstance(item, ToolCallItem):
+            name, _, arguments = _extract_tool_call(item)
+            if name != "context_judgment":
+                continue
+            parsed = _parse_context_judgment_payload(arguments)
+            if parsed:
+                scores = parsed
+
+    if not scores:
+        item_types = [type(item).__name__ for item in (result.new_items or [])]
+        logger.warning(
+            "[SmartContext] context_judgment tool call missing/invalid, fallback to new session. session=%s items=%s",
+            session.id,
+            item_types,
+        )
+        return False
+
+    weighted_score = (
+        scores["topic_relevance"] * 0.4
+        + scores["intent_continuity"] * 0.4
+        + scores["entity_reference"] * 0.2
+    )
+    is_related = weighted_score >= SMART_CONTEXT_RELEVANCE_THRESHOLD
+
+    logger.info(
+        "[SmartContext] Session %s score=%.2f (topic=%s, intent=%s, entity=%s) => related=%s",
+        session.id,
+        weighted_score,
+        scores["topic_relevance"],
+        scores["intent_continuity"],
+        scores["entity_reference"],
+        is_related,
+    )
+    return is_related
+
+
+def _rollback_session_memory_if_needed(db: Session, session: ChatSession):
+    db.refresh(session)
+    if session.memory_generated == 0:
+        return
+
+    logger.warning(
+        "Resurrecting archived session, memory rollback triggered. session_id=%s state=%s",
+        session.id,
+        session.memory_generated,
+    )
+
+    session.memory_generated = 0
+    session.memory_error = None
+    session.update_time = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(session)
+
+    # 撤销归档的记忆清理异步执行，避免阻塞当前消息回复
+    _schedule_session_memory_deletion(session.id)
+    logger.info(
+        "[SmartContext] Rollback memory deletion scheduled asynchronously for session=%s",
+        session.id,
+    )
+
+
+def _get_session_expiry_timeout_seconds(db: Session) -> int:
+    raw_timeout = SettingsService.get_setting(db, "session", "passive_timeout", 1800)
+    try:
+        timeout = int(raw_timeout)
+    except (TypeError, ValueError):
+        logger.warning(
+            "[SmartContext] Invalid passive_timeout value=%r, fallback to 1800s.",
+            raw_timeout,
+        )
+        return 1800
+    if timeout <= 0:
+        logger.warning(
+            "[SmartContext] Non-positive passive_timeout value=%s, fallback to 1800s.",
+            timeout,
+        )
+        return 1800
+    return timeout
+
+
+def _get_session_elapsed_seconds(
+    session: ChatSession,
+    now_time: datetime,
+) -> Optional[float]:
+    if not session.last_message_time:
+        return None
+    return max((now_time - session.last_message_time).total_seconds(), 0.0)
+
+
+async def resolve_session_for_incoming_friend_message(
+    db: Session,
+    friend_id: int,
+    current_message: str,
+) -> ChatSession:
+    timeout = _get_session_expiry_timeout_seconds(db)
+    smart_context_enabled = SettingsService.get_setting(
+        db, "session", "smart_context_enabled", False
+    )
+    now_time = datetime.now(timezone.utc)
+
+    session = _get_latest_session_for_friend_any_state(db, friend_id)
+    if not session:
+        logger.info("[SmartContext] No existing session for friend=%s, creating new.", friend_id)
+        new_session = _create_new_session_for_friend(db, friend_id)
+        logger.info("[SmartContext] Created new session=%s for friend=%s", new_session.id, friend_id)
+        return new_session
+
+    logger.info(
+        "[SmartContext] Latest session picked friend=%s session=%s memory_generated=%s",
+        friend_id,
+        session.id,
+        session.memory_generated,
+    )
+
+    # 已归档会话也纳入智能判断，命中则撤销归档并复用
+    if session.memory_generated != 0:
+        elapsed = _get_session_elapsed_seconds(session, now_time)
+        if elapsed is not None:
+            logger.info(
+                "[SmartContext] Archived session %s elapsed=%.1fs timeout=%ss",
+                session.id,
+                elapsed,
+                timeout,
+            )
+            if elapsed < timeout:
+                _rollback_session_memory_if_needed(db, session)
+                session.update_time = now_time
+                db.commit()
+                db.refresh(session)
+                logger.info(
+                    "[SmartContext] Archived session %s still within timeout, resurrect directly.",
+                    session.id,
+                )
+                return session
+
+        if not smart_context_enabled:
+            logger.info(
+                "[SmartContext] Latest session=%s is archived and smart context disabled, create new.",
+                session.id,
+            )
+            new_session = _create_new_session_for_friend(db, friend_id)
+            logger.info(
+                "[SmartContext] Archived+disabled decision: old=%s new_session=%s",
+                session.id,
+                new_session.id,
+            )
+            return new_session
+
+        logger.info(
+            "[SmartContext] Latest session=%s archived, start relevance judgment for possible unarchive.",
+            session.id,
+        )
+        is_related = await _judge_smart_context_relevance(db, session, current_message)
+        if is_related:
+            _rollback_session_memory_if_needed(db, session)
+            session.update_time = now_time
+            db.commit()
+            db.refresh(session)
+            logger.info("[SmartContext] Archived resurrection decision: reuse session=%s", session.id)
+            return session
+
+        new_session = _create_new_session_for_friend(db, friend_id)
+        logger.info(
+            "[SmartContext] Archived new-topic decision: old=%s new_session=%s",
+            session.id,
+            new_session.id,
+        )
+        return new_session
+
+    if not session.last_message_time:
+        if _session_message_count(db, session.id) == 0:
+            archived_candidate = _get_latest_archived_session_for_friend(db, friend_id)
+            if archived_candidate:
+                archived_elapsed = _get_session_elapsed_seconds(archived_candidate, now_time)
+                logger.info(
+                    "[SmartContext] Current session=%s is empty, checking archived session=%s for resurrection (elapsed=%s, timeout=%ss).",
+                    session.id,
+                    archived_candidate.id,
+                    f"{archived_elapsed:.1f}s" if archived_elapsed is not None else "None",
+                    timeout,
+                )
+                if smart_context_enabled:
+                    logger.info(
+                        "[SmartContext] Empty-active override uses judgment (no direct resurrection). current=%s archived=%s",
+                        session.id,
+                        archived_candidate.id,
+                    )
+                    is_related = await _judge_smart_context_relevance(
+                        db, archived_candidate, current_message
+                    )
+                    if is_related:
+                        _rollback_session_memory_if_needed(db, archived_candidate)
+                        archived_candidate.update_time = now_time
+                        db.commit()
+                        db.refresh(archived_candidate)
+                        logger.info(
+                            "[SmartContext] Empty-active override: resurrect archived session=%s",
+                            archived_candidate.id,
+                        )
+                        return archived_candidate
+                else:
+                    logger.info(
+                        "[SmartContext] Empty-active override skipped because smart context disabled. Keep current session=%s",
+                        session.id,
+                    )
+        logger.info(
+            "[SmartContext] Session %s has no last_message_time, continue using it (skip judgment).",
+            session.id,
+        )
+        return session
+
+    elapsed = _get_session_elapsed_seconds(session, now_time) or 0.0
+    logger.info(
+        "[SmartContext] Session %s elapsed=%.1fs timeout=%ss smart_enabled=%s",
+        session.id,
+        elapsed,
+        timeout,
+        bool(smart_context_enabled),
+    )
+
+    if elapsed < timeout:
+        logger.info(
+            "[SmartContext] Session %s still active (elapsed=%.1fs < timeout=%ss), skip judgment.",
+            session.id,
+            elapsed,
+            timeout,
+        )
+        return session
+
+    if not smart_context_enabled:
+        logger.info(
+            "[SmartContext] Smart context disabled, archive old session=%s and create new.",
+            session.id,
+        )
+        archive_session(db, session.id)
+        new_session = _create_new_session_for_friend(db, friend_id)
+        logger.info(
+            "[SmartContext] Disabled decision: archived=%s new_session=%s",
+            session.id,
+            new_session.id,
+        )
+        return new_session
+
+    logger.info("[SmartContext] Smart context enabled, start relevance judgment for session=%s", session.id)
+    is_related = await _judge_smart_context_relevance(db, session, current_message)
+    if is_related:
+        _rollback_session_memory_if_needed(db, session)
+        session.update_time = now_time
+        db.commit()
+        db.refresh(session)
+        logger.info("[SmartContext] Resurrection decision: reuse session=%s", session.id)
+        return session
+
+    archive_session(db, session.id)
+    new_session = _create_new_session_for_friend(db, friend_id)
+    logger.info(
+        "[SmartContext] New-topic decision: archived=%s new_session=%s",
+        session.id,
+        new_session.id,
+    )
+    return new_session
+
+
+async def _get_friend_message_lock(friend_id: int) -> asyncio.Lock:
+    lock = _friend_message_locks.get(friend_id)
+    if lock:
+        return lock
+
+    async with _friend_message_locks_guard:
+        lock = _friend_message_locks.get(friend_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            _friend_message_locks[friend_id] = lock
+        return lock
 
 def get_or_create_session_for_friend(db: Session, friend_id: int) -> ChatSession:
     """
@@ -1126,6 +1681,62 @@ async def send_message_stream(db: Session, session_id: int, message_in: chat_sch
         yield event
 
 
+async def send_message_to_friend_stream(
+    db: Session,
+    friend_id: int,
+    message_in: chat_schemas.MessageCreate,
+    force_new_session: bool = False,
+):
+    logger.info(
+        "[SmartContext] Incoming friend message friend=%s force_new_session=%s content_preview=%s",
+        friend_id,
+        force_new_session,
+        (message_in.content or "").strip().replace("\n", " ")[:80],
+    )
+    lock = await _get_friend_message_lock(friend_id)
+    stream = None
+    first_event = None
+
+    logger.info("[SmartContext] Waiting lock for friend=%s", friend_id)
+    async with lock:
+        logger.info("[SmartContext] Lock acquired for friend=%s", friend_id)
+        if force_new_session:
+            session = _create_new_session_for_friend(db, friend_id)
+            logger.info(
+                "[SmartContext] force_new_session=true, skip judgment, created session=%s for friend=%s",
+                session.id,
+                friend_id,
+            )
+        else:
+            session = await resolve_session_for_incoming_friend_message(
+                db=db,
+                friend_id=friend_id,
+                current_message=message_in.content,
+            )
+        logger.info(
+            "[SmartContext] Session resolved for friend=%s -> session=%s",
+            friend_id,
+            session.id,
+        )
+        stream = send_message_stream(db, session_id=session.id, message_in=message_in)
+        try:
+            first_event = await stream.__anext__()
+        except StopAsyncIteration:
+            logger.warning(
+                "[SmartContext] Stream finished unexpectedly before first event. friend=%s session=%s",
+                friend_id,
+                session.id,
+            )
+            return
+        logger.info("[SmartContext] First SSE event prepared for friend=%s session=%s", friend_id, session.id)
+
+    if first_event:
+        yield first_event
+
+    async for event in stream:
+        yield event
+
+
 async def regenerate_message_stream(db: Session, session_id: int, ai_message_id: int):
     """
     Regenerate a specific AI message.
@@ -1238,11 +1849,8 @@ def check_and_archive_expired_sessions(db: Session) -> int:
     检查并归档所有过期的会话。
     用于后台定时任务。
     """
-    from app.services.settings_service import SettingsService
-    timeout = SettingsService.get_setting(db, "session", "passive_timeout", 1800)
-    
-    # Calculate threshold time
-    threshold_time = datetime.now(timezone.utc) - timedelta(seconds=timeout)
+    # Smart Context 的模糊期交由“被动触发”处理，后台仅清理 hard-timeout 会话
+    threshold_time = datetime.now(timezone.utc) - timedelta(seconds=HARD_ARCHIVE_TIMEOUT_SECONDS)
     
     # Query candidate sessions
     # memory_generated = False AND deleted = False AND last_message_time < threshold
@@ -1260,7 +1868,11 @@ def check_and_archive_expired_sessions(db: Session) -> int:
     if not candidates:
         return 0
         
-    logger.info(f"[Background Task] Found {len(candidates)} expired sessions. Archiving...")
+    logger.info(
+        "[Background Task] Found %s hard-timeout sessions (> %ss). Archiving...",
+        len(candidates),
+        HARD_ARCHIVE_TIMEOUT_SECONDS,
+    )
     
     count = 0
     for session in candidates:

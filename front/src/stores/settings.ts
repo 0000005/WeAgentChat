@@ -10,6 +10,10 @@ export const useSettingsStore = defineStore('settings', () => {
     // ===== Session 配置 =====
     // 会话过期时间（秒），默认 1800（30分钟）
     const passiveTimeout = ref<number>(1800)
+    // 是否启用超时智能复活
+    const smartContextEnabled = ref<boolean>(false)
+    // 智能复活判定模型配置ID（字符串；空字符串表示回退主聊天模型）
+    const smartContextModel = ref<string>('')
 
     // ===== Chat 配置 =====
     // 是否启用深度思考模式，默认 false
@@ -79,13 +83,21 @@ export const useSettingsStore = defineStore('settings', () => {
      * 从后端获取 session 分组的配置
      */
     const fetchSessionSettings = () =>
-        fetchSettings('session', { passive_timeout: passiveTimeout })
+        fetchSettings('session', {
+            passive_timeout: passiveTimeout,
+            smart_context_enabled: smartContextEnabled,
+            smart_context_model: smartContextModel
+        })
 
     /**
      * 保存 session 配置到后端
      */
     const saveSessionSettings = () =>
-        saveSettings('session', { passive_timeout: passiveTimeout })
+        saveSettings('session', {
+            passive_timeout: passiveTimeout,
+            smart_context_enabled: smartContextEnabled,
+            smart_context_model: smartContextModel
+        })
 
     /**
      * 从后端获取 chat 分组的配置
@@ -171,6 +183,8 @@ export const useSettingsStore = defineStore('settings', () => {
     return {
         // State
         passiveTimeout,
+        smartContextEnabled,
+        smartContextModel,
         enableThinking,
         activeLlmConfigId,
         recallEnabled,

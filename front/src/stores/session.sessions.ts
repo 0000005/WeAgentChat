@@ -8,6 +8,7 @@ export type SessionActionsDeps = {
     currentGroupId: Ref<number | null>
     chatType: Ref<'friend' | 'group'>
     unreadCounts: Ref<Record<string, number>>
+    forceNewNextMessageMap: Ref<Record<string, boolean>>
     messagesMap: Ref<Record<string, Message[]>>
     currentSessions: Ref<ChatAPI.ChatSession[]>
     currentSessionId: Ref<number | null>
@@ -24,6 +25,7 @@ export const createSessionActions = (deps: SessionActionsDeps) => {
         currentGroupId,
         chatType,
         unreadCounts,
+        forceNewNextMessageMap,
         messagesMap,
         currentSessions,
         currentSessionId,
@@ -168,6 +170,7 @@ export const createSessionActions = (deps: SessionActionsDeps) => {
 
         try {
             await ChatAPI.createSession({ friend_id: currentFriendId.value })
+            forceNewNextMessageMap.value['f' + currentFriendId.value] = true
             await fetchFriendSessions(currentFriendId.value) // 刷新会话列表
             // Add system message manually to the local list
             if (!messagesMap.value['f' + currentFriendId.value]) {
