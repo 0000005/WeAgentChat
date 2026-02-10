@@ -24,6 +24,8 @@ export const useSessionStore = defineStore('session', () => {
     const unreadCounts = ref<Record<string, number>>({})
     // 手动新建会话后，下一条消息是否强制走新会话（按好友维度，一次性）
     const forceNewNextMessageMap = ref<Record<string, boolean>>({})
+    // 手动新建群聊会话后，下一条消息是否强制走新会话（按群维度，一次性）
+    const forceNewNextGroupMessageMap = ref<Record<string, boolean>>({})
 
     // Messages map: 'f' + friendId or 'g' + groupId -> Message[]
     const messagesMap = ref<Record<string, Message[]>>({})
@@ -89,6 +91,7 @@ export const useSessionStore = defineStore('session', () => {
         chatType,
         unreadCounts,
         forceNewNextMessageMap,
+        forceNewNextGroupMessageMap,
         messagesMap,
         currentSessions,
         currentSessionId,
@@ -123,6 +126,7 @@ export const useSessionStore = defineStore('session', () => {
     const groupStreamActions = createGroupStreamActions({
         currentGroupId,
         chatType,
+        forceNewNextGroupMessageMap,
         messagesMap,
         streamingMap,
         unreadCounts,

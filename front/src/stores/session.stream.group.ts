@@ -16,6 +16,7 @@ type GroupStoreLike = {
 export type GroupStreamDeps = {
     currentGroupId: Ref<number | null>
     chatType: Ref<'friend' | 'group'>
+    forceNewNextGroupMessageMap: Ref<Record<string, boolean>>
     messagesMap: Ref<Record<string, Message[]>>
     streamingMap: Ref<Record<string, boolean>>
     unreadCounts: Ref<Record<string, number>>
@@ -27,6 +28,7 @@ export const createGroupStreamActions = (deps: GroupStreamDeps) => {
     const {
         currentGroupId,
         chatType,
+        forceNewNextGroupMessageMap,
         messagesMap,
         streamingMap,
         unreadCounts,
@@ -66,6 +68,26 @@ export const createGroupStreamActions = (deps: GroupStreamDeps) => {
         if (!currentGroupId.value) return
 
         const groupId = currentGroupId.value
+        const groupKey = 'g' + groupId
+        const existingMessages = messagesMap.value[groupKey] || []
+        const lastMessage = existingMessages.length > 0 ? existingMessages[existingMessages.length - 1] : undefined
+        const hasManualNewSessionMarker = !!(
+            lastMessage &&
+            lastMessage.role === 'system' &&
+            lastMessage.content === '新会话'
+        )
+        const forceNewForNextMessage = (
+            !!forceNewNextGroupMessageMap.value[groupKey] || hasManualNewSessionMarker
+        )
+        if (forceNewForNextMessage) {
+            forceNewNextGroupMessageMap.value[groupKey] = false
+        }
+        console.log('[SessionStream] sendGroupMessage routing', {
+            groupId,
+            forceNewFlag: forceNewForNextMessage,
+            marker: hasManualNewSessionMarker
+        })
+
         const prevGroupSnapshot = (() => {
             const g = groupStore.getGroup(groupId)
             if (!g) return null
@@ -101,7 +123,11 @@ export const createGroupStreamActions = (deps: GroupStreamDeps) => {
         let hasServerAck = false
 
         try {
-            const stream = groupApi.sendGroupMessageStream(groupId, { content, mentions, enable_thinking: enableThinking })
+            const stream = groupApi.sendGroupMessageStream(
+                groupId,
+                { content, mentions, enable_thinking: enableThinking },
+                { forceNewSession: forceNewForNextMessage }
+            )
             streamingMap.value['g' + groupId] = true
 
             for await (const { event, data } of stream) {

@@ -1,200 +1,164 @@
 ﻿# Story: 智能上下文会话管理 (Smart Context Session Management)
 
-## 1. 背景 (Background)
-目前系统的会话管理依赖于固定的倒计时 (`passive_timeout`, 默认 30 分钟)。
-- **问题**: 当用户在超时后回来继续聊天，系统会强制归档旧会话并开启新会话，导致用户不得不重新建立上下文，体验割裂。
-- **痛点**: 很多时候用户只是去吃了顿饭，回来想继续刚才的话题，但被系统“一刀切”地断开了。
+## 1. 背景
+当前系统已从“固定超时即强制切会话”升级为“超时检查点 + 智能复活”。
+会话是否延续，不再只看 30 分钟固定规则，而是由 `session.passive_timeout` 配置驱动，并在必要时由 LLM 判定相关性。
 
-## 2. 目标 (Goal)
-引入“智能复活 (Smart Resurrection)”机制。
-将“倒计时”从一个绝对的截止线，转变为一个“检查点”。当会话超时后，利用 LLM 判断用户的新消息是否仍属于旧话题。如果是，则**复活**旧会话；否则，才创建新会话。
+## 2. 当前范围与状态
+- 第一阶段（单聊）已落地。
+- 第二阶段（群聊）暂未纳入本 Story 的实现范围。
 
-## 3. 用户故事 (User Story)
-作为一名用户，由其在使用了被动会话管理后：
-- 在短时间内（未超时）的对话，我希望系统像以前一样快速响应，不要有额外的延迟。
-- 当我隔了一段时间（超时）回来继续之前的对话时，我希望系统能智能识别我是不是在“接着聊”。
-  - 如果我是在接着聊，请不要打断我，让我继续在老会话里说。
-  - 如果我开启了新话题，再帮我归档旧的、开启新的。
+## 3. 配置项（已实现）
+配置来源：`system_settings`。
 
-## 4. 详细需求 (Detailed Requirements)
+- `session.passive_timeout`（秒）
+- `session.smart_context_enabled`（bool）
+- `session.smart_context_model`（string，空则回退聊天主模型）
 
-### 4.1 设置项变更 (Settings Changes)
-在“记忆设置”中增加/修改以下配置：
+前端入口：`front/src/components/SettingsDialog.vue`（记忆设置页中的“会话过期时间 / 超时智能复活 / 判断模型”）。
 
-1.  **智能上下文开关 (`smart_context_enabled`)**:
-    - 描述优化: "超时智能复活：当会话超时后，尝试智能判断是否为同一话题。若是则复活会话，不进行归档。"
-    - **不再与互斥**: 此开关不再禁用 `passive_timeout`，而是依赖它。只有当 `passive_timeout` 触发时，此逻辑才生效。
+## 4. 单聊主链路（已实现）
+核心入口：`server/app/services/chat_service.py`。
+路由入口：`POST /api/chat/friends/{friend_id}/messages`。
 
-2.  **智能上下文判断模型 (`smart_context_model`)**:
-    - 维持原有设计（可选，为空则回退到主模型）。
+### 4.1 并发约束
+- 以 `friend_id` 为粒度加锁。
+- 锁范围覆盖：会话选择/复活判定 -> 建会话/归档/回滚 -> 首个 SSE 事件准备。
 
-### 4.2 后端逻辑变更 (Backend Logic Changes)
-核心逻辑在单聊链路中实现（`server/app/services/chat_service.py`），并保持路由层轻量。
+### 4.2 两种发送模式
+- 模式 A：`/api/chat/sessions/{session_id}/messages`
+  - 直接向指定会话发送，不触发智能会话选择。
+- 模式 B：`/api/chat/friends/{friend_id}/messages`
+  - 由后端选择（或创建）目标会话，可能触发智能上下文流程。
 
-**原有逻辑**:
-- *被动触发*: 用户发消息时校验 `last_message_time`。
-- *主动扫描*: 后台每 30s 扫描 `elapsed > passive_timeout` 的会话并归档。
+### 4.3 手动新建会话的“强制新会话”语义（已实现）
+前端点击“新建会话”后，下一条好友消息会带一次性参数：`force_new_session=true`。
 
-**新逻辑 (Smart Resurrection + Rollback)**:
+后端收到该参数后：
+- 跳过 `resolve_session_for_incoming_friend_message(...)`。
+- 直接走新会话路径并发送消息。
+- 不触发智能上下文 judgment。
 
-#### 4.2.1 被动触发逻辑 (用户发送消息时)
-1.  **活跃会话判定**: 获取 `friend_id` 对应的活跃会话。
-    - 若无 -> 新建会话。
-2.  **超时检查**: 计算 `elapsed_time = now - last_message_time`。
-    - **未超时 (< 30m)** -> 直接复用会话 (无需 LLM)。
-3.  **超时处理 (>= 30m)**:
-    - 若 `smart_context_enabled` 为 **OFF** -> 归档旧会话，新建会话。
-    - 若 `smart_context_enabled` 为 **ON** -> **触发智能复活判定**。
-        - 获取 Context (最后 6 条)。
-        - 调用 LLM (`context_judgment`)。
-        - **Result >= 6.0 (相关)** -> **复活会话 (Resurrect)**。
-            - **关键步骤**: 检查 `session.memory_generated`。
-            - 若 `> 0` (已归档/生成中)，执行 **回滚 (Rollback)**：
-                1. `session.memory_generated = 0` (重置状态)。
-                2. 调用 `MemoService.delete_session_memories(id)` (物理删除脏记忆)。
-                3. log warning: "Resurrecting archived session, memory rollback triggered."
-            - 更新 `update_time`，继续使用该会话。
-        - **Result < 6.0 (不相关)** -> 归档旧会话，新建会话。
+说明：新会话创建复用 `create_session(...)` 现有策略；若已存在该好友“空活跃会话”，会复用这个空会话 ID（这属于新会话路径内的去重行为，不是复用旧归档上下文）。
 
-#### 4.2.2 主动扫描逻辑调整 (Background Task)
-为了配合智能复活，避免后台任务“过早”归档处于模糊地带的会话：
-- **修改扫描阈值**: 后台定时任务仅归档 **超过 24 小时 (Hard Timeout)** 未活动的会话。
-- **理由**: 
-    - 30m ~ 24h 之间的会话属于“模糊期”，交由用户行为（发消息）触发被动判定。
-    - 超过 24h 的会话视为“彻底结束”，由后台清理，保持数据库整洁。
+### 4.4 自动会话选择流程（`force_new_session=false`）
+编排函数：`resolve_session_for_incoming_friend_message(db, friend_id, current_message)`。
 
-#### 4.2.3 方法职责边界
-- `get_or_create_session_for_friend(...)`：保持“会话获取”基础能力。
-- 新增编排入口：`resolve_session_for_incoming_friend_message(db, friend_id, current_message)`：
-  - 负责智能判定、复活回滚、新建归档。
-- `send_message_stream(...)`：仅负责消息落库与流式回复。
+0. 读取并校验 `passive_timeout`。
+- 非法或 <=0 时回退到 1800 秒，并记录 warning 日志。
 
-#### 4.2.4 并发约束
-- 以 `friend_id` 为粒度做互斥控制（锁）。
-- 互斥范围覆盖：会话判定 -> (复活回滚/新建) -> 写入消息。
+1. 获取该好友最新会话（不区分活跃/归档）。
+- 若不存在：创建新会话并返回。
 
-#### 4.2.5 异步归档副作用
-- 新建会话引发的旧会话归档，必须 **异步执行**，不阻塞当前消息回复。
+2. 若“最新会话是归档态（memory_generated != 0）”。
+- 若该会话有 `last_message_time` 且 `elapsed < passive_timeout`：
+  - 直接复活（无需 LLM）。
+- 否则：
+  - `smart_context_enabled=false` -> 新建会话。
+  - `smart_context_enabled=true` -> 对该归档会话做 judgment：
+    - 相关：复活归档会话。
+    - 不相关/失败：新建会话。
 
-### 4.3 LLM 判断逻辑 (LLM Judgment) - 多维评分模式
-为了提高判断的透明度和准确性，不直接让 LLM 给出二元结果，而要求其在三个维度打分（0-10 分），系统根据加权总分判定。
+3. 若“最新会话是活跃态但空会话（`last_message_time is None` 且消息数为 0）”。
+- 会检查最近归档候选会话。
+- `smart_context_enabled=true`：
+  - 对归档候选做 judgment，相关则切回归档候选。
+- `smart_context_enabled=false`：
+  - 保留当前空活跃会话，不做判断。
 
-#### 4.3.1 定义工具 (Tool Definition)
-`context_judgment` 工具：
+4. 若“最新会话是普通活跃会话（有 `last_message_time`）”。
+- `elapsed < passive_timeout`：直接复用，不做 judgment。
+- `elapsed >= passive_timeout`：
+  - `smart_context_enabled=false` -> 归档旧会话 + 新建会话。
+  - `smart_context_enabled=true` -> judgment：
+    - 相关：复用旧会话。
+    - 不相关/失败：归档旧会话 + 新建会话。
 
-```python
-{
-    "type": "function",
-    "function": {
-        "name": "context_judgment",
-        "description": "评估用户新消息与现有对话历史的关联程度，按维度打分。",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "topic_relevance": {
-                    "type": "integer",
-                    "description": "主题相关度 (0-10)。10=完全同一话题，5=话题自然延伸，0=完全无关的新话题。",
-                    "minimum": 0,
-                    "maximum": 10
-                },
-                "intent_continuity": {
-                    "type": "integer",
-                    "description": "意图连续性 (0-10)。10=直接回应/追问/补充，0=生硬的意图跳跃或无视上文。",
-                    "minimum": 0,
-                    "maximum": 10
-                },
-                "entity_reference": {
-                    "type": "integer",
-                    "description": "指代与实体引用 (0-10)。10=显式指代或复用关键实体，0=无上下文实体引用。",
-                    "minimum": 0,
-                    "maximum": 10
-                }
-            },
-            "required": ["topic_relevance", "intent_continuity", "entity_reference"]
-        }
-    }
-}
-```
+## 5. LLM 判定逻辑（已实现）
+判定函数：`_judge_smart_context_relevance(...)`。
 
-#### 4.3.2 Prompt 管理与规范
-- 禁止在代码中硬编码该判定 Prompt。
-- Prompt 文件放置：`server/app/prompt/chat/smart_context_judgment.txt`
-- 加载方式：`get_prompt("chat/smart_context_judgment.txt")`
-- Prompt 需明确：必须调用 `context_judgment`。
+### 5.1 Agents + Tool 调用
+- 使用 OpenAI Agents：`Agent` + `Runner.run`。
+- 强制工具：`context_judgment(topic_relevance, intent_continuity, entity_reference)`。
+- Prompt 文件外置：`server/app/prompt/chat/smart_context_judgment.txt`。
 
-#### 4.3.3 结果判定逻辑 (Decision Logic)
-系统接收到 LLM 的评分后，执行以下计算：
+### 5.2 评分公式
+- `Score = topic_relevance*0.4 + intent_continuity*0.4 + entity_reference*0.2`
+- 阈值：`Score >= 6.0` 视为相关。
 
-**加权公式**:
-`Score = (topic_relevance * 0.4) + (intent_continuity * 0.4) + (entity_reference * 0.2)`
+### 5.3 模型与 provider 兼容
+- 模型选择优先级：
+  - `session.smart_context_model` 指定配置
+  - 否则回退 `chat.active_llm_config_id`
+- 已使用 `server/app/services/provider_rules.py` 统一 provider 差异：
+  - LiteLLM 路由判定
+  - Gemini model/base_url 归一化
+  - `reasoning_effort` 支持判定
+  - 采样参数及 provider 差异处理
 
-**判定阈值**:
-- **Score >= 6.0**: 判定为 **强相关 (复活)** -> 复用会话（触发潜在回滚）。
-- **Score < 6.0**: 判定为 **弱相关** -> 归档并新建会话。
+### 5.4 失败兜底（Fail-Safe）
+以下场景全部兜底为“不相关 -> 新建会话”：
+- 缺少可用 LLM 配置
+- 模型不支持 function call
+- 工具未调用或 payload 非法
+- LLM 调用失败/超时/异常
 
-边界规则：
-- `Score == 6.0` 视为相关（复活）。
+当前 LLM 调用超时：20 秒。
+异常日志会输出 `error_type` 与完整堆栈。
 
-#### 4.3.4 工具调用兜底策略
-若发生以下任一情况，默认采取 **保守策略（新建会话）**：
-- LLM 未按要求调用 `context_judgment`。
-- tool 返回缺字段/非法值。
-- 调用超时/失败/解析异常。
-*(理由：已超时且无法判断，按传统逻辑归档最安全)*
+## 6. 复活回滚与记忆删除（已实现）
+当复活目标会话 `memory_generated != 0` 时：
+- 会将 `memory_generated` 重置为 `0`。
+- 清空 `memory_error`。
+- 调度删除该 session 对应的 Memobase 记忆。
 
-### 4.4 性能考量 (Performance Considerations)
-- **零延迟**: 正常对话（< 30m）不触发智能判定。
-- **后台减负**: 主动扫描仅处理 >24h 的死会话，大幅减少不必要的数据库与 LLM 开销。
-- **数据一致**: 回滚机制保证了“复活”操作的原子性和数据纯净度。
+注意：删除为异步调度（不阻塞当前回复）。
+- 调度：`_schedule_session_memory_deletion(session_id)`
+- 执行：`MemoService.delete_session_memories(...)`
 
-### 4.5 实施路径 (Implementation Roadmap)
-本 Story **包含单聊与群聊两个阶段**，按两次实现上线：
+## 7. 后台归档任务（已实现）
+后台扫描只处理 hard-timeout：
+- 常量：`HARD_ARCHIVE_TIMEOUT_SECONDS = 24 * 60 * 60`
+- 仅归档活跃会话（`memory_generated == 0`）且 `last_message_time < now-24h`
 
-1.  **第一阶段：单聊系统 (Private Chat Phase)**
-    - 实现设置界面的开关与模型选择。
-    - 接入单聊智能复活逻辑（含回滚、Tool、兜底）。
-    - 调整后台定时任务扫描阈值为 24h。
+30 分钟到 24 小时之间的会话由“用户发消息时的被动判定”处理。
 
-2.  **第二阶段：群聊系统 (Group Chat Phase)**
-    - 将智能复活逻辑扩展到群聊。
-    - 群聊 Context 增加发送者维度。
-    - 保持一致的阈值与并发约束。
+## 8. 日志可观测性（已实现）
+主要看 `server/logs/app.log`：
+- `[SmartContext] ...` 服务级决策日志
+- `force_new_session` 请求与分支日志
+- judgment 调用/得分/兜底日志
+- 回滚与异步记忆删除日志
 
-### 4.4 性能与并发
-- **并发控制**: 依然需要以 `friend_id` 为粒度的并发锁，防止在 LLM 判断期间用户发了第二条消息导致状态不一致。
-- **兜底策略**: 若 LLM 调用失败/超时，**策略选择**：
-  - *建议*: **保守策略 (Fail-Safe to New Session)**。因为已经超时了，且判断服务挂了，按传统逻辑处理（新建）是符合用户预期的最安全做法。
-  - *或者*: **激进策略**：默认复活。
-  - *本 Story 采纳*: **保守策略**（超时且判断失败 -> 新建会话）。
+`server/logs/prompt.log` 仅在实际触发 Agent judgment 时才会出现对应提示词追踪。
 
-## 5. 验收标准 (Acceptance Criteria)
+## 9. 验收标准（与当前代码一致）
 
-### 5.1 设置与基础
-1.  **设置界面**:
-    - [ ] `smart_context_enabled` 开启时，`passive_timeout` **依然可见且可编辑**（不再互斥）。
-    - [ ] 提示文案准确传达“超时后尝试复活”的含义。
+### 9.1 基础行为
+- `passive_timeout` 可配置且参与所有超时判定。
+- 未超时消息不触发 judgment。
 
-2.  **功能测试 - 未超时场景**:
-    - [ ] 无论开关是否开启，在超时时间内发送消息，**绝不**触发 LLM 判断，直接进入当前会话。
+### 9.2 智能上下文
+- 超时 + 开关关闭：归档并新建。
+- 超时 + 开关开启 + 相关：复用/复活。
+- 超时 + 开关开启 + 不相关或异常：新建。
 
-### 5.2 功能测试 - 超时场景
-前置条件：构造一个已超时的活跃会话（修改 DB 时间或设短超时）。
+### 9.3 归档会话纳入判定
+- 归档会话会被纳入候选。
+- 满足条件可复活并触发异步记忆清理。
 
-1.  **开关 OFF**:
-    - [ ] 超时后发消息 -> 自动归档旧会话，新建会话。
+### 9.4 手动新建强制新会话
+- 点击“新建会话”后下一条好友消息带 `force_new_session=true`。
+- 该次发送跳过 judgment。
 
-2.  **开关 ON - 场景 A (相关)**:
-    - [ ] 发送高度相关消息（如：“刚才那代码再发一遍”）。
-    - [ ] 预期：**不创建新会话**，旧会话 `last_message_time` 更新，消息追加到旧会话。
-
-3.  **开关 ON - 场景 B (不相关)**:
-    - [ ] 发送完全无关消息（如：“今天天气不错”）。
-    - [ ] 预期：旧会话归档，**创建新会话**，消息在新会话中。
-
-4.  **开关 ON - 场景 C (异常兜底)**:
-    - [ ] 模拟 LLM 接口超时/报错。
-    - [ ] 预期：降级处理，按超时逻辑归档旧会话，新建会话。
-
-## 6. 代码与文件落点
-- 涉及文件同上 (`chat_service.py`, `settings.ts`, 等)。
-- 重点关注 `resolve_session_for_incoming_message` 中的 `if is_timeout` 分支逻辑。
+## 10. 主要代码落点
+- `server/app/api/endpoints/chat.py`
+- `server/app/services/chat_service.py`
+- `server/app/services/provider_rules.py`
+- `server/app/prompt/chat/smart_context_judgment.txt`
+- `front/src/api/chat.ts`
+- `front/src/stores/session.ts`
+- `front/src/stores/session.sessions.ts`
+- `front/src/stores/session.stream.friend.ts`
+- `front/src/stores/settings.ts`
+- `front/src/components/SettingsDialog.vue`

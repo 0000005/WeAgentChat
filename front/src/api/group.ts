@@ -68,6 +68,10 @@ export interface GroupSessionRead {
     session_type?: 'normal' | 'brainstorm' | 'decision' | 'debate';
 }
 
+export interface SendGroupOptions {
+    forceNewSession?: boolean;
+}
+
 async function request<T>(options: { url: string; method: string; data?: any; params?: any }): Promise<T> {
     const url = new URL(withApiBase(`/api${options.url}`));
     if (options.params) {
@@ -203,8 +207,19 @@ export const groupApi = {
     /**
      * 发送群消息并流式获取响应
      */
-    async *sendGroupMessageStream(groupId: number, data: { content: string, mentions?: string[], enable_thinking?: boolean }): AsyncGenerator<{ event: string, data: any }> {
-        const url = withApiBase(`/api/chat/group/${groupId}/messages`);
+    async *sendGroupMessageStream(
+        groupId: number,
+        data: { content: string, mentions?: string[], enable_thinking?: boolean },
+        options?: SendGroupOptions
+    ): AsyncGenerator<{ event: string, data: any }> {
+        const params = new URLSearchParams();
+        if (options?.forceNewSession) {
+            params.set('force_new_session', 'true');
+        }
+        const url = params.toString()
+            ? withApiBase(`/api/chat/group/${groupId}/messages?${params.toString()}`)
+            : withApiBase(`/api/chat/group/${groupId}/messages`);
+        console.log('[GroupAPI] sendGroupMessageStream url=', url, 'options=', options);
         const response = await fetch(url, {
             method: 'POST',
             headers: {

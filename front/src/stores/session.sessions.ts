@@ -9,6 +9,7 @@ export type SessionActionsDeps = {
     chatType: Ref<'friend' | 'group'>
     unreadCounts: Ref<Record<string, number>>
     forceNewNextMessageMap: Ref<Record<string, boolean>>
+    forceNewNextGroupMessageMap: Ref<Record<string, boolean>>
     messagesMap: Ref<Record<string, Message[]>>
     currentSessions: Ref<ChatAPI.ChatSession[]>
     currentSessionId: Ref<number | null>
@@ -26,6 +27,7 @@ export const createSessionActions = (deps: SessionActionsDeps) => {
         chatType,
         unreadCounts,
         forceNewNextMessageMap,
+        forceNewNextGroupMessageMap,
         messagesMap,
         currentSessions,
         currentSessionId,
@@ -204,6 +206,7 @@ export const createSessionActions = (deps: SessionActionsDeps) => {
 
         try {
             await groupApi.createGroupSession(groupId)
+            forceNewNextGroupMessageMap.value['g' + groupId] = true
             if (!messagesMap.value['g' + groupId]) {
                 messagesMap.value['g' + groupId] = []
             }
