@@ -19,16 +19,25 @@ datas: list = []
 binaries: list = []
 datas += collect_data_files('tiktoken')
 datas += collect_data_files('tiktoken_ext')
+datas += collect_data_files('litellm')
 
 # uvicorn loads `app.main:app` dynamically, so force-include the package.
 hiddenimports = collect_submodules('app')
+hiddenimports += collect_submodules('litellm')
 # Ensure tiktoken extension encodings are bundled.
 hiddenimports += ['tiktoken_ext', 'tiktoken_ext.openai_public']
+# RecallService 在运行时按需导入该模块，打包时需显式包含。
+hiddenimports += ['agents.extensions.models.litellm_model']
 
 app_datas, app_binaries, app_hiddenimports = collect_all('app')
 datas += app_datas
 binaries += app_binaries
 hiddenimports += app_hiddenimports
+
+litellm_datas, litellm_binaries, litellm_hiddenimports = collect_all('litellm')
+datas += litellm_datas
+binaries += litellm_binaries
+hiddenimports += litellm_hiddenimports
 
 # Alembic migrations/config needed at runtime
 datas += [(os.path.join(server_dir, 'alembic'), 'alembic')]
