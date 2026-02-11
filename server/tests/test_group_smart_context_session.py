@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from sqlalchemy.orm import Session
 
-from app.models.group import Group, GroupMember, GroupSession
+from app.models.group import Group, GroupAutoDriveRun, GroupMember, GroupSession
 from app.schemas import group as group_schemas
 from app.services.group_chat_service import (
     group_chat_service,
@@ -189,3 +189,53 @@ async def test_send_group_message_force_new_session_skips_judgment(db: Session):
     assert events[0]["data"]["session_id"] == old_session.id
     assert old_session.ended is False
     mock_resolve.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_group_resolve_prefers_latest_auto_drive_session_after_run_ended(db: Session):
+    group = _create_group(db, "group-smart-auto-drive-ended")
+    _set_session_settings(db, timeout=1800, smart_enabled=False)
+
+    normal_session = group_chat_service.create_group_session(db, group.id)
+    normal_session.last_message_time = datetime.now(timezone.utc) - timedelta(minutes=5)
+    db.commit()
+
+    auto_drive_session = GroupSession(
+        group_id=group.id,
+        title="自驱-decision",
+        session_type="decision",
+        ended=False,
+        last_message_time=datetime.now(timezone.utc) - timedelta(minutes=1),
+    )
+    db.add(auto_drive_session)
+    db.commit()
+    db.refresh(auto_drive_session)
+
+    run = GroupAutoDriveRun(
+        group_id=group.id,
+        session_id=auto_drive_session.id,
+        mode="decision",
+        topic_json={"question": "测试问题"},
+        roles_json={"participants": []},
+        turn_limit=3,
+        end_action="none",
+        judge_id=None,
+        summary_by=None,
+        status="ended",
+        phase="summary",
+        current_round=1,
+        current_turn=3,
+        next_speaker_id=None,
+        pause_reason=None,
+        started_at=datetime.now(timezone.utc) - timedelta(minutes=2),
+        ended_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+        create_time=datetime.now(timezone.utc) - timedelta(minutes=2),
+        update_time=datetime.now(timezone.utc) - timedelta(minutes=1),
+    )
+    db.add(run)
+    db.commit()
+
+    resolved = await resolve_session_for_incoming_group_message(db, group.id, "我补充一个观点")
+    assert resolved.id == auto_drive_session.id
+    assert resolved.session_type == "decision"
+    assert resolved.id != normal_session.id

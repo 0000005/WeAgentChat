@@ -147,7 +147,6 @@ def _get_latest_group_session_any_state(db: Session, group_id: int) -> Optional[
         db.query(GroupSession)
         .filter(
             GroupSession.group_id == group_id,
-            GroupSession.session_type == "normal",
         )
         .order_by(GroupSession.id.desc())
         .first()

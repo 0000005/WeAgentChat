@@ -1301,54 +1301,6 @@ const openTutorial = () => {
                                 </div>
                             </div>
 
-                            <!-- Basic Configuration -->
-                            <div class="space-y-4">
-                                <div class="grid gap-2">
-                                    <label class="text-sm font-medium leading-none">
-                                        会话过期时间（分钟）
-                                    </label>
-                                    <Input v-model.number="passiveTimeoutMinutes" type="number" min="1" max="1440"
-                                        placeholder="30" />
-                                    <p class="text-xs text-gray-500">
-                                        这是会话超时检查点。超时后会根据“超时智能复活”设置决定是复活旧会话还是新建会话。
-                                    </p>
-                                </div>
-
-                                <div class="space-y-3 rounded-md border border-gray-200 bg-gray-50/60 px-3 py-3">
-                                    <div class="flex items-center justify-between">
-                                        <label class="text-sm font-medium">超时智能复活</label>
-                                        <Switch v-model="smartContextEnabled" />
-                                    </div>
-                                    <p class="text-xs text-gray-500">
-                                        超时智能复活：当会话超时后，尝试智能判断是否为同一话题。若是则复活会话，不进行归档。
-                                    </p>
-
-                                    <div class="grid gap-2">
-                                        <label class="text-sm font-medium leading-none">智能复活判断模型</label>
-                                        <Select v-model="smartContextModelProxy" :disabled="!llmConfigs.length">
-                                            <SelectTrigger>
-                                                <SelectValue placeholder="未选择（将沿用聊天模型）" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="__default__">沿用聊天模型</SelectItem>
-                                                <SelectItem v-for="config in llmConfigs" :key="config.id"
-                                                    :value="String(config.id)">
-                                                    {{ config.config_name || LLM_PROVIDER_PRESETS[config.provider ||
-                                                        'openai']?.label || config.provider }}
-                                                </SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                        <div v-if="activeSmartContextLlmConfig"
-                                            class="rounded-md border border-gray-200 bg-white/80 px-3 py-2 text-xs text-gray-600">
-                                            <div>模型：{{ activeSmartContextLlmConfig.model_name || '未设置' }}</div>
-                                            <div>供应商：{{ LLM_PROVIDER_PRESETS[activeSmartContextLlmConfig.provider ||
-                                                'openai']?.label || activeSmartContextLlmConfig.provider }}</div>
-                                        </div>
-                                        <p class="text-xs text-gray-500">留空时将自动回退到当前聊天模型。</p>
-                                    </div>
-                                </div>
-                            </div>
-
                             <!-- Recall Settings -->
                             <div class="space-y-4 border-t pt-6">
                                 <div class="flex items-center justify-between">
@@ -1508,6 +1460,51 @@ const openTutorial = () => {
                                         <div>模型：{{ activeLlmConfig.model_name || '未设置' }}</div>
                                         <div>供应商：{{ LLM_PROVIDER_PRESETS[activeLlmConfig.provider || 'openai']?.label ||
                                             activeLlmConfig.provider }}</div>
+                                    </div>
+                                </div>
+
+                                <div class="grid gap-2">
+                                    <label class="text-sm font-medium leading-none">
+                                        会话过期时间（分钟）
+                                    </label>
+                                    <Input v-model.number="passiveTimeoutMinutes" type="number" min="1" max="1440"
+                                        placeholder="30" />
+                                    <p class="text-xs text-gray-500">
+                                        这是会话超时检查点。超时后会根据“超时智能复活”设置决定是复活旧会话还是新建会话。
+                                    </p>
+                                </div>
+
+                                <div class="space-y-3 rounded-md border border-gray-200 bg-gray-50/60 px-3 py-3">
+                                    <div class="flex items-center justify-between">
+                                        <label class="text-sm font-medium">超时智能复活</label>
+                                        <Switch v-model="smartContextEnabled" />
+                                    </div>
+                                    <p class="text-xs text-gray-500">
+                                        超时智能复活：当会话超时后，尝试智能判断是否为同一话题。若是则复活会话，不进行归档。
+                                    </p>
+
+                                    <div class="grid gap-2">
+                                        <label class="text-sm font-medium leading-none">智能复活判断模型</label>
+                                        <Select v-model="smartContextModelProxy" :disabled="!llmConfigs.length">
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="未选择（将沿用聊天模型）" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="__default__">沿用聊天模型</SelectItem>
+                                                <SelectItem v-for="config in llmConfigs" :key="config.id"
+                                                    :value="String(config.id)">
+                                                    {{ config.config_name || LLM_PROVIDER_PRESETS[config.provider ||
+                                                        'openai']?.label || config.provider }}
+                                                </SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                        <div v-if="activeSmartContextLlmConfig"
+                                            class="rounded-md border border-gray-200 bg-white/80 px-3 py-2 text-xs text-gray-600">
+                                            <div>模型：{{ activeSmartContextLlmConfig.model_name || '未设置' }}</div>
+                                            <div>供应商：{{ LLM_PROVIDER_PRESETS[activeSmartContextLlmConfig.provider ||
+                                                'openai']?.label || activeSmartContextLlmConfig.provider }}</div>
+                                        </div>
+                                        <p class="text-xs text-gray-500">留空时将自动回退到当前聊天模型。</p>
                                     </div>
                                 </div>
 
