@@ -42,7 +42,7 @@ const isEditingPrompt = ref(false)
 const generatedPersona = ref<PersonaGenerateResponse | null>(null)
 const avatarUrl = ref<string | null>(null)
 const isAvatarUploaderOpen = ref(false)
-const scriptExpression = ref(true)
+const scriptExpression = ref(false)
 const streamingText = ref('')
 const streamContent = ref('')
 const streamTimer = ref<number | null>(null)
@@ -274,7 +274,7 @@ const resetAll = () => {
   description.value = ''
   generatedPersona.value = null
   isEditingPrompt.value = false
-  scriptExpression.value = true
+  scriptExpression.value = false
   streamingText.value = ''
   streamContent.value = ''
   stopStream()

@@ -43,8 +43,8 @@ const form = ref({
   description: '',
   system_prompt: '',
   avatar: '',
-  script_expression: true,
-  temperature: 0.8,
+  script_expression: false,
+  temperature: 1,
   top_p: 0.9,
 })
 
@@ -59,8 +59,8 @@ const resetForm = () => {
     description: '',
     system_prompt: '',
     avatar: '',
-    script_expression: true,
-    temperature: 0.8,
+    script_expression: false,
+    temperature: 1,
     top_p: 0.9,
   }
 }
@@ -74,8 +74,8 @@ const loadFriendData = () => {
         description: friend.description || '',
         system_prompt: friend.system_prompt || '',
         avatar: friend.avatar || '',
-        script_expression: friend.script_expression ?? true,
-        temperature: typeof friend.temperature === 'number' ? friend.temperature : 0.8,
+        script_expression: friend.script_expression ?? false,
+        temperature: typeof friend.temperature === 'number' ? friend.temperature : 1,
         top_p: typeof friend.top_p === 'number' ? friend.top_p : 0.9,
       }
     }
@@ -110,7 +110,7 @@ const roundToStep = (value: number, step: number) => {
 
 const normalizeTemperature = () => {
   if (!Number.isFinite(form.value.temperature)) {
-    form.value.temperature = 0.8
+    form.value.temperature = 1
     return
   }
   form.value.temperature = clampValue(roundToStep(form.value.temperature, 0.1), 0, 2)

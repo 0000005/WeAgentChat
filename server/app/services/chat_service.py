@@ -1416,7 +1416,7 @@ async def _run_chat_generation_task(
 
         set_agents_default_client(llm_config, use_for_tracing=True)
 
-        temperature = friend.temperature if friend and friend.temperature is not None else 0.8
+        temperature = friend.temperature if friend and friend.temperature is not None else 1.0
         top_p = friend.top_p if friend and friend.top_p is not None else 0.9
 
         use_litellm = provider_rules.should_use_litellm(llm_config, raw_model_name)

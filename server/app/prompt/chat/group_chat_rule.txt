@@ -4,4 +4,4 @@
 {memberList}
 
 【发言规则】
-只有被@时才发言。否则输出 <CTRL:NO_REPLY>。
+只有被`@`或`is_mentioned`函数返回被提及的时候才发言。否则输出<CTRL:NO_REPLY>。

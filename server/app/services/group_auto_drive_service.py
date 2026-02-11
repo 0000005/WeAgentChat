@@ -916,7 +916,7 @@ class GroupAutoDriveService:
             if not force_thinking:
                 enable_thinking = False
 
-        temperature = friend.temperature if friend.temperature is not None else 0.8
+        temperature = friend.temperature if friend.temperature is not None else 1.0
         top_p = friend.top_p if friend.top_p is not None else 0.9
 
         model_settings_kwargs = {}

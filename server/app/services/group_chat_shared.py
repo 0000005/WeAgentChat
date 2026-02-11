@@ -216,10 +216,12 @@ def build_group_context(
         else:
             agent_messages.append({"role": "assistant", "content": ctrl_no_reply})
 
+    agent_messages.append({"role": "user", "content": current_user_msg})
+
+    # Gemini through LiteLLM requires function_call turns to appear
+    # immediately after a user turn (or a function response turn).
     if injected_recall_messages:
         agent_messages.extend(injected_recall_messages)
-
-    agent_messages.append({"role": "user", "content": current_user_msg})
 
     tc_id_curr = f"call_curr_msgs_{user_msg_id}"
     agent_messages.append({

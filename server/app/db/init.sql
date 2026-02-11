@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS friends (
     system_prompt TEXT,
     is_preset BOOLEAN NOT NULL DEFAULT 0,
     avatar VARCHAR(255),
-    script_expression BOOLEAN NOT NULL DEFAULT 1,
+    script_expression BOOLEAN NOT NULL DEFAULT 0,
     pinned_at DATETIME,
     create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
