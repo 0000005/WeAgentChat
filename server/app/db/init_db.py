@@ -135,3 +135,12 @@ def init_db():
         logger.info("System settings initialized successfully.")
     except Exception as e:
         logger.error(f"Error initializing system settings: {e}")
+
+    # --- 6. Initialize Voice Timbres ---
+    logger.info("Initializing voice timbres...")
+    try:
+        from app.services.voice_service import VoiceService
+        VoiceService.initialize_voices()
+        logger.info("Voice timbres initialized successfully.")
+    except Exception as e:
+        logger.error(f"Error initializing voice timbres: {e}")

@@ -34,6 +34,12 @@ export const useSettingsStore = defineStore('settings', () => {
     // ===== System 配置 =====
     const autoLaunch = ref<boolean>(false)
 
+    // ===== Voice 配置 =====
+    const voiceProvider = ref<string>('aliyun_bailian')
+    const voiceModel = ref<string>('qwen3-tts-instruct-flash')
+    const voiceApiKey = ref<string>('')
+    const voiceDefaultVoiceId = ref<string>('Cherry')
+
     // ===== Loading 状态 =====
     const isLoading = ref(false)
     const isSaving = ref(false)
@@ -167,6 +173,28 @@ export const useSettingsStore = defineStore('settings', () => {
         saveSettings('system', { auto_launch: autoLaunch })
 
     /**
+     * 从后端获取 voice 分组的配置
+     */
+    const fetchVoiceSettings = () =>
+        fetchSettings('voice', {
+            provider: voiceProvider,
+            tts_model: voiceModel,
+            api_key: voiceApiKey,
+            default_voice_id: voiceDefaultVoiceId,
+        })
+
+    /**
+     * 保存 voice 配置到后端
+     */
+    const saveVoiceSettings = () =>
+        saveSettings('voice', {
+            provider: voiceProvider,
+            tts_model: voiceModel,
+            api_key: voiceApiKey,
+            default_voice_id: voiceDefaultVoiceId,
+        })
+
+    /**
      * 将秒数转换为分钟显示
      */
     const getTimeoutInMinutes = (): number => {
@@ -195,6 +223,10 @@ export const useSettingsStore = defineStore('settings', () => {
         activeMemoryLlmConfigId,
         userAvatar,
         autoLaunch,
+        voiceProvider,
+        voiceModel,
+        voiceApiKey,
+        voiceDefaultVoiceId,
         isLoading,
         isSaving,
         // Actions
@@ -210,5 +242,7 @@ export const useSettingsStore = defineStore('settings', () => {
         saveUserSettings,
         fetchSystemSettings,
         saveSystemSettings,
+        fetchVoiceSettings,
+        saveVoiceSettings,
     }
 })

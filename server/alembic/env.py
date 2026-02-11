@@ -21,6 +21,7 @@ from app.models.chat import ChatSession, Message
 from app.models.friend import Friend
 from app.models.llm import LLMConfig
 from app.models.group import Group, GroupMember, GroupMessage
+from app.models.voice import VoiceTimbre
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

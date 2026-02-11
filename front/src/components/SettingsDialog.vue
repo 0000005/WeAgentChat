@@ -10,11 +10,12 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Eye, EyeOff, Loader2, CheckCircle2, XCircle, X, Plus, Trash2, BrainCircuit, Search, Wrench } from 'lucide-vue-next'
+import { Eye, EyeOff, Loader2, CheckCircle2, XCircle, X, Plus, Trash2, BrainCircuit, Search, Wrench, Play, Volume2 } from 'lucide-vue-next'
 import { useLlmStore } from '@/stores/llm'
 import { useEmbeddingStore } from '@/stores/embedding'
 import { useSettingsStore } from '@/stores/settings'
 import { useMemoryStore } from '@/stores/memory'
+import * as VoiceAPI from '@/api/voice'
 import { storeToRefs } from 'pinia'
 import { Switch } from '@/components/ui/switch'
 import { Slider } from '@/components/ui/slider'
@@ -142,6 +143,10 @@ const {
     activeEmbeddingConfigId,
     activeMemoryLlmConfigId,
     autoLaunch,
+    voiceProvider,
+    voiceModel,
+    voiceApiKey,
+    voiceDefaultVoiceId,
     isSaving: isSettingsSaving
 } = storeToRefs(settingsStore)
 
@@ -159,6 +164,15 @@ const llmTestStatus = ref<TestStatus>('idle')
 const llmTestMessage = ref('')
 const embeddingTestStatus = ref<TestStatus>('idle')
 const embeddingTestMessage = ref('')
+const voiceTestStatus = ref<TestStatus>('idle')
+const voiceTestMessage = ref('')
+const isVoiceTesting = ref(false)
+const showVoiceApiKey = ref(false)
+const voiceTimbres = ref<VoiceAPI.VoiceTimbre[]>([])
+const isVoiceTimbresLoading = ref(false)
+const previewingVoiceId = ref<string | null>(null)
+let previewAudio: HTMLAudioElement | null = null
+let testAudio: HTMLAudioElement | null = null
 
 const selectedLlmId = ref<number | null>(null)
 const selectedEmbeddingId = ref<number | null>(null)
@@ -305,6 +319,8 @@ watch(() => props.open, (newVal) => {
         activeTab.value = props.defaultTab
     }
     if (!newVal) {
+        stopAudio('preview')
+        stopAudio('test')
         draftLlmForm.value = null
         draftEmbeddingForm.value = null
         if (selectedLlmId.value === DRAFT_LLM_ID) {
@@ -328,6 +344,107 @@ const toggleApiKeyVisibility = () => {
     showApiKey.value = !showApiKey.value
 }
 
+const toggleVoiceApiKeyVisibility = () => {
+    showVoiceApiKey.value = !showVoiceApiKey.value
+}
+
+const stopAudio = (target: 'preview' | 'test') => {
+    if (target === 'preview' && previewAudio) {
+        previewAudio.pause()
+        previewAudio.currentTime = 0
+        previewAudio = null
+        previewingVoiceId.value = null
+    }
+    if (target === 'test' && testAudio) {
+        testAudio.pause()
+        testAudio.currentTime = 0
+        testAudio = null
+    }
+}
+
+const isVoiceSupportedByModel = (voice: VoiceAPI.VoiceTimbre, model: string) => {
+    const targetModel = (model || '').trim()
+    if (!targetModel) return true
+
+    const supportedModels = Array.isArray(voice.supported_models)
+        ? voice.supported_models.filter(Boolean)
+        : []
+    if (!supportedModels.length) return false
+    if (supportedModels.includes(targetModel)) return true
+
+    // 允许快照模型回退到稳定别名（如 qwen3-tts-instruct-flash-2026-01-26 -> qwen3-tts-instruct-flash）
+    const baseModel = targetModel.replace(/-\d{4}-\d{2}-\d{2}$/, '')
+    return baseModel !== targetModel && supportedModels.includes(baseModel)
+}
+
+const filteredVoiceTimbres = computed(() =>
+    voiceTimbres.value.filter(voice => isVoiceSupportedByModel(voice, voiceModel.value))
+)
+
+const ensureVoiceDefaultInModelScope = () => {
+    if (isVoiceTimbresLoading.value || !voiceTimbres.value.length) return
+    if (!filteredVoiceTimbres.value.length) {
+        voiceDefaultVoiceId.value = ''
+        stopAudio('preview')
+        return
+    }
+    if (!filteredVoiceTimbres.value.some(voice => voice.voice_id === voiceDefaultVoiceId.value)) {
+        voiceDefaultVoiceId.value = filteredVoiceTimbres.value[0].voice_id
+    }
+}
+
+const fetchVoiceTimbres = async () => {
+    isVoiceTimbresLoading.value = true
+    try {
+        const list = await VoiceAPI.getVoiceTimbres()
+        voiceTimbres.value = list
+        ensureVoiceDefaultInModelScope()
+    } catch (e) {
+        console.error('Failed to fetch voice timbres:', e)
+    } finally {
+        isVoiceTimbresLoading.value = false
+    }
+}
+
+const playVoicePreview = async (voice: VoiceAPI.VoiceTimbre) => {
+    if (!voice.preview_url) return
+    stopAudio('test')
+    if (previewingVoiceId.value === voice.voice_id) {
+        stopAudio('preview')
+        return
+    }
+    stopAudio('preview')
+
+    previewingVoiceId.value = voice.voice_id
+    previewAudio = new Audio(voice.preview_url)
+    previewAudio.onended = () => {
+        previewingVoiceId.value = null
+        previewAudio = null
+    }
+    previewAudio.onerror = () => {
+        previewingVoiceId.value = null
+        previewAudio = null
+    }
+    try {
+        await previewAudio.play()
+    } catch (e) {
+        console.error('Voice preview playback failed:', e)
+        previewingVoiceId.value = null
+        previewAudio = null
+    }
+}
+
+const playTestAudio = async (audioUrl: string) => {
+    stopAudio('preview')
+    stopAudio('test')
+    testAudio = new Audio(audioUrl)
+    try {
+        await testAudio.play()
+    } catch (e) {
+        console.error('Voice test audio playback failed:', e)
+    }
+}
+
 onMounted(() => {
     llmStore.fetchConfigs()
     embeddingStore.fetchConfigs()
@@ -335,7 +452,9 @@ onMounted(() => {
     settingsStore.fetchChatSettings()
     settingsStore.fetchMemorySettings()
     settingsStore.fetchSystemSettings()
+    settingsStore.fetchVoiceSettings()
     memoryStore.fetchConfig()
+    fetchVoiceTimbres()
 })
 
 const handleSave = async () => {
@@ -415,6 +534,14 @@ const handleSave = async () => {
                 return
             }
             await settingsStore.saveChatSettings()
+        }
+
+        if (activeTab.value === 'voice') {
+            voiceProvider.value = 'aliyun_bailian'
+            if (!voiceModel.value) {
+                voiceModel.value = 'qwen3-tts-instruct-flash'
+            }
+            await settingsStore.saveVoiceSettings()
         }
 
         if (activeTab.value === 'system') {
@@ -695,11 +822,47 @@ const handleEmbeddingTest = async () => {
     }
 }
 
+const handleVoiceTest = async () => {
+    voiceTestStatus.value = 'idle'
+    voiceTestMessage.value = ''
+
+    const apiKey = voiceApiKey.value?.trim()
+    if (!apiKey) {
+        voiceTestStatus.value = 'error'
+        voiceTestMessage.value = '请先填写语音 API Key'
+        return
+    }
+    if (!voiceDefaultVoiceId.value) {
+        voiceTestStatus.value = 'error'
+        voiceTestMessage.value = '请先选择默认音色'
+        return
+    }
+
+    isVoiceTesting.value = true
+    try {
+        const result = await VoiceAPI.testVoiceConfig({
+            api_key: apiKey,
+            model: voiceModel.value || 'qwen3-tts-instruct-flash',
+            voice_id: voiceDefaultVoiceId.value,
+        })
+        voiceTestStatus.value = 'success'
+        voiceTestMessage.value = `${result.message}（音色：${result.voice_id}）`
+        await playTestAudio(result.audio_url)
+    } catch (e: any) {
+        voiceTestStatus.value = 'error'
+        voiceTestMessage.value = e.message || '语音测试失败'
+    } finally {
+        isVoiceTesting.value = false
+    }
+}
+
 const handleTest = async () => {
     if (activeTab.value === 'llm') {
         await handleLlmTest()
     } else if (activeTab.value === 'embedding') {
         await handleEmbeddingTest()
+    } else if (activeTab.value === 'voice') {
+        await handleVoiceTest()
     }
 }
 
@@ -820,11 +983,36 @@ watch(
     { deep: true }
 )
 
+watch(
+    () => [voiceApiKey.value, voiceDefaultVoiceId.value, voiceModel.value],
+    () => {
+        voiceTestStatus.value = 'idle'
+        voiceTestMessage.value = ''
+    }
+)
+
+watch(
+    () => voiceModel.value,
+    () => {
+        ensureVoiceDefaultInModelScope()
+    }
+)
+
+watch(voiceTimbres, () => {
+    ensureVoiceDefaultInModelScope()
+})
+
 const activeLlmConfig = computed(() => llmStore.getConfigById(activeLlmConfigId.value))
 const activeEmbeddingConfig = computed(() => embeddingStore.getConfigById(activeEmbeddingConfigId.value))
 const activeMemoryLlmConfig = computed(() => llmStore.getConfigById(activeMemoryLlmConfigId.value))
 const activeSmartContextLlmConfig = computed(() =>
     smartContextModel.value ? llmStore.getConfigById(Number(smartContextModel.value)) : null
+)
+const voiceProviderLabel = computed(() =>
+    voiceProvider.value === 'aliyun_bailian' ? '阿里云百炼' : (voiceProvider.value || '阿里云百炼')
+)
+const selectedVoiceTimbre = computed(() =>
+    filteredVoiceTimbres.value.find(item => item.voice_id === voiceDefaultVoiceId.value) || null
 )
 const canEnableThinking = computed(() => !!activeLlmConfig.value?.capability_reasoning)
 const canDeleteLlm = computed(() => !!llmForm.value.id || selectedLlmId.value === DRAFT_LLM_ID)
@@ -855,10 +1043,12 @@ const smartContextModelProxy = computed({
 })
 const currentTestStatus = computed(() => {
     if (activeTab.value === 'embedding') return embeddingTestStatus.value
+    if (activeTab.value === 'voice') return voiceTestStatus.value
     return llmTestStatus.value
 })
 const currentTestMessage = computed(() => {
     if (activeTab.value === 'embedding') return embeddingTestMessage.value
+    if (activeTab.value === 'voice') return voiceTestMessage.value
     return llmTestMessage.value
 })
 const isElectron = computed(() => !!(window as any).WeAgentChat?.isElectron)
@@ -899,6 +1089,11 @@ const openTutorial = () => {
                     :class="activeTab === 'embedding' ? 'bg-white shadow-sm text-black' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-200/50'"
                     @click="originalSetTab('embedding')">
                     向量化设置
+                </button>
+                <button class="w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors"
+                    :class="activeTab === 'voice' ? 'bg-white shadow-sm text-black' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-200/50'"
+                    @click="originalSetTab('voice')">
+                    语音设置
                 </button>
                 <button class="w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors"
                     :class="activeTab === 'memory' ? 'bg-white shadow-sm text-black' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-200/50'"
@@ -1235,6 +1430,104 @@ const openTutorial = () => {
                         </div>
                     </template>
 
+                    <template v-if="activeTab === 'voice'">
+                        <div class="space-y-6">
+                            <div>
+                                <h3 class="text-lg font-medium">语音设置</h3>
+                                <p class="text-sm text-gray-500">配置阿里云百炼语音合成服务与默认音色。</p>
+                            </div>
+
+                            <div class="space-y-4">
+                                <div class="grid gap-2">
+                                    <label class="text-sm font-medium leading-none">语音服务商</label>
+                                    <Input :model-value="voiceProviderLabel" disabled />
+                                    <p class="text-xs text-gray-500">当前版本仅支持阿里云百炼。</p>
+                                </div>
+
+                                <div class="grid gap-2">
+                                    <label class="text-sm font-medium leading-none">TTS 模型</label>
+                                    <Input v-model="voiceModel" disabled />
+                                    <p class="text-xs text-gray-500">固定使用 `qwen3-tts-instruct-flash`。</p>
+                                </div>
+
+                                <div class="grid gap-2">
+                                    <label class="text-sm font-medium leading-none">API Key</label>
+                                    <div class="relative">
+                                        <Input v-model="voiceApiKey" :type="showVoiceApiKey ? 'text' : 'password'"
+                                            placeholder="sk-..." class="pr-10" />
+                                        <button type="button" @click="toggleVoiceApiKeyVisibility"
+                                            class="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent text-gray-500 hover:text-gray-900 flex items-center justify-center">
+                                            <Eye v-if="!showVoiceApiKey" :size="16" />
+                                            <EyeOff v-else :size="16" />
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="grid gap-2">
+                                    <div class="flex items-center justify-between">
+                                        <label class="text-sm font-medium leading-none">默认音色</label>
+                                        <span v-if="isVoiceTimbresLoading" class="text-xs text-gray-400">加载中...</span>
+                                    </div>
+                                    <Select v-model="voiceDefaultVoiceId"
+                                        :disabled="isVoiceTimbresLoading || !filteredVoiceTimbres.length">
+                                        <SelectTrigger>
+                                            <SelectValue :placeholder="isVoiceTimbresLoading
+                                                ? '音色加载中...'
+                                                : filteredVoiceTimbres.length
+                                                    ? '请选择默认音色'
+                                                    : '当前模型暂无可用音色'" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem v-for="voice in filteredVoiceTimbres" :key="voice.voice_id"
+                                                :value="voice.voice_id">
+                                                <div class="flex w-full items-center gap-2">
+                                                    <div
+                                                        class="h-6 w-6 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-semibold flex items-center justify-center shrink-0">
+                                                        {{ (voice.name || voice.voice_id).slice(0, 1).toUpperCase() }}
+                                                    </div>
+                                                    <div class="min-w-0 flex-1">
+                                                        <div class="text-xs text-gray-800 truncate">
+                                                            {{ voice.name || voice.voice_id }}
+                                                            <span class="text-gray-400">({{ voice.voice_id }})</span>
+                                                        </div>
+                                                        <div class="text-[10px] text-gray-400 truncate">
+                                                            {{ voice.description || '暂无描述' }}
+                                                        </div>
+                                                    </div>
+                                                    <button v-if="voice.preview_url" type="button"
+                                                        class="rounded-full p-1 text-gray-500 hover:text-emerald-600 hover:bg-emerald-50"
+                                                        @pointerdown.prevent.stop
+                                                        @click.prevent.stop="playVoicePreview(voice)">
+                                                        <Loader2 v-if="previewingVoiceId === voice.voice_id"
+                                                            class="w-3.5 h-3.5 animate-spin" />
+                                                        <Play v-else class="w-3.5 h-3.5" />
+                                                    </button>
+                                                </div>
+                                            </SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    <div v-if="selectedVoiceTimbre"
+                                        class="rounded-md border border-gray-200 bg-gray-50/60 px-3 py-2 text-xs text-gray-600">
+                                        <div class="font-medium text-gray-700">
+                                            {{ selectedVoiceTimbre.name }} ({{ selectedVoiceTimbre.voice_id }})
+                                        </div>
+                                        <div class="mt-1">{{ selectedVoiceTimbre.description || '暂无描述' }}</div>
+                                        <button v-if="selectedVoiceTimbre.preview_url"
+                                            class="mt-2 inline-flex items-center gap-1 text-emerald-600 hover:text-emerald-700"
+                                            @click="playVoicePreview(selectedVoiceTimbre)">
+                                            <Volume2 class="w-3.5 h-3.5" />
+                                            试听当前音色
+                                        </button>
+                                    </div>
+                                    <p v-else-if="filteredVoiceTimbres.length === 0" class="text-xs text-amber-600">
+                                        当前模型（{{ voiceModel }}）暂无可用音色，请更换模型或同步音色数据。
+                                    </p>
+                                    <p v-else class="text-xs text-gray-500">请选择默认音色，好友未单独配置时将跟随该音色。</p>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+
                     <template v-if="activeTab === 'memory'">
                         <div class="space-y-8">
                             <div>
@@ -1548,7 +1841,7 @@ const openTutorial = () => {
                 <!-- Footer -->
                 <div class="p-4 border-t border-gray-100 bg-white shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
                     <!-- Test result display -->
-                    <div v-if="(activeTab === 'llm' || activeTab === 'embedding') && currentTestStatus !== 'idle'"
+                    <div v-if="(activeTab === 'llm' || activeTab === 'embedding' || activeTab === 'voice') && currentTestStatus !== 'idle'"
                         class="mb-3 flex items-center gap-2 text-sm">
                         <CheckCircle2 v-if="currentTestStatus === 'success'" class="w-4 h-4 text-green-500" />
                         <XCircle v-else class="w-4 h-4 text-red-500" />
@@ -1559,11 +1852,16 @@ const openTutorial = () => {
 
                     <div class="flex justify-end gap-2">
                         <Button variant="outline" @click="$emit('update:open', false)">取消</Button>
-                        <Button v-if="activeTab === 'llm' || activeTab === 'embedding'" variant="outline"
-                            @click="handleTest" :disabled="activeTab === 'llm' ? isLlmTesting : isEmbedTesting">
-                            <Loader2 v-if="activeTab === 'llm' ? isLlmTesting : isEmbedTesting"
+                        <Button v-if="activeTab === 'llm' || activeTab === 'embedding' || activeTab === 'voice'" variant="outline"
+                            @click="handleTest"
+                            :disabled="activeTab === 'llm' ? isLlmTesting : activeTab === 'embedding' ? isEmbedTesting : isVoiceTesting">
+                            <Loader2 v-if="activeTab === 'llm' ? isLlmTesting : activeTab === 'embedding' ? isEmbedTesting : isVoiceTesting"
                                 class="w-4 h-4 mr-2 animate-spin" />
-                            测试
+                            {{ activeTab === 'voice'
+                                ? (isVoiceTesting ? '测试中...' : '测试配置')
+                                : (activeTab === 'llm'
+                                    ? (isLlmTesting ? '测试中...' : '测试')
+                                    : (isEmbedTesting ? '测试中...' : '测试')) }}
                         </Button>
                         <Button @click="handleSave" :disabled="isLlmLoading || isEmbedLoading || isSettingsSaving">
                             <Loader2 v-if="isLlmLoading || isEmbedLoading || isSettingsSaving"

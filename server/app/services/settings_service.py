@@ -104,6 +104,10 @@ class SettingsService:
                 ("memory", "search_rounds", 3, "int", "记忆检索的最大轮数"),
                 ("memory", "event_topk", 5, "int", "事件记忆召回的数量"),
                 ("memory", "similarity_threshold", 0.5, "float", "语义检索的相似度阈值"),
+                ("voice", "provider", "aliyun_bailian", "string", "语音服务商"),
+                ("voice", "tts_model", "qwen3-tts-instruct-flash", "string", "默认 TTS 模型"),
+                ("voice", "api_key", "", "string", "语音服务 API Key"),
+                ("voice", "default_voice_id", "Cherry", "string", "默认音色 ID"),
             ]
             # Clean up deprecated settings
             db.query(SystemSetting).filter_by(group_name="memory", key="profile_topk").delete()
