@@ -32,6 +32,7 @@ import FriendComposeDialog from './FriendComposeDialog.vue'
 
 const emit = defineEmits<{
   (e: 'back-chat'): void
+  (e: 'open-settings', tab: string): void
 }>()
 
 const isElectron = Boolean(window.WeAgentChat?.windowControls)
@@ -340,7 +341,8 @@ onMounted(() => {
     </Dialog>
 
     <AssistantWizard v-model:open="isWizardOpen" @success="emit('back-chat')" />
-    <FriendComposeDialog v-model:open="isComposeOpen" mode="add" @success="emit('back-chat')" />
+    <FriendComposeDialog v-model:open="isComposeOpen" mode="add" @success="emit('back-chat')"
+      @open-settings="(tab) => emit('open-settings', tab)" />
   </div>
 </template>
 

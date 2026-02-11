@@ -14,6 +14,8 @@ export interface Friend {
   script_expression: boolean
   temperature: number
   top_p: number
+  enable_voice: boolean
+  voice_id?: string | null
   last_message?: string | null
   last_message_role?: string | null
   last_message_time?: string | null
@@ -28,6 +30,8 @@ export interface FriendCreate {
   script_expression?: boolean
   temperature?: number
   top_p?: number
+  enable_voice?: boolean
+  voice_id?: string | null
 }
 
 export interface FriendUpdate {
@@ -40,6 +44,8 @@ export interface FriendUpdate {
   script_expression?: boolean | null
   temperature?: number | null
   top_p?: number | null
+  enable_voice?: boolean | null
+  voice_id?: string | null
 }
 
 export interface FriendRecommendationItem {

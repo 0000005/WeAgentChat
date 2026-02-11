@@ -192,6 +192,8 @@ def create_friend(db: Session, friend: FriendCreate) -> Friend:
         script_expression=friend.script_expression,
         temperature=friend.temperature,
         top_p=friend.top_p,
+        enable_voice=friend.enable_voice,
+        voice_id=friend.voice_id if friend.enable_voice else None,
     )
     db.add(db_friend)
     db.commit()
@@ -206,6 +208,9 @@ def update_friend(db: Session, friend_id: int, friend_in: FriendUpdate) -> Optio
     update_data = friend_in.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(db_friend, field, value)
+
+    if not db_friend.enable_voice:
+        db_friend.voice_id = None
     
     db.add(db_friend)
     db.commit()

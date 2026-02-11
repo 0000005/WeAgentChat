@@ -171,6 +171,7 @@ const showVoiceApiKey = ref(false)
 const voiceTimbres = ref<VoiceAPI.VoiceTimbre[]>([])
 const isVoiceTimbresLoading = ref(false)
 const previewingVoiceId = ref<string | null>(null)
+const preventVoiceItemSelectClose = ref(false)
 let previewAudio: HTMLAudioElement | null = null
 let testAudio: HTMLAudioElement | null = null
 
@@ -432,6 +433,19 @@ const playVoicePreview = async (voice: VoiceAPI.VoiceTimbre) => {
         previewingVoiceId.value = null
         previewAudio = null
     }
+}
+
+const markPreventVoiceItemSelectClose = () => {
+    preventVoiceItemSelectClose.value = true
+    window.setTimeout(() => {
+        preventVoiceItemSelectClose.value = false
+    }, 180)
+}
+
+const handleVoiceItemSelect = (event: Event) => {
+    if (!preventVoiceItemSelectClose.value) return
+    event.preventDefault()
+    preventVoiceItemSelectClose.value = false
 }
 
 const playTestAudio = async (audioUrl: string) => {
@@ -1152,7 +1166,7 @@ const openTutorial = () => {
                                             @click="config.__draft ? selectLlmDraft() : setLlmFormFromConfig(config)">
                                             <div class="flex items-center justify-between">
                                                 <span class="font-medium text-gray-800">{{ config.config_name || '未命名配置'
-                                                    }}</span>
+                                                }}</span>
                                                 <div class="flex items-center gap-1">
                                                     <span v-if="config.__draft"
                                                         class="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">未保存</span>
@@ -1318,7 +1332,7 @@ const openTutorial = () => {
                                             @click="config.__draft ? selectEmbeddingDraft() : setEmbeddingFormFromConfig(config)">
                                             <div class="flex items-center justify-between">
                                                 <span class="font-medium text-gray-800">{{ config.config_name || '未命名配置'
-                                                    }}</span>
+                                                }}</span>
                                                 <div class="flex items-center gap-1">
                                                     <span v-if="config.__draft"
                                                         class="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">未保存</span>
@@ -1447,7 +1461,7 @@ const openTutorial = () => {
                                 <div class="grid gap-2">
                                     <label class="text-sm font-medium leading-none">TTS 模型</label>
                                     <Input v-model="voiceModel" disabled />
-                                    <p class="text-xs text-gray-500">固定使用 `qwen3-tts-instruct-flash`。</p>
+                                    <p class="text-xs text-gray-500">当前版本仅支持 `qwen3-tts-instruct-flash`。</p>
                                 </div>
 
                                 <div class="grid gap-2">
@@ -1479,7 +1493,7 @@ const openTutorial = () => {
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem v-for="voice in filteredVoiceTimbres" :key="voice.voice_id"
-                                                :value="voice.voice_id">
+                                                :value="voice.voice_id" @select="handleVoiceItemSelect">
                                                 <div class="flex w-full items-center gap-2">
                                                     <div
                                                         class="h-6 w-6 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-semibold flex items-center justify-center shrink-0">
@@ -1496,7 +1510,7 @@ const openTutorial = () => {
                                                     </div>
                                                     <button v-if="voice.preview_url" type="button"
                                                         class="rounded-full p-1 text-gray-500 hover:text-emerald-600 hover:bg-emerald-50"
-                                                        @pointerdown.prevent.stop
+                                                        @pointerdown.prevent.stop="markPreventVoiceItemSelectClose"
                                                         @click.prevent.stop="playVoicePreview(voice)">
                                                         <Loader2 v-if="previewingVoiceId === voice.voice_id"
                                                             class="w-3.5 h-3.5 animate-spin" />
@@ -1852,10 +1866,11 @@ const openTutorial = () => {
 
                     <div class="flex justify-end gap-2">
                         <Button variant="outline" @click="$emit('update:open', false)">取消</Button>
-                        <Button v-if="activeTab === 'llm' || activeTab === 'embedding' || activeTab === 'voice'" variant="outline"
-                            @click="handleTest"
+                        <Button v-if="activeTab === 'llm' || activeTab === 'embedding' || activeTab === 'voice'"
+                            variant="outline" @click="handleTest"
                             :disabled="activeTab === 'llm' ? isLlmTesting : activeTab === 'embedding' ? isEmbedTesting : isVoiceTesting">
-                            <Loader2 v-if="activeTab === 'llm' ? isLlmTesting : activeTab === 'embedding' ? isEmbedTesting : isVoiceTesting"
+                            <Loader2
+                                v-if="activeTab === 'llm' ? isLlmTesting : activeTab === 'embedding' ? isEmbedTesting : isVoiceTesting"
                                 class="w-4 h-4 mr-2 animate-spin" />
                             {{ activeTab === 'voice'
                                 ? (isVoiceTesting ? '测试中...' : '测试配置')

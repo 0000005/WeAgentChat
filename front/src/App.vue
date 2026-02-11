@@ -175,7 +175,8 @@ const handleSetupComplete = () => {
 
       <!-- Main Chat Area -->
       <main class="chat-container">
-        <FriendGallery v-if="activeTab === 'gallery'" @back-chat="updateActiveTab('chat')" />
+        <FriendGallery v-if="activeTab === 'gallery'" @back-chat="updateActiveTab('chat')"
+          @open-settings="handleOpenSettings" />
         <template v-else>
           <GroupChatArea v-if="sessionStore.chatType === 'group'" :is-sidebar-collapsed="!isSidebarOpen"
             @toggle-sidebar="toggleSidebar" @open-drawer="isDrawerOpen = true" @open-settings="handleOpenSettings" />
@@ -199,7 +200,8 @@ const handleSetupComplete = () => {
       <ChatDrawerMenu v-else v-model:open="isDrawerOpen" />
 
       <!-- Global Friend Compose Dialog -->
-      <FriendComposeDialog v-model:open="isFriendComposeOpen" :mode="friendComposeMode" :friend-id="friendComposeId" />
+      <FriendComposeDialog v-model:open="isFriendComposeOpen" :mode="friendComposeMode" :friend-id="friendComposeId"
+        @open-settings="handleOpenSettings" />
 
       <!-- Global Group Compose Dialog -->
       <GroupComposeDialog v-model:open="isGroupComposeOpen" />

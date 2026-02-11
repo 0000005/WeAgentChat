@@ -16,6 +16,8 @@ class Friend(Base):
     script_expression = Column(Boolean, default=False, nullable=False)
     temperature = Column(Float, default=1.0, nullable=False)
     top_p = Column(Float, default=0.9, nullable=False)
+    enable_voice = Column(Boolean, default=False, nullable=False)
+    voice_id = Column(String(64), nullable=True)
     create_time = Column(UTCDateTime, default=utc_now, nullable=False)
     update_time = Column(UTCDateTime, default=utc_now, onupdate=utc_now, nullable=False)
     pinned_at = Column(UTCDateTime, nullable=True)

@@ -18,6 +18,8 @@ def test_create_friend(client: TestClient):
     assert content["description"] == data["description"]
     assert content["system_prompt"] == data["system_prompt"]
     assert content["is_preset"] == data["is_preset"]
+    assert content["enable_voice"] is False
+    assert content["voice_id"] is None
     assert "id" in content
 
 def test_read_friends(client: TestClient):
@@ -89,6 +91,36 @@ def test_update_friend(client: TestClient):
     assert content["name"] == "Updated Friend Name"
     assert content["system_prompt"] == "New prompt"
     assert content["description"] == "Before update" # Should remain unchanged
+
+
+def test_update_friend_voice_config(client: TestClient):
+    """
+    Test updating friend voice config.
+    """
+    create_res = client.post(f"{settings.API_STR}/friends/", json={
+        "name": "Voice Config Friend",
+        "description": "Voice config test",
+        "system_prompt": "Voice test prompt",
+        "is_preset": False
+    })
+    friend_id = create_res.json()["id"]
+
+    enable_res = client.put(f"{settings.API_STR}/friends/{friend_id}", json={
+        "enable_voice": True,
+        "voice_id": "Cherry"
+    })
+    assert enable_res.status_code == 200
+    enable_content = enable_res.json()
+    assert enable_content["enable_voice"] is True
+    assert enable_content["voice_id"] == "Cherry"
+
+    disable_res = client.put(f"{settings.API_STR}/friends/{friend_id}", json={
+        "enable_voice": False
+    })
+    assert disable_res.status_code == 200
+    disable_content = disable_res.json()
+    assert disable_content["enable_voice"] is False
+    assert disable_content["voice_id"] is None
 
 def test_delete_friend(client: TestClient):
     """

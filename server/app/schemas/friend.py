@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from datetime import datetime
 from typing import Optional, List
 
@@ -11,6 +11,18 @@ class FriendBase(BaseModel):
     script_expression: bool = Field(False, description="是否启用剧本式表达")
     temperature: float = Field(1.0, ge=0.0, le=2.0, description="温度参数")
     top_p: float = Field(0.9, ge=0.0, le=1.0, description="Top-P 参数")
+    enable_voice: bool = Field(False, description="是否启用语音回复")
+    voice_id: Optional[str] = Field(None, max_length=64, description="好友专属音色 ID，空表示跟随系统")
+
+    @field_validator("voice_id", mode="before")
+    @classmethod
+    def normalize_voice_id(cls, value):
+        if value is None:
+            return None
+        if isinstance(value, str):
+            value = value.strip()
+            return value or None
+        return value
 
 class FriendCreate(FriendBase):
     pass
@@ -24,7 +36,19 @@ class FriendUpdate(BaseModel):
     script_expression: Optional[bool] = Field(None, description="是否启用剧本式表达")
     temperature: Optional[float] = Field(None, ge=0.0, le=2.0)
     top_p: Optional[float] = Field(None, ge=0.0, le=1.0)
+    enable_voice: Optional[bool] = Field(None, description="是否启用语音回复")
+    voice_id: Optional[str] = Field(None, max_length=64, description="好友专属音色 ID，空表示跟随系统")
     pinned_at: Optional[datetime] = None  # Direct update of pinned_at
+
+    @field_validator("voice_id", mode="before")
+    @classmethod
+    def normalize_update_voice_id(cls, value):
+        if value is None:
+            return None
+        if isinstance(value, str):
+            value = value.strip()
+            return value or None
+        return value
 
 class Friend(FriendBase):
     id: int
