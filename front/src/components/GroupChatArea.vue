@@ -136,6 +136,7 @@ const conversationRef = ref<InstanceType<typeof Conversation> | null>(null)
 // Reset hasMore when group changes
 watch(() => sessionStore.currentGroupId, () => {
   hasMoreMessages.value = true
+  stopVoicePlayback()
 })
 
 // Pagination using IntersectionObserver - triggers when top sentinel becomes visible
@@ -579,6 +580,151 @@ const getMessageSegments = (msg: Message) => {
   return parseMessageSegments(msg.content)
 }
 
+const voicePlaybackKey = ref<string | null>(null)
+const voiceAutoPlayEnabled = ref(false)
+let activeVoiceAudio: HTMLAudioElement | null = null
+
+const getVoiceSegmentForRender = (msg: Message, segmentIndex: number) => {
+  const segments = msg.voicePayload?.segments
+  if (!Array.isArray(segments) || !segments.length) return null
+  return segments.find(s => s.segment_index === segmentIndex) || null
+}
+
+const hasVoiceSegment = (msg: Message, segmentIndex: number) => {
+  return !!getVoiceSegmentForRender(msg, segmentIndex)
+}
+
+const isVoiceSegmentUnread = (msg: Message, segmentIndex: number) => {
+  return !!msg.voiceUnreadSegmentIndexes?.includes(segmentIndex)
+}
+
+const markVoiceSegmentAsRead = (msg: Message, segmentIndex: number) => {
+  if (!msg.voiceUnreadSegmentIndexes?.length) return
+  msg.voiceUnreadSegmentIndexes = msg.voiceUnreadSegmentIndexes.filter(index => index !== segmentIndex)
+}
+
+const formatVoiceDuration = (msg: Message, segmentIndex: number) => {
+  const segment = getVoiceSegmentForRender(msg, segmentIndex)
+  const duration = segment?.duration_sec ?? 1
+  return `${Math.max(1, Math.round(duration))}″`
+}
+
+const isVoiceSegmentPlaying = (msg: Message, segmentIndex: number) => {
+  return (
+    voicePlaybackKey.value === `${msg.id}:${segmentIndex}` &&
+    !!activeVoiceAudio &&
+    !activeVoiceAudio.paused
+  )
+}
+
+const stopVoicePlayback = (resetAutoPlay: boolean = true) => {
+  if (activeVoiceAudio) {
+    activeVoiceAudio.pause()
+    activeVoiceAudio.onended = null
+    activeVoiceAudio.onerror = null
+    activeVoiceAudio = null
+  }
+  voicePlaybackKey.value = null
+  if (resetAutoPlay) {
+    voiceAutoPlayEnabled.value = false
+  }
+}
+
+const resolveNextVoiceTarget = (currentMessageId: number, currentSegmentIndex: number) => {
+  const list = messages.value
+  const currentMessageIndex = list.findIndex(m => m.id === currentMessageId)
+  if (currentMessageIndex === -1) return null
+
+  const currentMessage = list[currentMessageIndex]
+  const sameMessageUnread = [...(currentMessage.voiceUnreadSegmentIndexes || [])]
+    .filter(index => index > currentSegmentIndex)
+    .sort((a, b) => a - b)
+  if (sameMessageUnread.length) {
+    const nextInSame = sameMessageUnread[0]
+    if (hasVoiceSegment(currentMessage, nextInSame)) {
+      return { message: currentMessage, segmentIndex: nextInSame }
+    }
+  }
+
+  const nextMessage = list[currentMessageIndex + 1]
+  if (!nextMessage || nextMessage.role !== 'assistant') return null
+  const unreadIndexes = [...(nextMessage.voiceUnreadSegmentIndexes || [])].sort((a, b) => a - b)
+  if (!unreadIndexes.length) return null
+  const nextIndex = unreadIndexes[0]
+  if (!hasVoiceSegment(nextMessage, nextIndex)) return null
+  return { message: nextMessage, segmentIndex: nextIndex }
+}
+
+const playVoiceSegment = async (msg: Message, segmentIndex: number, autoTriggered: boolean = false) => {
+  const segment = getVoiceSegmentForRender(msg, segmentIndex)
+  if (!segment) return
+
+  const segmentKey = `${msg.id}:${segmentIndex}`
+  if (voicePlaybackKey.value === segmentKey && activeVoiceAudio) {
+    if (activeVoiceAudio.paused) {
+      try {
+        await activeVoiceAudio.play()
+      } catch (e) {
+        console.error('Voice resume failed:', e)
+      }
+    }
+    return
+  }
+
+  stopVoicePlayback(false)
+  markVoiceSegmentAsRead(msg, segmentIndex)
+  const sourceUrl = getStaticUrl(segment.audio_url) || segment.audio_url
+  const audio = new Audio(sourceUrl)
+  activeVoiceAudio = audio
+  voicePlaybackKey.value = segmentKey
+
+  audio.onended = () => {
+    voicePlaybackKey.value = null
+    activeVoiceAudio = null
+    if (!voiceAutoPlayEnabled.value) return
+    const next = resolveNextVoiceTarget(msg.id, segmentIndex)
+    if (!next) {
+      voiceAutoPlayEnabled.value = false
+      return
+    }
+    void playVoiceSegment(next.message, next.segmentIndex, true)
+  }
+
+  audio.onerror = () => {
+    console.warn('Voice playback failed:', sourceUrl)
+    stopVoicePlayback()
+  }
+
+  try {
+    await audio.play()
+  } catch (e) {
+    console.error('Voice play failed:', e)
+    stopVoicePlayback()
+    if (!autoTriggered) {
+      triggerToast('语音播放失败')
+    }
+  }
+}
+
+const handleVoiceBubbleClick = (msg: Message, segmentIndex: number) => {
+  const segmentKey = `${msg.id}:${segmentIndex}`
+  if (voicePlaybackKey.value === segmentKey && activeVoiceAudio) {
+    if (activeVoiceAudio.paused) {
+      voiceAutoPlayEnabled.value = true
+      void activeVoiceAudio.play().catch(err => {
+        console.error('Voice resume failed:', err)
+      })
+    } else {
+      activeVoiceAudio.pause()
+      voiceAutoPlayEnabled.value = false
+    }
+    return
+  }
+
+  voiceAutoPlayEnabled.value = true
+  void playVoiceSegment(msg, segmentIndex)
+}
+
 // Mention Logic
 const showMentionMenu = ref(false)
 const mentionSearch = ref('')
@@ -635,6 +781,7 @@ watch(
 )
 
 onBeforeUnmount(() => {
+  stopVoicePlayback()
   if (mentionKeydownHandler) {
     window.removeEventListener('keydown', mentionKeydownHandler)
     mentionKeydownHandler = null
@@ -974,7 +1121,23 @@ const handleAvatarClick = (url: string) => {
                             {{ getDebateSideLabel(getMessageDebateSide(msg)) }}
                           </span>
                         </span>
-                        <div class="message-bubble">
+                        <template v-if="hasVoiceSegment(msg, sIndex)">
+                          <button class="voice-bubble" type="button" @click="handleVoiceBubbleClick(msg, sIndex)">
+                            <span class="voice-icon">
+                              <Pause v-if="isVoiceSegmentPlaying(msg, sIndex)" :size="14" />
+                              <Play v-else :size="14" />
+                            </span>
+                            <span class="voice-wave"></span>
+                            <span class="voice-duration">{{ formatVoiceDuration(msg, sIndex) }}</span>
+                            <span v-if="isVoiceSegmentUnread(msg, sIndex)" class="voice-unread-dot"></span>
+                          </button>
+                          <div class="voice-text">
+                            <MessageContent>
+                              <MessageResponse :content="segment" />
+                            </MessageContent>
+                          </div>
+                        </template>
+                        <div v-else class="message-bubble">
                           <MessageContent>
                             <MessageResponse :content="segment" />
                           </MessageContent>

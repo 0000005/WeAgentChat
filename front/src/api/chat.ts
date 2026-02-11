@@ -28,6 +28,16 @@ export interface Message {
   id: number
   role: 'user' | 'assistant' | 'system'
   content: string
+  voice_payload?: {
+    voice_id: string
+    segments: Array<{
+      segment_index: number
+      text: string
+      audio_url: string
+      duration_sec: number
+    }>
+    generated_at?: string
+  } | null
   session_id: number
   friend_id?: number | null
   create_time: string

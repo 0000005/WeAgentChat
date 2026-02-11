@@ -217,3 +217,88 @@ def test_send_message_llm_error(client: TestClient, db: Session):
         assert "start" in events
         assert "error" in events
         assert "LLM API Error" in error_detail
+
+
+def test_send_message_with_voice_payload(client: TestClient, db: Session):
+    from app.models.llm import LLMConfig
+
+    llm_config = LLMConfig(
+        base_url="https://mock.url",
+        api_key="mock_key",
+        model_name="mock-model",
+    )
+    activate_llm_config(db, llm_config)
+
+    friend_data = {
+        "name": "Voice Friend",
+        "is_preset": False,
+        "enable_voice": True,
+        "voice_id": "Cherry",
+    }
+    p_resp = client.post("/api/friends/", json=friend_data)
+    assert p_resp.status_code == 200
+    friend_id = p_resp.json()["id"]
+
+    s_resp = client.post("/api/chat/sessions", json={"friend_id": friend_id})
+    assert s_resp.status_code == 200
+    session_id = s_resp.json()["id"]
+
+    async def mock_stream_events():
+        chunks = ["<message>你好</message>", "<message>再见</message>"]
+        for i, c in enumerate(chunks):
+            yield create_mock_event(c, i)
+
+    async def fake_voice_payload(**kwargs):
+        on_segment_ready = kwargs.get("on_segment_ready")
+        seg0 = {"segment_index": 0, "text": "你好", "audio_url": "/uploads/audio/a0.mp3", "duration_sec": 1}
+        seg1 = {"segment_index": 1, "text": "再见", "audio_url": "/uploads/audio/a1.mp3", "duration_sec": 1}
+        if on_segment_ready:
+            await on_segment_ready(seg0)
+            await on_segment_ready(seg1)
+        return {
+            "voice_id": "Cherry",
+            "segments": [seg0, seg1],
+            "generated_at": "2026-02-11T00:00:00+00:00",
+        }
+
+    mock_runner_result = MagicMock()
+    mock_runner_result.stream_events = mock_stream_events
+
+    with patch("app.services.chat_service.Runner.run_streamed", return_value=mock_runner_result), \
+         patch("app.services.chat_service.SessionLocal", MockSessionLocal), \
+         patch("app.services.chat_service.generate_voice_payload_for_message", side_effect=fake_voice_payload):
+        response = client.post(f"/api/chat/sessions/{session_id}/messages", json={"content": "Hi"})
+        assert response.status_code == 200
+
+        events = []
+        last_event = None
+        voice_segments = []
+        final_voice_payload = None
+
+        for line in response.iter_lines():
+            line_str = line if isinstance(line, str) else line.decode("utf-8")
+            if line_str.startswith("event: "):
+                last_event = line_str.split(": ", 1)[1]
+                events.append(last_event)
+            if line_str.startswith("data: "):
+                data = json.loads(line_str[6:])
+                if last_event == "voice_segment":
+                    voice_segments.append(data.get("segment"))
+                elif last_event == "voice_payload":
+                    final_voice_payload = data.get("voice_payload")
+
+        assert "done" in events
+        assert "voice_segment" in events
+        assert "voice_payload" in events
+        assert len([s for s in voice_segments if s]) == 2
+        assert final_voice_payload is not None
+        assert final_voice_payload["voice_id"] == "Cherry"
+        assert len(final_voice_payload["segments"]) == 2
+
+    hist_resp = client.get(f"/api/chat/sessions/{session_id}/messages")
+    assert hist_resp.status_code == 200
+    msgs = hist_resp.json()
+    assert len(msgs) == 2
+    assert msgs[-1]["voice_payload"] is not None
+    assert msgs[-1]["voice_payload"]["voice_id"] == "Cherry"
+    assert len(msgs[-1]["voice_payload"]["segments"]) == 2

@@ -11,6 +11,19 @@ export type DebateSide = 'affirmative' | 'negative'
 export type AutoDriveMode = 'brainstorm' | 'decision' | 'debate'
 export type AutoDriveEndAction = 'summary' | 'judge' | 'both'
 
+export interface VoiceSegment {
+    segment_index: number
+    text: string
+    audio_url: string
+    duration_sec: number
+}
+
+export interface VoicePayload {
+    voice_id: string
+    segments: VoiceSegment[]
+    generated_at?: string
+}
+
 export interface AutoDriveConfig {
     mode: AutoDriveMode
     topic: Record<string, any>
@@ -55,6 +68,8 @@ export interface Message {
     senderType?: string
     sessionType?: SessionType
     debateSide?: DebateSide
+    voicePayload?: VoicePayload
+    voiceUnreadSegmentIndexes?: number[]
 }
 
 export interface GroupTypingUser {

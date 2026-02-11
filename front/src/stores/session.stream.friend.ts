@@ -1,10 +1,11 @@
 import type { Ref } from 'vue'
 import * as ChatAPI from '@/api/chat'
-import type { Message, ToolCall } from '@/types/chat'
+import type { Message, ToolCall, VoicePayload } from '@/types/chat'
 import { parseMessageSegments } from '@/utils/chat'
 
 type FriendStoreLike = {
     updateLastMessage: (friendId: number, content: string, role: string, time?: string) => void
+    getFriend?: (friendId: number) => { enable_voice?: boolean } | undefined
 }
 
 export type FriendStreamDeps = {
@@ -18,6 +19,57 @@ export type FriendStreamDeps = {
     fetchFriendSessions: (friendId: number) => Promise<void>
 }
 
+const normalizeVoicePayload = (raw: any): VoicePayload | undefined => {
+    if (!raw || typeof raw !== 'object') return undefined
+    const segments = Array.isArray(raw.segments)
+        ? raw.segments
+            .filter((s: any) => s && typeof s.audio_url === 'string')
+            .map((s: any) => ({
+                segment_index: Number.isFinite(Number(s.segment_index)) ? Number(s.segment_index) : 0,
+                text: typeof s.text === 'string' ? s.text : '',
+                audio_url: s.audio_url,
+                duration_sec: Number.isFinite(Number(s.duration_sec)) ? Number(s.duration_sec) : 1,
+            }))
+            .sort((a: { segment_index: number }, b: { segment_index: number }) => a.segment_index - b.segment_index)
+        : []
+    if (!segments.length) return undefined
+    return {
+        voice_id: String(raw.voice_id || ''),
+        segments,
+        generated_at: typeof raw.generated_at === 'string' ? raw.generated_at : undefined,
+    }
+}
+
+const mergeVoiceSegment = (msg: Message, segment: any) => {
+    if (!segment || typeof segment.audio_url !== 'string') return
+    const normalized = {
+        segment_index: Number.isFinite(Number(segment.segment_index)) ? Number(segment.segment_index) : 0,
+        text: typeof segment.text === 'string' ? segment.text : '',
+        audio_url: segment.audio_url,
+        duration_sec: Number.isFinite(Number(segment.duration_sec)) ? Number(segment.duration_sec) : 1,
+    }
+
+    if (!msg.voicePayload) {
+        msg.voicePayload = { voice_id: '', segments: [normalized] }
+    } else if (!msg.voicePayload.segments.some(s => s.segment_index === normalized.segment_index)) {
+        msg.voicePayload.segments.push(normalized)
+        msg.voicePayload.segments.sort((a: { segment_index: number }, b: { segment_index: number }) => a.segment_index - b.segment_index)
+    }
+
+    if (!msg.voiceUnreadSegmentIndexes) {
+        msg.voiceUnreadSegmentIndexes = []
+    }
+    if (!msg.voiceUnreadSegmentIndexes.includes(normalized.segment_index)) {
+        msg.voiceUnreadSegmentIndexes.push(normalized.segment_index)
+        msg.voiceUnreadSegmentIndexes.sort((a: number, b: number) => a - b)
+    }
+}
+
+const applyVoicePayload = (msg: Message, payload: VoicePayload) => {
+    msg.voicePayload = payload
+    msg.voiceUnreadSegmentIndexes = payload.segments.map((s: { segment_index: number }) => s.segment_index).sort((a: number, b: number) => a - b)
+}
+
 export const createFriendStreamActions = (deps: FriendStreamDeps) => {
     const {
         currentFriendId,
@@ -29,6 +81,44 @@ export const createFriendStreamActions = (deps: FriendStreamDeps) => {
         friendStore,
         fetchFriendSessions
     } = deps
+    const voiceHydrationInFlight = new Set<string>()
+
+    const scheduleVoicePayloadHydration = (friendId: number, messageId: number) => {
+        if (!Number.isFinite(messageId)) return
+        const taskKey = `${friendId}:${messageId}`
+        if (voiceHydrationInFlight.has(taskKey)) return
+        voiceHydrationInFlight.add(taskKey)
+
+        const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+        void (async () => {
+            try {
+                for (let attempt = 0; attempt < 4; attempt++) {
+                    await wait(attempt === 0 ? 800 : 1500)
+
+                    const localTarget = (messagesMap.value['f' + friendId] || []).find(m => m.id === messageId)
+                    if (localTarget?.voicePayload?.segments?.length) {
+                        return
+                    }
+
+                    const latestMessages = await ChatAPI.getFriendMessages(friendId, 0, 20)
+                    const serverTarget = latestMessages.find((m: { id: number }) => Number(m.id) === messageId)
+                    const payload = normalizeVoicePayload((serverTarget as any)?.voice_payload)
+                    if (!payload) continue
+
+                    const target = (messagesMap.value['f' + friendId] || []).find(m => m.id === messageId)
+                    if (target) {
+                        applyVoicePayload(target, payload)
+                    }
+                    return
+                }
+            } catch (error) {
+                console.warn(`[Voice] failed to hydrate payload for message=${messageId}`, error)
+            } finally {
+                voiceHydrationInFlight.delete(taskKey)
+            }
+        })()
+    }
 
     // Send message to current friend
     const sendMessage = async (content: string, enableThinking: boolean = false) => {
@@ -83,6 +173,7 @@ export const createFriendStreamActions = (deps: FriendStreamDeps) => {
         let recallThinkingBuffer = ''
         let toolCallsBuffer: ToolCall[] = []
         const assistantMsgId = Date.now() + 1
+        const pendingVoicePayloadMap = new Map<number, VoicePayload>()
         let capturedSessionId: number | undefined = undefined // Capture session_id from start event
         let capturedAssistantMsgId: number | undefined = undefined // Capture assistant msg id from start event
 
@@ -143,6 +234,24 @@ export const createFriendStreamActions = (deps: FriendStreamDeps) => {
                         tc.result = data.result
                         tc.status = 'completed'
                     }
+                } else if (event === 'voice_segment') {
+                    const msgId = Number(data.message_id)
+                    const segment = data.segment
+                    if (!Number.isFinite(msgId) || !segment) continue
+                    const target = (messagesMap.value['f' + friendId] || []).find(m => m.id === msgId)
+                    if (target) {
+                        mergeVoiceSegment(target, segment)
+                    }
+                } else if (event === 'voice_payload') {
+                    const msgId = Number(data.message_id)
+                    const payload = normalizeVoicePayload(data.voice_payload)
+                    if (!Number.isFinite(msgId) || !payload) continue
+                    const target = (messagesMap.value['f' + friendId] || []).find(m => m.id === msgId)
+                    if (target) {
+                        applyVoicePayload(target, payload)
+                    } else {
+                        pendingVoicePayloadMap.set(msgId, payload)
+                    }
                 } else if (event === 'error' || event === 'task_error') {
                     // Backend error - immediately show error and reset streaming state
                     const errorDetail = data.detail || data.message || JSON.stringify(data)
@@ -169,17 +278,24 @@ export const createFriendStreamActions = (deps: FriendStreamDeps) => {
                     return
                 } else if (event === 'done') {
                     // Finalize: Push the complete message to the list all at once
+                    const doneMsgId = Number(data.message_id || assistantMsgId)
+                    const doneVoicePayload = normalizeVoicePayload(data.voice_payload) || pendingVoicePayloadMap.get(doneMsgId)
                     const assistantMsg: Message = {
-                        id: data.message_id || assistantMsgId,
+                        id: doneMsgId,
                         role: 'assistant',
                         content: contentBuffer,
                         thinkingContent: modelThinkingBuffer || undefined,
                         recallThinkingContent: recallThinkingBuffer || undefined,
                         toolCalls: toolCallsBuffer.length > 0 ? toolCallsBuffer : undefined,
                         createdAt: Date.now(),
-                        sessionId: capturedSessionId // Use captured session_id
+                        sessionId: capturedSessionId, // Use captured session_id
+                        voicePayload: doneVoicePayload,
+                        voiceUnreadSegmentIndexes: doneVoicePayload
+                            ? doneVoicePayload.segments.map((s: { segment_index: number }) => s.segment_index).sort((a: number, b: number) => a - b)
+                            : undefined,
                     }
                     messagesMap.value['f' + friendId].push(assistantMsg)
+                    pendingVoicePayloadMap.delete(doneMsgId)
 
                     streamingMap.value['f' + friendId] = false
                     // Check if user has switched away during streaming - mark as unread
@@ -198,6 +314,9 @@ export const createFriendStreamActions = (deps: FriendStreamDeps) => {
                     fetchFriendSessions(friendId)
                     // Update friend list preview for assistant message with final content
                     friendStore.updateLastMessage(friendId, contentBuffer, 'assistant')
+                    if (!doneVoicePayload && friendStore.getFriend?.(friendId)?.enable_voice) {
+                        scheduleVoicePayloadHydration(friendId, doneMsgId)
+                    }
                 }
             }
 
@@ -296,6 +415,7 @@ export const createFriendStreamActions = (deps: FriendStreamDeps) => {
         let recallThinkingBuffer = ''
         let toolCallsBuffer: ToolCall[] = []
         const assistantMsgId = Date.now() + 1
+        const pendingVoicePayloadMap = new Map<number, VoicePayload>()
 
         const sessionId = message.sessionId
         if (!sessionId) {
@@ -341,6 +461,24 @@ export const createFriendStreamActions = (deps: FriendStreamDeps) => {
                         tc.result = data.result
                         tc.status = 'completed'
                     }
+                } else if (event === 'voice_segment') {
+                    const msgId = Number(data.message_id)
+                    const segment = data.segment
+                    if (!Number.isFinite(msgId) || !segment) continue
+                    const target = (messagesMap.value['f' + friendId] || []).find(m => m.id === msgId)
+                    if (target) {
+                        mergeVoiceSegment(target, segment)
+                    }
+                } else if (event === 'voice_payload') {
+                    const msgId = Number(data.message_id)
+                    const payload = normalizeVoicePayload(data.voice_payload)
+                    if (!Number.isFinite(msgId) || !payload) continue
+                    const target = (messagesMap.value['f' + friendId] || []).find(m => m.id === msgId)
+                    if (target) {
+                        applyVoicePayload(target, payload)
+                    } else {
+                        pendingVoicePayloadMap.set(msgId, payload)
+                    }
                 } else if (event === 'error' || event === 'task_error') {
                     // AC-6: Restore old message on error
                     if (oldMessageBackup) {
@@ -351,23 +489,33 @@ export const createFriendStreamActions = (deps: FriendStreamDeps) => {
                     const errorDetail = data.detail || data.message || JSON.stringify(data)
                     throw new Error(errorDetail)
                 } else if (event === 'done') {
+                    const doneMsgId = Number(data.message_id || assistantMsgId)
+                    const doneVoicePayload = normalizeVoicePayload(data.voice_payload) || pendingVoicePayloadMap.get(doneMsgId)
                     const assistantMsg: Message = {
-                        id: data.message_id || assistantMsgId,
+                        id: doneMsgId,
                         role: 'assistant',
                         content: contentBuffer,
                         thinkingContent: modelThinkingBuffer || undefined,
                         recallThinkingContent: recallThinkingBuffer || undefined,
                         toolCalls: toolCallsBuffer.length > 0 ? toolCallsBuffer : undefined,
                         createdAt: Date.now(),
-                        sessionId: sessionId // Preserve sessionId for future operations
+                        sessionId: sessionId, // Preserve sessionId for future operations
+                        voicePayload: doneVoicePayload,
+                        voiceUnreadSegmentIndexes: doneVoicePayload
+                            ? doneVoicePayload.segments.map((s: { segment_index: number }) => s.segment_index).sort((a: number, b: number) => a - b)
+                            : undefined,
                     }
                     messagesMap.value['f' + friendId].push(assistantMsg)
+                    pendingVoicePayloadMap.delete(doneMsgId)
                     streamingMap.value['f' + friendId] = false
                     if (currentFriendId.value !== friendId) {
                         const segmentCount = parseMessageSegments(contentBuffer).length || 1
                         unreadCounts.value['f' + friendId] = (unreadCounts.value['f' + friendId] || 0) + segmentCount
                     }
                     friendStore.updateLastMessage(friendId, contentBuffer, 'assistant')
+                    if (!doneVoicePayload && friendStore.getFriend?.(friendId)?.enable_voice) {
+                        scheduleVoicePayloadHydration(friendId, doneMsgId)
+                    }
                 }
             }
         } catch (error) {

@@ -27,6 +27,18 @@ class MessageEventData(TypedDict):
     delta: str  # 回复内容片段
 
 
+class VoiceSegmentEventData(TypedDict):
+    """单个语音分段就绪事件数据"""
+    message_id: int
+    segment: dict
+
+
+class VoicePayloadEventData(TypedDict):
+    """整条语音信息事件数据"""
+    message_id: int
+    voice_payload: dict
+
+
 class ToolCallEventData(TypedDict):
     """工具调用事件数据"""
     stage: Literal["start", "delta", "complete"]
@@ -76,6 +88,8 @@ SSEEventType = Literal[
     "model_thinking",
     "recall_thinking",
     "message",
+    "voice_segment",
+    "voice_payload",
     "tool_call",
     "tool_result",
     "error",

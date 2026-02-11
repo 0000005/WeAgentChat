@@ -1,5 +1,5 @@
 ﻿import type { Ref } from 'vue'
-import type { AutoDriveConfig, AutoDriveState, Message } from '@/types/chat'
+import type { AutoDriveConfig, AutoDriveState, Message, VoicePayload } from '@/types/chat'
 import { groupAutoDriveApi, type AutoDriveConfigPayload, type AutoDriveStateRead } from '@/api/group-auto-drive'
 import { groupApi } from '@/api/group'
 
@@ -48,6 +48,60 @@ const toAutoDriveState = (raw: AutoDriveStateRead): AutoDriveState => {
     }
 }
 
+const normalizeVoicePayload = (raw: any): VoicePayload | undefined => {
+    if (!raw || typeof raw !== 'object') return undefined
+    const segments = Array.isArray(raw.segments)
+        ? raw.segments
+            .filter((s: any) => s && typeof s.audio_url === 'string')
+            .map((s: any) => ({
+                segment_index: Number.isFinite(Number(s.segment_index)) ? Number(s.segment_index) : 0,
+                text: typeof s.text === 'string' ? s.text : '',
+                audio_url: s.audio_url,
+                duration_sec: Number.isFinite(Number(s.duration_sec)) ? Number(s.duration_sec) : 1,
+            }))
+            .sort((a: { segment_index: number }, b: { segment_index: number }) => a.segment_index - b.segment_index)
+        : []
+    if (!segments.length) return undefined
+    return {
+        voice_id: String(raw.voice_id || ''),
+        segments,
+        generated_at: typeof raw.generated_at === 'string' ? raw.generated_at : undefined,
+    }
+}
+
+const mergeVoiceSegment = (msg: Message, segment: any) => {
+    if (!segment || typeof segment.audio_url !== 'string') return
+    const normalized = {
+        segment_index: Number.isFinite(Number(segment.segment_index)) ? Number(segment.segment_index) : 0,
+        text: typeof segment.text === 'string' ? segment.text : '',
+        audio_url: segment.audio_url,
+        duration_sec: Number.isFinite(Number(segment.duration_sec)) ? Number(segment.duration_sec) : 1,
+    }
+
+    if (!msg.voicePayload) {
+        msg.voicePayload = {
+            voice_id: '',
+            segments: [normalized],
+        }
+    } else if (!msg.voicePayload.segments.some(s => s.segment_index === normalized.segment_index)) {
+        msg.voicePayload.segments.push(normalized)
+        msg.voicePayload.segments.sort((a: { segment_index: number }, b: { segment_index: number }) => a.segment_index - b.segment_index)
+    }
+
+    if (!msg.voiceUnreadSegmentIndexes) {
+        msg.voiceUnreadSegmentIndexes = []
+    }
+    if (!msg.voiceUnreadSegmentIndexes.includes(normalized.segment_index)) {
+        msg.voiceUnreadSegmentIndexes.push(normalized.segment_index)
+        msg.voiceUnreadSegmentIndexes.sort((a: number, b: number) => a - b)
+    }
+}
+
+const applyVoicePayload = (msg: Message, payload: VoicePayload) => {
+    msg.voicePayload = payload
+    msg.voiceUnreadSegmentIndexes = payload.segments.map((s: { segment_index: number }) => s.segment_index).sort((a: number, b: number) => a - b)
+}
+
 const mapGroupMessageToMessage = (m: {
     id: number
     content: string
@@ -57,7 +111,9 @@ const mapGroupMessageToMessage = (m: {
     create_time: string
     session_type?: 'normal' | 'brainstorm' | 'decision' | 'debate'
     debate_side?: 'affirmative' | 'negative'
+    voice_payload?: any
 }) => {
+    const voicePayload = normalizeVoicePayload(m.voice_payload)
     return {
         id: m.id,
         role: (m.sender_type === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
@@ -68,6 +124,7 @@ const mapGroupMessageToMessage = (m: {
         senderType: m.sender_type,
         sessionType: m.session_type,
         debateSide: m.debate_side,
+        voicePayload,
     } as Message
 }
 
@@ -311,6 +368,33 @@ export const createGroupAutoDriveStreamActions = (deps: GroupAutoDriveStreamDeps
             }
         }
 
+        const ensureAiMessageById = (messageId: number, senderId: string): Message => {
+            if (aiMessages[messageId]) return aiMessages[messageId]
+            const messages = ensureMessagesList(groupId)
+            const existing = messages.find(m => m.id === messageId)
+            if (existing) {
+                aiMessages[messageId] = existing
+                if (!existing.senderId) existing.senderId = senderId
+                return existing
+            }
+            const newMsg: Message = {
+                id: messageId,
+                role: 'assistant',
+                content: '',
+                thinkingContent: '',
+                recallThinkingContent: '',
+                toolCalls: [],
+                createdAt: Date.now(),
+                senderId: senderId,
+                sessionId: currentSessionId,
+                sessionType: currentMode,
+                debateSide: resolveDebateSide(groupId, senderId),
+            }
+            messages.push(newMsg)
+            aiMessages[messageId] = messages[messages.length - 1]
+            return aiMessages[messageId]
+        }
+
         try {
             for await (const { event, data } of groupAutoDriveApi.stream(groupId, controller.signal)) {
                 if (event === 'auto_drive_state') {
@@ -355,6 +439,26 @@ export const createGroupAutoDriveStreamActions = (deps: GroupAutoDriveStreamDeps
                     continue
                 }
 
+                if (event === 'voice_segment') {
+                    const senderId = data?.sender_id
+                    const messageId = data?.message_id
+                    const segment = data?.segment
+                    if (!senderId || !messageId || !segment) continue
+                    const target = ensureAiMessageById(messageId, senderId)
+                    mergeVoiceSegment(target, segment)
+                    continue
+                }
+
+                if (event === 'voice_payload') {
+                    const senderId = data?.sender_id
+                    const messageId = data?.message_id
+                    const payload = normalizeVoicePayload(data?.voice_payload)
+                    if (!senderId || !messageId || !payload) continue
+                    const target = ensureAiMessageById(messageId, senderId)
+                    applyVoicePayload(target, payload)
+                    continue
+                }
+
                 if (
                     event === 'message' ||
                     event === 'model_thinking' ||
@@ -367,34 +471,17 @@ export const createGroupAutoDriveStreamActions = (deps: GroupAutoDriveStreamDeps
                     const messageId = data?.message_id
                     if (!senderId || !messageId) continue
 
-                    if (!aiMessages[messageId]) {
-                        const messages = ensureMessagesList(groupId)
-                        const newMsg: Message = {
-                            id: messageId,
-                            role: 'assistant',
-                            content: '',
-                            thinkingContent: '',
-                            recallThinkingContent: '',
-                            toolCalls: [],
-                            createdAt: Date.now(),
-                            senderId: senderId,
-                            sessionId: currentSessionId,
-                            sessionType: currentMode,
-                            debateSide: resolveDebateSide(groupId, senderId),
-                        }
-                        messages.push(newMsg)
-                        aiMessages[messageId] = messages[messages.length - 1]
-                    }
+                    const target = ensureAiMessageById(messageId, senderId)
 
                     if (event === 'message') {
-                        aiMessages[messageId].content += data.delta || ''
+                        target.content += data.delta || ''
                     } else if (event === 'model_thinking' || event === 'thinking') {
-                        aiMessages[messageId].thinkingContent = (aiMessages[messageId].thinkingContent || '') + (data.delta || '')
+                        target.thinkingContent = (target.thinkingContent || '') + (data.delta || '')
                     } else if (event === 'recall_thinking') {
-                        aiMessages[messageId].recallThinkingContent = (aiMessages[messageId].recallThinkingContent || '') + (data.delta || '')
+                        target.recallThinkingContent = (target.recallThinkingContent || '') + (data.delta || '')
                     } else if (event === 'tool_call') {
-                        if (!aiMessages[messageId].toolCalls) aiMessages[messageId].toolCalls = []
-                        aiMessages[messageId].toolCalls?.push({
+                        if (!target.toolCalls) target.toolCalls = []
+                        target.toolCalls?.push({
                             name: data.tool_name,
                             args: data.arguments,
                             callId: data.call_id,
@@ -402,8 +489,8 @@ export const createGroupAutoDriveStreamActions = (deps: GroupAutoDriveStreamDeps
                         })
                     } else if (event === 'tool_result') {
                         const tc = data.call_id
-                            ? [...(aiMessages[messageId].toolCalls || [])].reverse().find(t => t.callId === data.call_id && t.status === 'calling')
-                            : [...(aiMessages[messageId].toolCalls || [])].reverse().find(t => t.name === data.tool_name && t.status === 'calling')
+                            ? [...(target.toolCalls || [])].reverse().find(t => t.callId === data.call_id && t.status === 'calling')
+                            : [...(target.toolCalls || [])].reverse().find(t => t.name === data.tool_name && t.status === 'calling')
                         if (tc) {
                             tc.result = data.result
                             tc.status = 'completed'
@@ -428,6 +515,13 @@ export const createGroupAutoDriveStreamActions = (deps: GroupAutoDriveStreamDeps
                         }
                         if (data?.content) {
                             aiMessages[messageId].content = data.content
+                        }
+                    }
+
+                    if (messageId && aiMessages[messageId]) {
+                        const payload = normalizeVoicePayload(data?.voice_payload)
+                        if (payload) {
+                            applyVoicePayload(aiMessages[messageId], payload)
                         }
                     }
 

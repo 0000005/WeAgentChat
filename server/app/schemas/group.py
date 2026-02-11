@@ -1,4 +1,4 @@
-from typing import Optional, List, Literal
+from typing import Optional, List, Literal, Any, Dict
 from datetime import datetime
 from pydantic import BaseModel, Field
 
@@ -44,6 +44,7 @@ class GroupMessageRead(GroupMessageBase):
     sender_id: str
     sender_type: MemberType
     session_type: Optional[SessionType] = None
+    voice_payload: Optional[Dict[str, Any]] = None
     create_time: datetime
     update_time: datetime
 

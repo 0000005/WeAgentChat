@@ -22,6 +22,27 @@ export const createSessionFetch = (deps: SessionFetchDeps) => {
         currentSessionId
     } = deps
 
+    const mapVoicePayload = (raw: any): Message['voicePayload'] | undefined => {
+        if (!raw || typeof raw !== 'object') return undefined
+        const segments = Array.isArray(raw.segments)
+            ? raw.segments
+                .filter((s: any) => s && typeof s.audio_url === 'string')
+                .map((s: any) => ({
+                    segment_index: Number.isFinite(Number(s.segment_index)) ? Number(s.segment_index) : 0,
+                    text: typeof s.text === 'string' ? s.text : '',
+                    audio_url: s.audio_url,
+                    duration_sec: Number.isFinite(Number(s.duration_sec)) ? Number(s.duration_sec) : 1,
+                }))
+                .sort((a: { segment_index: number }, b: { segment_index: number }) => a.segment_index - b.segment_index)
+            : []
+        if (!segments.length) return undefined
+        return {
+            voice_id: String(raw.voice_id || ''),
+            segments,
+            generated_at: typeof raw.generated_at === 'string' ? raw.generated_at : undefined,
+        }
+    }
+
     const fetchFriendMessages = async (friendId: number, skip: number = 0, limit: number = INITIAL_MESSAGE_LIMIT) => {
         try {
             const apiMessages = await ChatAPI.getFriendMessages(friendId, skip, limit)
@@ -30,7 +51,8 @@ export const createSessionFetch = (deps: SessionFetchDeps) => {
                 role: m.role as 'user' | 'assistant' | 'system',
                 content: m.content,
                 createdAt: new Date(m.create_time).getTime(),
-                sessionId: m.session_id
+                sessionId: m.session_id,
+                voicePayload: mapVoicePayload((m as any).voice_payload),
             }))
 
             if (skip === 0) {
@@ -63,7 +85,8 @@ export const createSessionFetch = (deps: SessionFetchDeps) => {
                 senderId: m.sender_id,
                 senderType: m.sender_type,
                 sessionType: m.session_type,
-                debateSide: m.debate_side
+                debateSide: m.debate_side,
+                voicePayload: mapVoicePayload((m as any).voice_payload),
             }))
 
             if (skip === 0) {
@@ -120,7 +143,8 @@ export const createSessionFetch = (deps: SessionFetchDeps) => {
                 role: m.role as 'user' | 'assistant' | 'system',
                 content: m.content,
                 createdAt: new Date(m.create_time).getTime(),
-                sessionId: m.session_id
+                sessionId: m.session_id,
+                voicePayload: mapVoicePayload((m as any).voice_payload),
             }))
 
             const currentMsgs = messagesMap.value['f' + friendId] || []

@@ -2,9 +2,9 @@
 import { computed, ref } from 'vue'
 import { useSessionStore } from '@/stores/session'
 import { parseMessageSegments } from '@/utils/chat'
-import type { ToolCall } from '@/types/chat'
+import type { Message as ChatMessage, ToolCall } from '@/types/chat'
 import { useFriendStore } from '@/stores/friend'
-import { Menu, MoreHorizontal, Brain, MessageSquarePlus, AlertTriangle, Sparkles, Share2 } from 'lucide-vue-next'
+import { Menu, MoreHorizontal, Brain, MessageSquarePlus, AlertTriangle, Share2, Play, Pause } from 'lucide-vue-next'
 import {
   Conversation,
   ConversationContent,
@@ -48,7 +48,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Button } from '@/components/ui/button'
-import { onMounted, nextTick, watch } from 'vue'
+import { onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 
 
 const props = defineProps({
@@ -182,6 +182,155 @@ const getAssistantAvatar = () => {
     return `https://api.dicebear.com/7.x/shapes/svg?seed=${sessionStore.currentFriendId}`
   }
   return DEFAULT_ASSISTANT_AVATAR
+}
+
+const voicePlaybackKey = ref<string | null>(null)
+const voiceAutoPlayEnabled = ref(false)
+let activeVoiceAudio: HTMLAudioElement | null = null
+
+const getVoiceSegmentForRender = (msg: ChatMessage, segmentIndex: number) => {
+  const segments = msg.voicePayload?.segments
+  if (!Array.isArray(segments) || !segments.length) return null
+  return segments.find(s => s.segment_index === segmentIndex) || null
+}
+
+const hasVoiceSegment = (msg: ChatMessage, segmentIndex: number) => {
+  return !!getVoiceSegmentForRender(msg, segmentIndex)
+}
+
+const isVoiceSegmentUnread = (msg: ChatMessage, segmentIndex: number) => {
+  return !!msg.voiceUnreadSegmentIndexes?.includes(segmentIndex)
+}
+
+const markVoiceSegmentAsRead = (msg: ChatMessage, segmentIndex: number) => {
+  if (!msg.voiceUnreadSegmentIndexes?.length) return
+  msg.voiceUnreadSegmentIndexes = msg.voiceUnreadSegmentIndexes.filter(index => index !== segmentIndex)
+}
+
+const formatVoiceDuration = (msg: ChatMessage, segmentIndex: number) => {
+  const segment = getVoiceSegmentForRender(msg, segmentIndex)
+  const duration = segment?.duration_sec ?? 1
+  const safeSeconds = Math.max(1, Math.round(duration))
+  return `${safeSeconds}″`
+}
+
+const isVoiceSegmentPlaying = (msg: ChatMessage, segmentIndex: number) => {
+  return (
+    voicePlaybackKey.value === `${msg.id}:${segmentIndex}` &&
+    !!activeVoiceAudio &&
+    !activeVoiceAudio.paused
+  )
+}
+
+const stopVoicePlayback = (resetAutoPlay: boolean = true) => {
+  if (activeVoiceAudio) {
+    activeVoiceAudio.pause()
+    activeVoiceAudio.onended = null
+    activeVoiceAudio.onerror = null
+    activeVoiceAudio = null
+  }
+  voicePlaybackKey.value = null
+  if (resetAutoPlay) {
+    voiceAutoPlayEnabled.value = false
+  }
+}
+
+const resolveNextVoiceTarget = (currentMessageId: number, currentSegmentIndex: number) => {
+  const list = messages.value
+  const currentMessageIndex = list.findIndex(m => m.id === currentMessageId)
+  if (currentMessageIndex === -1) return null
+
+  const currentMessage = list[currentMessageIndex]
+  const sameMessageUnread = [...(currentMessage.voiceUnreadSegmentIndexes || [])]
+    .filter(index => index > currentSegmentIndex)
+    .sort((a, b) => a - b)
+
+  if (sameMessageUnread.length) {
+    const candidateIndex = sameMessageUnread[0]
+    if (hasVoiceSegment(currentMessage, candidateIndex)) {
+      return { message: currentMessage, segmentIndex: candidateIndex }
+    }
+  }
+
+  const nextMessage = list[currentMessageIndex + 1]
+  if (!nextMessage || nextMessage.role !== 'assistant') return null
+  const unreadIndexes = [...(nextMessage.voiceUnreadSegmentIndexes || [])].sort((a, b) => a - b)
+  if (!unreadIndexes.length) return null
+  const nextIndex = unreadIndexes[0]
+  if (!hasVoiceSegment(nextMessage, nextIndex)) return null
+
+  return { message: nextMessage, segmentIndex: nextIndex }
+}
+
+const playVoiceSegment = async (msg: ChatMessage, segmentIndex: number, autoTriggered: boolean = false) => {
+  const segment = getVoiceSegmentForRender(msg, segmentIndex)
+  if (!segment) return
+
+  const segmentKey = `${msg.id}:${segmentIndex}`
+  if (voicePlaybackKey.value === segmentKey && activeVoiceAudio) {
+    if (activeVoiceAudio.paused) {
+      try {
+        await activeVoiceAudio.play()
+      } catch (e) {
+        console.error('Voice resume failed:', e)
+      }
+    }
+    return
+  }
+
+  stopVoicePlayback(false)
+  markVoiceSegmentAsRead(msg, segmentIndex)
+
+  const sourceUrl = getStaticUrl(segment.audio_url) || segment.audio_url
+  const audio = new Audio(sourceUrl)
+  activeVoiceAudio = audio
+  voicePlaybackKey.value = segmentKey
+
+  audio.onended = () => {
+    voicePlaybackKey.value = null
+    activeVoiceAudio = null
+    if (!voiceAutoPlayEnabled.value) return
+    const next = resolveNextVoiceTarget(msg.id, segmentIndex)
+    if (!next) {
+      voiceAutoPlayEnabled.value = false
+      return
+    }
+    void playVoiceSegment(next.message, next.segmentIndex, true)
+  }
+
+  audio.onerror = () => {
+    console.warn('Voice playback failed:', sourceUrl)
+    stopVoicePlayback()
+  }
+
+  try {
+    await audio.play()
+  } catch (e) {
+    console.error('Voice play failed:', e)
+    stopVoicePlayback()
+    if (!autoTriggered) {
+      triggerToast('语音播放失败')
+    }
+  }
+}
+
+const handleVoiceBubbleClick = (msg: ChatMessage, segmentIndex: number) => {
+  const segmentKey = `${msg.id}:${segmentIndex}`
+  if (voicePlaybackKey.value === segmentKey && activeVoiceAudio) {
+    if (activeVoiceAudio.paused) {
+      voiceAutoPlayEnabled.value = true
+      void activeVoiceAudio.play().catch(err => {
+        console.error('Voice resume failed:', err)
+      })
+    } else {
+      activeVoiceAudio.pause()
+      voiceAutoPlayEnabled.value = false
+    }
+    return
+  }
+
+  voiceAutoPlayEnabled.value = true
+  void playVoiceSegment(msg, segmentIndex)
 }
 
 // Toast Feedback Logic
@@ -471,6 +620,15 @@ const conversationRef = ref<InstanceType<typeof Conversation> | null>(null)
 // Reset hasMore when friend changes
 watch(() => sessionStore.currentFriendId, () => {
   hasMoreMessages.value = true
+  stopVoicePlayback()
+})
+
+watch(() => sessionStore.currentSessionId, () => {
+  stopVoicePlayback()
+})
+
+onBeforeUnmount(() => {
+  stopVoicePlayback()
 })
 
 // Pagination using IntersectionObserver - triggers when top sentinel becomes visible
@@ -673,7 +831,23 @@ const handleAvatarClick = (url: string) => {
 
                       <!-- Message Bubble -->
                       <div class="message-bubble-container" :class="{ 'message-pop-in': segment }">
-                        <div class="message-bubble">
+                        <template v-if="hasVoiceSegment(msg, sIndex)">
+                          <button class="voice-bubble" type="button" @click="handleVoiceBubbleClick(msg, sIndex)">
+                            <span class="voice-icon">
+                              <Pause v-if="isVoiceSegmentPlaying(msg, sIndex)" :size="14" />
+                              <Play v-else :size="14" />
+                            </span>
+                            <span class="voice-wave"></span>
+                            <span class="voice-duration">{{ formatVoiceDuration(msg, sIndex) }}</span>
+                            <span v-if="isVoiceSegmentUnread(msg, sIndex)" class="voice-unread-dot"></span>
+                          </button>
+                          <div class="voice-text">
+                            <MessageContent>
+                              <MessageResponse :content="segment" />
+                            </MessageContent>
+                          </div>
+                        </template>
+                        <div v-else class="message-bubble">
                           <MessageContent>
                             <MessageResponse :content="segment" />
                           </MessageContent>
@@ -1294,6 +1468,66 @@ const handleAvatarClick = (url: string) => {
 .message-assistant .message-bubble {
   background: #fff;
   color: #333;
+}
+
+.voice-bubble {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 140px;
+  border: 0;
+  background: #fff;
+  border-radius: 8px;
+  padding: 9px 12px;
+  cursor: pointer;
+  color: #2f2f2f;
+  box-shadow: inset 0 0 0 1px #ececec;
+}
+
+.voice-bubble:hover {
+  background: #f8f8f8;
+}
+
+.voice-icon {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #07c160;
+  flex-shrink: 0;
+}
+
+.voice-wave {
+  flex: 1;
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #07c160 0%, #61d596 100%);
+  opacity: 0.75;
+}
+
+.voice-duration {
+  font-size: 12px;
+  color: #666;
+  flex-shrink: 0;
+}
+
+.voice-unread-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #ff4d4f;
+  flex-shrink: 0;
+}
+
+.voice-text {
+  background: #fff;
+  color: #333;
+  border-radius: 4px;
+  padding: 9px 12px;
+  font-size: 14px;
+  line-height: 1.5;
+  word-break: break-word;
 }
 
 .loading-bubble {

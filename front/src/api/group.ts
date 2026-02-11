@@ -49,6 +49,16 @@ export interface GroupMessageRead {
     sender_id: string;
     sender_type: 'user' | 'friend';
     content: string;
+    voice_payload?: {
+        voice_id: string;
+        segments: Array<{
+            segment_index: number;
+            text: string;
+            audio_url: string;
+            duration_sec: number;
+        }>;
+        generated_at?: string;
+    } | null;
     message_type: 'text' | 'system' | '@';
     mentions?: string[];
     debate_side?: 'affirmative' | 'negative';

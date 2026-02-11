@@ -1,6 +1,6 @@
 import { computed } from 'vue'
 import type { Ref } from 'vue'
-import type { GroupTypingUser, Message } from '@/types/chat'
+import type { GroupTypingUser, Message, VoicePayload } from '@/types/chat'
 import { parseMessageSegments } from '@/utils/chat'
 
 type GroupStoreLike = {
@@ -22,6 +22,57 @@ export type GroupStreamDeps = {
     unreadCounts: Ref<Record<string, number>>
     groupTypingUsersMap: Ref<Record<string, GroupTypingUser[]>>
     groupStore: GroupStoreLike
+}
+
+const normalizeVoicePayload = (raw: any): VoicePayload | undefined => {
+    if (!raw || typeof raw !== 'object') return undefined
+    const segments = Array.isArray(raw.segments)
+        ? raw.segments
+            .filter((s: any) => s && typeof s.audio_url === 'string')
+            .map((s: any) => ({
+                segment_index: Number.isFinite(Number(s.segment_index)) ? Number(s.segment_index) : 0,
+                text: typeof s.text === 'string' ? s.text : '',
+                audio_url: s.audio_url,
+                duration_sec: Number.isFinite(Number(s.duration_sec)) ? Number(s.duration_sec) : 1,
+            }))
+            .sort((a: { segment_index: number }, b: { segment_index: number }) => a.segment_index - b.segment_index)
+        : []
+    if (!segments.length) return undefined
+    return {
+        voice_id: String(raw.voice_id || ''),
+        segments,
+        generated_at: typeof raw.generated_at === 'string' ? raw.generated_at : undefined,
+    }
+}
+
+const mergeVoiceSegment = (msg: Message, segment: any) => {
+    if (!segment || typeof segment.audio_url !== 'string') return
+    const normalized = {
+        segment_index: Number.isFinite(Number(segment.segment_index)) ? Number(segment.segment_index) : 0,
+        text: typeof segment.text === 'string' ? segment.text : '',
+        audio_url: segment.audio_url,
+        duration_sec: Number.isFinite(Number(segment.duration_sec)) ? Number(segment.duration_sec) : 1,
+    }
+
+    if (!msg.voicePayload) {
+        msg.voicePayload = { voice_id: '', segments: [normalized] }
+    } else if (!msg.voicePayload.segments.some(s => s.segment_index === normalized.segment_index)) {
+        msg.voicePayload.segments.push(normalized)
+        msg.voicePayload.segments.sort((a: { segment_index: number }, b: { segment_index: number }) => a.segment_index - b.segment_index)
+    }
+
+    if (!msg.voiceUnreadSegmentIndexes) {
+        msg.voiceUnreadSegmentIndexes = []
+    }
+    if (!msg.voiceUnreadSegmentIndexes.includes(normalized.segment_index)) {
+        msg.voiceUnreadSegmentIndexes.push(normalized.segment_index)
+        msg.voiceUnreadSegmentIndexes.sort((a: number, b: number) => a - b)
+    }
+}
+
+const applyVoicePayload = (msg: Message, payload: VoicePayload) => {
+    msg.voicePayload = payload
+    msg.voiceUnreadSegmentIndexes = payload.segments.map((s: { segment_index: number }) => s.segment_index).sort((a: number, b: number) => a - b)
 }
 
 export const createGroupStreamActions = (deps: GroupStreamDeps) => {
@@ -118,6 +169,7 @@ export const createGroupStreamActions = (deps: GroupStreamDeps) => {
 
         // Map friend IDs to track streaming content for each friend
         const aiMessages: Record<string, Message> = {}
+        const pendingVoicePayloadByMessageId = new Map<number, VoicePayload>()
 
         let capturedSessionId: number | undefined = undefined
         let hasServerAck = false
@@ -158,6 +210,26 @@ export const createGroupStreamActions = (deps: GroupStreamDeps) => {
                     }
                     if (data.participants && Array.isArray(data.participants)) {
                         setGroupTypingUsers(groupId, data.participants)
+                    }
+                } else if (event === 'voice_segment') {
+                    const senderId = data.sender_id
+                    const messageId = Number(data.message_id)
+                    const segment = data.segment
+                    if (!senderId || !Number.isFinite(messageId) || !segment) continue
+                    const target = (messagesMap.value['g' + groupId] || []).find(m => m.id === messageId) || aiMessages[senderId]
+                    if (target) {
+                        mergeVoiceSegment(target, segment)
+                    }
+                } else if (event === 'voice_payload') {
+                    const senderId = data.sender_id
+                    const messageId = Number(data.message_id)
+                    const payload = normalizeVoicePayload(data.voice_payload)
+                    if (!senderId || !Number.isFinite(messageId) || !payload) continue
+                    const target = (messagesMap.value['g' + groupId] || []).find(m => m.id === messageId) || aiMessages[senderId]
+                    if (target) {
+                        applyVoicePayload(target, payload)
+                    } else {
+                        pendingVoicePayloadByMessageId.set(messageId, payload)
                     }
                 } else if (event === 'message' || event === 'model_thinking' || event === 'thinking' || event === 'recall_thinking' || event === 'tool_call' || event === 'tool_result') {
                     const senderId = data.sender_id
@@ -220,7 +292,8 @@ export const createGroupStreamActions = (deps: GroupStreamDeps) => {
                         capturedSessionId = data.session_id
                     }
                     if (senderId && aiMessages[senderId]) {
-                        aiMessages[senderId].id = data.message_id
+                        const finalMessageId = data.message_id
+                        aiMessages[senderId].id = finalMessageId
                         if (capturedSessionId) {
                             aiMessages[senderId].sessionId = capturedSessionId
                         }
@@ -228,6 +301,11 @@ export const createGroupStreamActions = (deps: GroupStreamDeps) => {
                         if (data.content) {
                             aiMessages[senderId].content = data.content
                         }
+                        const donePayload = normalizeVoicePayload(data.voice_payload) || pendingVoicePayloadByMessageId.get(finalMessageId)
+                        if (donePayload) {
+                            applyVoicePayload(aiMessages[senderId], donePayload)
+                        }
+                        pendingVoicePayloadByMessageId.delete(finalMessageId)
                     }
 
                     if (senderId) {

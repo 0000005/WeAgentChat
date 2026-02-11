@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, Boolean, ForeignKey
+from sqlalchemy import Column, Integer, String, Text, Boolean, ForeignKey, JSON
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 from app.db.base import Base
@@ -38,6 +38,7 @@ class Message(Base):
     friend_id = Column(Integer, ForeignKey("friends.id"), nullable=True)
     role = Column(String(20), nullable=False)
     content = Column(Text, nullable=False)
+    voice_payload = Column(JSON, nullable=True)
     create_time = Column(UTCDateTime, default=utc_now, nullable=False)
     update_time = Column(UTCDateTime, default=utc_now, onupdate=utc_now, nullable=False)
     deleted = Column(Boolean, default=False, nullable=False)

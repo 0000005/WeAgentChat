@@ -66,6 +66,7 @@ class GroupMessage(Base):
     message_type = Column(String(20), default="text", nullable=False) # 'text', 'system', '@'
     mentions = Column(JSON, nullable=True) # List of member IDs
     debate_side = Column(String(20), nullable=True) # 'affirmative' / 'negative'
+    voice_payload = Column(JSON, nullable=True)
     create_time = Column(UTCDateTime, default=utc_now, nullable=False)
     update_time = Column(UTCDateTime, default=utc_now, onupdate=utc_now, nullable=False)
 

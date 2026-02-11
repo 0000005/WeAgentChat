@@ -11,6 +11,7 @@ from app.schemas import chat as chat_schemas
 from datetime import datetime, timedelta, timezone
 from app.services.recall_service import RecallService
 from app.services.settings_service import SettingsService
+from app.services.voice_message_service import generate_voice_payload_for_message
 from app.services import provider_rules
 from app.services.llm_service import llm_service
 from app.services.embedding_service import embedding_service
@@ -1609,6 +1610,58 @@ async def _run_chat_generation_task(
                 "message_id": ai_msg_id
             }
         })
+
+        # 6. Optional voice synthesis (non-blocking for text UX: done is already emitted)
+        try:
+            final_text = saved_content if saved_content else ""
+            if friend and friend.enable_voice and final_text:
+                logger.info(
+                    "[GenTask] Voice synthesis started for message=%s friend=%s",
+                    ai_msg_id,
+                    friend.id,
+                )
+
+                async def _on_voice_segment_ready(segment_data: Dict[str, Any]):
+                    await queue.put({
+                        "event": "voice_segment",
+                        "data": {
+                            "message_id": ai_msg_id,
+                            "segment": segment_data,
+                        },
+                    })
+
+                voice_payload = await generate_voice_payload_for_message(
+                    db=db,
+                    content=final_text,
+                    enable_voice=bool(friend.enable_voice),
+                    friend_voice_id=friend.voice_id,
+                    message_id=ai_msg_id,
+                    on_segment_ready=_on_voice_segment_ready,
+                )
+                if voice_payload:
+                    ai_msg = db.query(Message).filter(Message.id == ai_msg_id).first()
+                    if ai_msg:
+                        ai_msg.voice_payload = voice_payload
+                        db.commit()
+                    logger.info(
+                        "[GenTask] Voice synthesis completed for message=%s segments=%s",
+                        ai_msg_id,
+                        len(voice_payload.get("segments", [])),
+                    )
+                    await queue.put({
+                        "event": "voice_payload",
+                        "data": {
+                            "message_id": ai_msg_id,
+                            "voice_payload": voice_payload,
+                        },
+                    })
+                else:
+                    logger.info(
+                        "[GenTask] Voice synthesis skipped/empty for message=%s",
+                        ai_msg_id,
+                    )
+        except Exception as voice_exc:
+            logger.warning("[GenTask] Voice synthesis failed for message=%s: %s", ai_msg_id, voice_exc)
 
     except Exception as e:
         logger.error(f"[GenTask] Error: {e}", exc_info=True)

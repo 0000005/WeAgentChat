@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Optional, List, Any, Dict
 from datetime import datetime
 from pydantic import BaseModel, Field
 
@@ -7,6 +7,7 @@ class MessageBase(BaseModel):
     role: str
     content: str
     friend_id: Optional[int] = None
+    voice_payload: Optional[Dict[str, Any]] = None
 
 class MessageCreate(BaseModel):
     content: str

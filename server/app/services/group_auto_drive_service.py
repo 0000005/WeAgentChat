@@ -16,6 +16,7 @@ from app.services import group_chat_shared, provider_rules
 from app.services.llm_service import llm_service
 from app.services.memo.constants import DEFAULT_USER_ID
 from app.services.llm_client import set_agents_default_client
+from app.services.voice_message_service import generate_voice_payload_for_message
 
 from openai.types.shared import Reasoning
 from agents import Agent, ModelSettings, function_tool
@@ -963,6 +964,43 @@ class GroupAutoDriveService:
             session_id=run.session_id,
             db=db,
         )
+
+        if friend.enable_voice:
+            try:
+                final_msg = db.query(GroupMessage).filter(GroupMessage.id == ai_msg_id).first()
+                final_content = (final_msg.content or "") if final_msg else ""
+
+                async def _on_voice_segment_ready(segment_data: Dict[str, object]):
+                    await runtime.queue.put({
+                        "event": "voice_segment",
+                        "data": {
+                            "sender_id": str(friend.id),
+                            "message_id": ai_msg_id,
+                            "segment": segment_data,
+                        },
+                    })
+
+                voice_payload = await generate_voice_payload_for_message(
+                    db=db,
+                    content=final_content,
+                    enable_voice=bool(friend.enable_voice),
+                    friend_voice_id=friend.voice_id,
+                    message_id=ai_msg_id,
+                    on_segment_ready=_on_voice_segment_ready,
+                )
+                if voice_payload and final_msg:
+                    final_msg.voice_payload = voice_payload
+                    db.commit()
+                    await runtime.queue.put({
+                        "event": "voice_payload",
+                        "data": {
+                            "sender_id": str(friend.id),
+                            "message_id": ai_msg_id,
+                            "voice_payload": voice_payload,
+                        },
+                    })
+            except Exception as voice_exc:
+                logger.warning("[AutoDrive] Voice synthesis failed for message=%s: %s", ai_msg_id, voice_exc)
 
     async def _update_state(
         self,
