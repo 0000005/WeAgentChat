@@ -1245,14 +1245,17 @@ class GroupChatService:
                 except Exception as e:
                     logger.warning(f"Failed to load group_chat_rule: {e}")
 
+                voice_reply_enabled = bool(friend.enable_voice)
                 script_prompt = ""
-                if friend.script_expression:
+                if friend.script_expression and not voice_reply_enabled:
                     try: script_prompt = get_prompt("persona/script_expression.txt").strip()
                     except Exception: pass
                     
                 segment_prompt = ""
                 try:
-                    if friend.script_expression:
+                    if voice_reply_enabled:
+                        segment_prompt = get_prompt("chat/message_segment_tts.txt").strip()
+                    elif friend.script_expression:
                         segment_prompt = get_prompt("chat/message_segment_script.txt").strip()
                     else:
                         segment_prompt = get_prompt("chat/message_segment_normal.txt").strip()
@@ -1372,6 +1375,7 @@ class GroupChatService:
                     message_id=ai_msg_id,
                     session_id=session_id,
                     db=db,
+                    sanitize_message_tags=bool(friend.enable_voice),
                 )
 
                 # 语音回复（在 done 事件后异步补充 voice 事件）

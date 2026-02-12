@@ -13,6 +13,10 @@ type GroupStoreLike = {
     } | undefined
 }
 
+type FriendStoreLike = {
+    getFriend?: (friendId: number) => { enable_voice?: boolean } | undefined
+}
+
 export type GroupStreamDeps = {
     currentGroupId: Ref<number | null>
     chatType: Ref<'friend' | 'group'>
@@ -22,6 +26,7 @@ export type GroupStreamDeps = {
     unreadCounts: Ref<Record<string, number>>
     groupTypingUsersMap: Ref<Record<string, GroupTypingUser[]>>
     groupStore: GroupStoreLike
+    friendStore: FriendStoreLike
 }
 
 const normalizeVoicePayload = (raw: any): VoicePayload | undefined => {
@@ -84,7 +89,8 @@ export const createGroupStreamActions = (deps: GroupStreamDeps) => {
         streamingMap,
         unreadCounts,
         groupTypingUsersMap,
-        groupStore
+        groupStore,
+        friendStore
     } = deps
 
     const groupTypingUsers = computed(() => {
@@ -170,6 +176,62 @@ export const createGroupStreamActions = (deps: GroupStreamDeps) => {
         // Map friend IDs to track streaming content for each friend
         const aiMessages: Record<string, Message> = {}
         const pendingVoicePayloadByMessageId = new Map<number, VoicePayload>()
+        const pendingVoiceSegmentsByMessageId = new Map<number, any[]>()
+        const pendingVoiceDoneByMessageId = new Map<number, { senderId: string, message: Message }>()
+
+        const getSenderName = (senderId: string) => {
+            return senderId === 'user'
+                ? '我'
+                : (groupStore.getGroup(groupId)?.members?.find(m => m.member_id === senderId)?.name || '未知')
+        }
+
+        const isVoiceReplySender = (senderId?: string) => {
+            if (!senderId || senderId === 'user') return false
+            const numericId = Number(senderId)
+            if (!Number.isFinite(numericId)) return false
+            return !!friendStore.getFriend?.(numericId)?.enable_voice
+        }
+
+        const pushAssistantIfMissing = (msg: Message): Message => {
+            const list = messagesMap.value['g' + groupId] || []
+            const exists = list.find(m => m.id === msg.id)
+            if (exists) return exists
+            list.push(msg)
+            return list[list.length - 1]
+        }
+
+        const finalizeAssistantRender = (senderId: string, msg: Message) => {
+            const rendered = pushAssistantIfMissing(msg)
+            aiMessages[senderId] = rendered
+
+            const finalContent = rendered.content || ''
+            if (finalContent) {
+                groupStore.updateLastMessage(groupId, finalContent, getSenderName(senderId))
+            }
+
+            if (currentGroupId.value !== groupId) {
+                const segmentCount = isVoiceReplySender(senderId) ? 1 : (parseMessageSegments(finalContent).length || 1)
+                unreadCounts.value['g' + groupId] = (unreadCounts.value['g' + groupId] || 0) + segmentCount
+            }
+
+            if (typeof document !== 'undefined' && !document.hasFocus()) {
+                window.WeAgentChat?.notification?.flash()
+            }
+
+            // Keep typing indicator visible until the message is actually rendered.
+            removeGroupTypingUser(groupId, senderId)
+        }
+
+        const finalizePendingVoiceDone = (messageId: number, mutator?: (msg: Message) => void) => {
+            const pending = pendingVoiceDoneByMessageId.get(messageId)
+            if (!pending) return false
+            if (mutator) mutator(pending.message)
+            finalizeAssistantRender(pending.senderId, pending.message)
+            pendingVoiceDoneByMessageId.delete(messageId)
+            pendingVoicePayloadByMessageId.delete(messageId)
+            pendingVoiceSegmentsByMessageId.delete(messageId)
+            return true
+        }
 
         let capturedSessionId: number | undefined = undefined
         let hasServerAck = false
@@ -219,6 +281,12 @@ export const createGroupStreamActions = (deps: GroupStreamDeps) => {
                     const target = (messagesMap.value['g' + groupId] || []).find(m => m.id === messageId) || aiMessages[senderId]
                     if (target) {
                         mergeVoiceSegment(target, segment)
+                    } else if (finalizePendingVoiceDone(messageId, (msg) => mergeVoiceSegment(msg, segment))) {
+                        continue
+                    } else {
+                        const queued = pendingVoiceSegmentsByMessageId.get(messageId) || []
+                        queued.push(segment)
+                        pendingVoiceSegmentsByMessageId.set(messageId, queued)
                     }
                 } else if (event === 'voice_payload') {
                     const senderId = data.sender_id
@@ -228,12 +296,15 @@ export const createGroupStreamActions = (deps: GroupStreamDeps) => {
                     const target = (messagesMap.value['g' + groupId] || []).find(m => m.id === messageId) || aiMessages[senderId]
                     if (target) {
                         applyVoicePayload(target, payload)
+                    } else if (finalizePendingVoiceDone(messageId, (msg) => applyVoicePayload(msg, payload))) {
+                        continue
                     } else {
                         pendingVoicePayloadByMessageId.set(messageId, payload)
                     }
                 } else if (event === 'message' || event === 'model_thinking' || event === 'thinking' || event === 'recall_thinking' || event === 'tool_call' || event === 'tool_result') {
                     const senderId = data.sender_id
                     if (!senderId) continue
+                    const voiceReplyEnabled = isVoiceReplySender(senderId)
 
                     // If we haven't seen this AI friend yet in this interaction, create a placeholder
                     if (!aiMessages[senderId]) {
@@ -248,9 +319,13 @@ export const createGroupStreamActions = (deps: GroupStreamDeps) => {
                             senderId: senderId,
                             sessionId: capturedSessionId
                         }
-                        messagesMap.value['g' + groupId].push(newMsg)
-                        // Important: Get the reactive proxy from the messages list to ensure property updates are tracked
-                        aiMessages[senderId] = messagesMap.value['g' + groupId][messagesMap.value['g' + groupId].length - 1]
+                        if (voiceReplyEnabled) {
+                            aiMessages[senderId] = newMsg
+                        } else {
+                            messagesMap.value['g' + groupId].push(newMsg)
+                            // Important: Get the reactive proxy from the messages list to ensure property updates are tracked
+                            aiMessages[senderId] = messagesMap.value['g' + groupId][messagesMap.value['g' + groupId].length - 1]
+                        }
                     }
 
                     if (event === 'message') {
@@ -278,7 +353,7 @@ export const createGroupStreamActions = (deps: GroupStreamDeps) => {
                     }
 
                     // Update sidebar preview for streaming content
-                    if (event === 'message') {
+                    if (event === 'message' && !voiceReplyEnabled) {
                         const senderName = groupStore.getGroup(groupId)?.members?.find(m => m.member_id === senderId)?.name || '...'
                         const currentContent = aiMessages[senderId]?.content || '...'
                         groupStore.updateLastMessage(groupId, currentContent, senderName)
@@ -291,8 +366,24 @@ export const createGroupStreamActions = (deps: GroupStreamDeps) => {
                     if (!capturedSessionId && data.session_id) {
                         capturedSessionId = data.session_id
                     }
+                    if (senderId && !aiMessages[senderId]) {
+                        aiMessages[senderId] = {
+                            id: Number(data.message_id) || -(Date.now() + Math.random()),
+                            role: 'assistant',
+                            content: typeof data.content === 'string' ? data.content : '',
+                            thinkingContent: '',
+                            recallThinkingContent: '',
+                            toolCalls: [],
+                            createdAt: Date.now(),
+                            senderId,
+                            sessionId: capturedSessionId
+                        }
+                    }
                     if (senderId && aiMessages[senderId]) {
-                        const finalMessageId = data.message_id
+                        const finalMessageIdRaw = Number(data.message_id || aiMessages[senderId].id)
+                        const finalMessageId = Number.isFinite(finalMessageIdRaw)
+                            ? finalMessageIdRaw
+                            : aiMessages[senderId].id
                         aiMessages[senderId].id = finalMessageId
                         if (capturedSessionId) {
                             aiMessages[senderId].sessionId = capturedSessionId
@@ -305,32 +396,20 @@ export const createGroupStreamActions = (deps: GroupStreamDeps) => {
                         if (donePayload) {
                             applyVoicePayload(aiMessages[senderId], donePayload)
                         }
+                        const queuedSegments = pendingVoiceSegmentsByMessageId.get(finalMessageId) || []
+                        queuedSegments.forEach((segment) => mergeVoiceSegment(aiMessages[senderId], segment))
                         pendingVoicePayloadByMessageId.delete(finalMessageId)
-                    }
+                        pendingVoiceSegmentsByMessageId.delete(finalMessageId)
 
-                    if (senderId) {
-                        const finalContent = data.content || aiMessages[senderId]?.content || ''
-                        if (finalContent) {
-                            const senderName = senderId === 'user'
-                                ? '我'
-                                : (groupStore.getGroup(groupId)?.members?.find(m => m.member_id === senderId)?.name || '未知')
-                            groupStore.updateLastMessage(groupId, finalContent, senderName)
+                        if (isVoiceReplySender(senderId) && !aiMessages[senderId].voicePayload?.segments?.length) {
+                            pendingVoiceDoneByMessageId.set(finalMessageId, {
+                                senderId,
+                                message: aiMessages[senderId]
+                            })
+                        } else {
+                            finalizeAssistantRender(senderId, aiMessages[senderId])
                         }
                     }
-
-                    // If user has switched away during streaming, mark as unread
-                    if (currentGroupId.value !== groupId) {
-                        const finalContent = data.content || (senderId ? aiMessages[senderId]?.content : '') || ''
-                        const segmentCount = parseMessageSegments(finalContent).length || 1
-                        unreadCounts.value['g' + groupId] = (unreadCounts.value['g' + groupId] || 0) + segmentCount
-                    }
-
-                    // Trigger tray/taskbar flash if window doesn't have focus (Electron only)
-                    if (typeof document !== 'undefined' && !document.hasFocus()) {
-                        window.WeAgentChat?.notification?.flash()
-                    }
-                    // Story 09-10: Remove from typing list on done
-                    removeGroupTypingUser(groupId, senderId)
                 }
                 else if (event === 'error') {
                     console.error('Group stream error:', data)
@@ -351,6 +430,9 @@ export const createGroupStreamActions = (deps: GroupStreamDeps) => {
                 }
             }
         } finally {
+            Array.from(pendingVoiceDoneByMessageId.keys()).forEach((messageId) => {
+                finalizePendingVoiceDone(messageId)
+            })
             streamingMap.value['g' + groupId] = false
             clearGroupTypingUsers(groupId) // Ensure clean state
         }

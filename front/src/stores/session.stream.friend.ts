@@ -83,7 +83,11 @@ export const createFriendStreamActions = (deps: FriendStreamDeps) => {
     } = deps
     const voiceHydrationInFlight = new Set<string>()
 
-    const scheduleVoicePayloadHydration = (friendId: number, messageId: number) => {
+    const scheduleVoicePayloadHydration = (
+        friendId: number,
+        messageId: number,
+        onHydrated?: (payload: VoicePayload) => void
+    ) => {
         if (!Number.isFinite(messageId)) return
         const taskKey = `${friendId}:${messageId}`
         if (voiceHydrationInFlight.has(taskKey)) return
@@ -107,9 +111,8 @@ export const createFriendStreamActions = (deps: FriendStreamDeps) => {
                     if (!payload) continue
 
                     const target = (messagesMap.value['f' + friendId] || []).find(m => m.id === messageId)
-                    if (target) {
-                        applyVoicePayload(target, payload)
-                    }
+                    if (target) applyVoicePayload(target, payload)
+                    onHydrated?.(payload)
                     return
                 }
             } catch (error) {
@@ -174,8 +177,55 @@ export const createFriendStreamActions = (deps: FriendStreamDeps) => {
         let toolCallsBuffer: ToolCall[] = []
         const assistantMsgId = Date.now() + 1
         const pendingVoicePayloadMap = new Map<number, VoicePayload>()
+        const pendingVoiceSegmentsMap = new Map<number, any[]>()
+        const pendingAssistantById = new Map<number, Message>()
+        const pendingVoiceFallbackTimers = new Map<number, ReturnType<typeof setTimeout>>()
+        const voiceReplyEnabled = !!friendStore.getFriend?.(friendId)?.enable_voice
         let capturedSessionId: number | undefined = undefined // Capture session_id from start event
         let capturedAssistantMsgId: number | undefined = undefined // Capture assistant msg id from start event
+
+        const clearPendingVoiceTimer = (messageId: number) => {
+            const timer = pendingVoiceFallbackTimers.get(messageId)
+            if (timer) {
+                clearTimeout(timer)
+                pendingVoiceFallbackTimers.delete(messageId)
+            }
+        }
+
+        const finalizeAssistantMessage = (assistantMsg: Message) => {
+            clearPendingVoiceTimer(assistantMsg.id)
+            pendingAssistantById.delete(assistantMsg.id)
+            pendingVoicePayloadMap.delete(assistantMsg.id)
+            pendingVoiceSegmentsMap.delete(assistantMsg.id)
+
+            const list = messagesMap.value['f' + friendId] || []
+            if (!list.some(m => m.id === assistantMsg.id)) {
+                list.push(assistantMsg)
+            }
+
+            streamingMap.value['f' + friendId] = false
+            if (currentFriendId.value !== friendId) {
+                const segmentCount = voiceReplyEnabled
+                    ? 1
+                    : (parseMessageSegments(assistantMsg.content).length || 1)
+                unreadCounts.value['f' + friendId] = (unreadCounts.value['f' + friendId] || 0) + segmentCount
+            }
+
+            if (typeof document !== 'undefined' && !document.hasFocus()) {
+                window.WeAgentChat?.notification?.flash()
+            }
+
+            fetchFriendSessions(friendId)
+            friendStore.updateLastMessage(friendId, assistantMsg.content, 'assistant')
+        }
+
+        const finalizePendingAssistant = (messageId: number, mutator?: (msg: Message) => void) => {
+            const pending = pendingAssistantById.get(messageId)
+            if (!pending) return false
+            if (mutator) mutator(pending)
+            finalizeAssistantMessage(pending)
+            return true
+        }
 
         try {
             // 如果当前正在查看特定会话，则按会话 ID 发送消息；否则按好友 ID 发送（由后端自动寻址）
@@ -241,6 +291,12 @@ export const createFriendStreamActions = (deps: FriendStreamDeps) => {
                     const target = (messagesMap.value['f' + friendId] || []).find(m => m.id === msgId)
                     if (target) {
                         mergeVoiceSegment(target, segment)
+                    } else if (finalizePendingAssistant(msgId, (msg) => mergeVoiceSegment(msg, segment))) {
+                        continue
+                    } else {
+                        const queued = pendingVoiceSegmentsMap.get(msgId) || []
+                        queued.push(segment)
+                        pendingVoiceSegmentsMap.set(msgId, queued)
                     }
                 } else if (event === 'voice_payload') {
                     const msgId = Number(data.message_id)
@@ -249,6 +305,8 @@ export const createFriendStreamActions = (deps: FriendStreamDeps) => {
                     const target = (messagesMap.value['f' + friendId] || []).find(m => m.id === msgId)
                     if (target) {
                         applyVoicePayload(target, payload)
+                    } else if (finalizePendingAssistant(msgId, (msg) => applyVoicePayload(msg, payload))) {
+                        continue
                     } else {
                         pendingVoicePayloadMap.set(msgId, payload)
                     }
@@ -279,11 +337,12 @@ export const createFriendStreamActions = (deps: FriendStreamDeps) => {
                 } else if (event === 'done') {
                     // Finalize: Push the complete message to the list all at once
                     const doneMsgId = Number(data.message_id || assistantMsgId)
+                    const finalContent = typeof data.content === 'string' ? data.content : contentBuffer
                     const doneVoicePayload = normalizeVoicePayload(data.voice_payload) || pendingVoicePayloadMap.get(doneMsgId)
                     const assistantMsg: Message = {
                         id: doneMsgId,
                         role: 'assistant',
-                        content: contentBuffer,
+                        content: finalContent,
                         thinkingContent: modelThinkingBuffer || undefined,
                         recallThinkingContent: recallThinkingBuffer || undefined,
                         toolCalls: toolCallsBuffer.length > 0 ? toolCallsBuffer : undefined,
@@ -294,28 +353,22 @@ export const createFriendStreamActions = (deps: FriendStreamDeps) => {
                             ? doneVoicePayload.segments.map((s: { segment_index: number }) => s.segment_index).sort((a: number, b: number) => a - b)
                             : undefined,
                     }
-                    messagesMap.value['f' + friendId].push(assistantMsg)
-                    pendingVoicePayloadMap.delete(doneMsgId)
 
-                    streamingMap.value['f' + friendId] = false
-                    // Check if user has switched away during streaming - mark as unread
-                    // Count segments to match visual perception (3 bubbles = 3 unread)
-                    if (currentFriendId.value !== friendId) {
-                        const segmentCount = parseMessageSegments(contentBuffer).length || 1
-                        unreadCounts.value['f' + friendId] = (unreadCounts.value['f' + friendId] || 0) + segmentCount
-                    }
+                    const queuedSegments = pendingVoiceSegmentsMap.get(doneMsgId) || []
+                    queuedSegments.forEach((segment) => mergeVoiceSegment(assistantMsg, segment))
 
-                    // Trigger tray/taskbar flash if window doesn't have focus (Electron only)
-                    if (typeof document !== 'undefined' && !document.hasFocus()) {
-                        window.WeAgentChat?.notification?.flash()
-                    }
+                    if (voiceReplyEnabled && !assistantMsg.voicePayload?.segments?.length) {
+                        pendingAssistantById.set(doneMsgId, assistantMsg)
+                        const fallbackTimer = setTimeout(() => {
+                            finalizePendingAssistant(doneMsgId)
+                        }, 8000)
+                        pendingVoiceFallbackTimers.set(doneMsgId, fallbackTimer)
 
-                    // 异步刷新会话列表统计
-                    fetchFriendSessions(friendId)
-                    // Update friend list preview for assistant message with final content
-                    friendStore.updateLastMessage(friendId, contentBuffer, 'assistant')
-                    if (!doneVoicePayload && friendStore.getFriend?.(friendId)?.enable_voice) {
-                        scheduleVoicePayloadHydration(friendId, doneMsgId)
+                        scheduleVoicePayloadHydration(friendId, doneMsgId, (payload) => {
+                            finalizePendingAssistant(doneMsgId, (msg) => applyVoicePayload(msg, payload))
+                        })
+                    } else {
+                        finalizeAssistantMessage(assistantMsg)
                     }
                 }
             }
@@ -340,6 +393,8 @@ export const createFriendStreamActions = (deps: FriendStreamDeps) => {
             // Update sidebar preview with partial content or error indicator
             friendStore.updateLastMessage(friendId, contentBuffer || '[消息发送失败]', 'assistant')
         } finally {
+            pendingVoiceFallbackTimers.forEach((timer) => clearTimeout(timer))
+            pendingVoiceFallbackTimers.clear()
             streamingMap.value['f' + friendId] = false
         }
     }
@@ -416,6 +471,10 @@ export const createFriendStreamActions = (deps: FriendStreamDeps) => {
         let toolCallsBuffer: ToolCall[] = []
         const assistantMsgId = Date.now() + 1
         const pendingVoicePayloadMap = new Map<number, VoicePayload>()
+        const pendingVoiceSegmentsMap = new Map<number, any[]>()
+        const pendingAssistantById = new Map<number, Message>()
+        const pendingVoiceFallbackTimers = new Map<number, ReturnType<typeof setTimeout>>()
+        const voiceReplyEnabled = !!friendStore.getFriend?.(friendId)?.enable_voice
 
         const sessionId = message.sessionId
         if (!sessionId) {
@@ -426,6 +485,43 @@ export const createFriendStreamActions = (deps: FriendStreamDeps) => {
             }
             streamingMap.value['f' + friendId] = false
             return
+        }
+
+        const clearPendingVoiceTimer = (messageId: number) => {
+            const timer = pendingVoiceFallbackTimers.get(messageId)
+            if (timer) {
+                clearTimeout(timer)
+                pendingVoiceFallbackTimers.delete(messageId)
+            }
+        }
+
+        const finalizeAssistantMessage = (assistantMsg: Message) => {
+            clearPendingVoiceTimer(assistantMsg.id)
+            pendingAssistantById.delete(assistantMsg.id)
+            pendingVoicePayloadMap.delete(assistantMsg.id)
+            pendingVoiceSegmentsMap.delete(assistantMsg.id)
+
+            const list = messagesMap.value['f' + friendId] || []
+            if (!list.some(m => m.id === assistantMsg.id)) {
+                list.push(assistantMsg)
+            }
+
+            streamingMap.value['f' + friendId] = false
+            if (currentFriendId.value !== friendId) {
+                const segmentCount = voiceReplyEnabled
+                    ? 1
+                    : (parseMessageSegments(assistantMsg.content).length || 1)
+                unreadCounts.value['f' + friendId] = (unreadCounts.value['f' + friendId] || 0) + segmentCount
+            }
+            friendStore.updateLastMessage(friendId, assistantMsg.content, 'assistant')
+        }
+
+        const finalizePendingAssistant = (messageId: number, mutator?: (msg: Message) => void) => {
+            const pending = pendingAssistantById.get(messageId)
+            if (!pending) return false
+            if (mutator) mutator(pending)
+            finalizeAssistantMessage(pending)
+            return true
         }
 
         try {
@@ -468,6 +564,12 @@ export const createFriendStreamActions = (deps: FriendStreamDeps) => {
                     const target = (messagesMap.value['f' + friendId] || []).find(m => m.id === msgId)
                     if (target) {
                         mergeVoiceSegment(target, segment)
+                    } else if (finalizePendingAssistant(msgId, (msg) => mergeVoiceSegment(msg, segment))) {
+                        continue
+                    } else {
+                        const queued = pendingVoiceSegmentsMap.get(msgId) || []
+                        queued.push(segment)
+                        pendingVoiceSegmentsMap.set(msgId, queued)
                     }
                 } else if (event === 'voice_payload') {
                     const msgId = Number(data.message_id)
@@ -476,6 +578,8 @@ export const createFriendStreamActions = (deps: FriendStreamDeps) => {
                     const target = (messagesMap.value['f' + friendId] || []).find(m => m.id === msgId)
                     if (target) {
                         applyVoicePayload(target, payload)
+                    } else if (finalizePendingAssistant(msgId, (msg) => applyVoicePayload(msg, payload))) {
+                        continue
                     } else {
                         pendingVoicePayloadMap.set(msgId, payload)
                     }
@@ -490,11 +594,12 @@ export const createFriendStreamActions = (deps: FriendStreamDeps) => {
                     throw new Error(errorDetail)
                 } else if (event === 'done') {
                     const doneMsgId = Number(data.message_id || assistantMsgId)
+                    const finalContent = typeof data.content === 'string' ? data.content : contentBuffer
                     const doneVoicePayload = normalizeVoicePayload(data.voice_payload) || pendingVoicePayloadMap.get(doneMsgId)
                     const assistantMsg: Message = {
                         id: doneMsgId,
                         role: 'assistant',
-                        content: contentBuffer,
+                        content: finalContent,
                         thinkingContent: modelThinkingBuffer || undefined,
                         recallThinkingContent: recallThinkingBuffer || undefined,
                         toolCalls: toolCallsBuffer.length > 0 ? toolCallsBuffer : undefined,
@@ -505,16 +610,21 @@ export const createFriendStreamActions = (deps: FriendStreamDeps) => {
                             ? doneVoicePayload.segments.map((s: { segment_index: number }) => s.segment_index).sort((a: number, b: number) => a - b)
                             : undefined,
                     }
-                    messagesMap.value['f' + friendId].push(assistantMsg)
-                    pendingVoicePayloadMap.delete(doneMsgId)
-                    streamingMap.value['f' + friendId] = false
-                    if (currentFriendId.value !== friendId) {
-                        const segmentCount = parseMessageSegments(contentBuffer).length || 1
-                        unreadCounts.value['f' + friendId] = (unreadCounts.value['f' + friendId] || 0) + segmentCount
-                    }
-                    friendStore.updateLastMessage(friendId, contentBuffer, 'assistant')
-                    if (!doneVoicePayload && friendStore.getFriend?.(friendId)?.enable_voice) {
-                        scheduleVoicePayloadHydration(friendId, doneMsgId)
+                    const queuedSegments = pendingVoiceSegmentsMap.get(doneMsgId) || []
+                    queuedSegments.forEach((segment) => mergeVoiceSegment(assistantMsg, segment))
+
+                    if (voiceReplyEnabled && !assistantMsg.voicePayload?.segments?.length) {
+                        pendingAssistantById.set(doneMsgId, assistantMsg)
+                        const fallbackTimer = setTimeout(() => {
+                            finalizePendingAssistant(doneMsgId)
+                        }, 8000)
+                        pendingVoiceFallbackTimers.set(doneMsgId, fallbackTimer)
+
+                        scheduleVoicePayloadHydration(friendId, doneMsgId, (payload) => {
+                            finalizePendingAssistant(doneMsgId, (msg) => applyVoicePayload(msg, payload))
+                        })
+                    } else {
+                        finalizeAssistantMessage(assistantMsg)
                     }
                 }
             }
@@ -528,6 +638,8 @@ export const createFriendStreamActions = (deps: FriendStreamDeps) => {
             streamingMap.value['f' + friendId] = false
             throw error // Re-throw for ChatArea to show toast
         } finally {
+            pendingVoiceFallbackTimers.forEach((timer) => clearTimeout(timer))
+            pendingVoiceFallbackTimers.clear()
             streamingMap.value['f' + friendId] = false
         }
     }

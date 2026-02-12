@@ -1350,8 +1350,9 @@ async def _run_chat_generation_task(
         else:
             persona_prompt = ""
         
+        voice_reply_enabled = bool(friend and friend.enable_voice)
         script_prompt = ""
-        if friend and friend.script_expression:
+        if friend and friend.script_expression and not voice_reply_enabled:
             try:
                 script_prompt = get_prompt("persona/script_expression.txt").strip()
             except Exception:
@@ -1359,7 +1360,9 @@ async def _run_chat_generation_task(
 
         segment_prompt = ""
         try:
-            if friend and friend.script_expression:
+            if voice_reply_enabled:
+                segment_prompt = get_prompt("chat/message_segment_tts.txt").strip()
+            elif friend and friend.script_expression:
                 segment_prompt = get_prompt("chat/message_segment_script.txt").strip()
             else:
                 segment_prompt = get_prompt("chat/message_segment_normal.txt").strip()
@@ -1589,9 +1592,13 @@ async def _run_chat_generation_task(
 
 
         # 5. Save to DB
+        final_saved_content = saved_content if saved_content else "[No response]"
+        if friend and friend.enable_voice and final_saved_content != "[No response]":
+            final_saved_content = _strip_message_tags(final_saved_content) or final_saved_content
+
         ai_msg = db.query(Message).filter(Message.id == ai_msg_id).first()
         if ai_msg:
-            ai_msg.content = saved_content if saved_content else "[No response]"
+            ai_msg.content = final_saved_content
             db.commit()
             chat_session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
             chat_session.update_time = datetime.now(timezone.utc)
@@ -1607,13 +1614,14 @@ async def _run_chat_generation_task(
             "data": {
                 "finish_reason": finish_reason,
                 "usage": usage,
-                "message_id": ai_msg_id
+                "message_id": ai_msg_id,
+                "content": final_saved_content,
             }
         })
 
         # 6. Optional voice synthesis (non-blocking for text UX: done is already emitted)
         try:
-            final_text = saved_content if saved_content else ""
+            final_text = final_saved_content if final_saved_content != "[No response]" else ""
             if friend and friend.enable_voice and final_text:
                 logger.info(
                     "[GenTask] Voice synthesis started for message=%s friend=%s",

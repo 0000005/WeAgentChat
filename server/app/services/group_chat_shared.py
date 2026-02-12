@@ -18,6 +18,17 @@ from app.services.reasoning_stream import extract_reasoning_delta
 CTRL_NO_REPLY = "<CTRL:NO_REPLY>"
 
 
+def _strip_message_tags(content: Optional[str]) -> Optional[str]:
+    if not content:
+        return content
+    import re
+
+    parts = re.findall(r"<message>(.*?)</message>", content, re.DOTALL)
+    if parts:
+        return " ".join(part.strip() for part in parts if part.strip())
+    return re.sub(r"</?message>", "", content).strip()
+
+
 def create_group_session(
     db: Session,
     group_id: int,
@@ -315,6 +326,7 @@ async def stream_llm_to_queue(
     message_id: int,
     session_id: int,
     db: Session,
+    sanitize_message_tags: bool = False,
 ) -> str:
     content_buffer = ""
     has_reasoning_item = False
@@ -507,6 +519,8 @@ async def stream_llm_to_queue(
 
     final_content = saved_content if saved_content else content_buffer
     final_content = final_content.replace(THINK_START, "").replace(THINK_END, "")
+    if sanitize_message_tags:
+        final_content = _strip_message_tags(final_content) or final_content
 
     persist_final_content(db, message_id, final_content, session_id)
     usage["completion_tokens"] = len(content_buffer)

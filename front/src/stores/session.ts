@@ -131,7 +131,8 @@ export const useSessionStore = defineStore('session', () => {
         streamingMap,
         unreadCounts,
         groupTypingUsersMap,
-        groupStore
+        groupStore,
+        friendStore
     })
     const {
         sendGroupMessage,

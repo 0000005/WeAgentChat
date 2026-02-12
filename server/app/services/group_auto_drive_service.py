@@ -861,11 +861,18 @@ class GroupAutoDriveService:
             pass
 
         script_prompt = "\n\n".join([p for p in [auto_drive_rule, host_script, best_practice] if p])
-        segment_prompt = ""
-        try:
-            segment_prompt = get_prompt("auto_drive/group_auto_drive_message_segment_normal.txt").strip()
-        except Exception:
-            pass
+        segment_prompts: List[str] = []
+        for prompt_name in (
+            "auto_drive/message_segment_auto_drive.txt",
+            "auto_drive/group_auto_drive_message_segment_normal.txt",
+        ):
+            try:
+                loaded = get_prompt(prompt_name).strip()
+                if loaded:
+                    segment_prompts.append(loaded)
+            except Exception:
+                continue
+        segment_prompt = "\n\n".join(segment_prompts)
 
         try:
             root_template = get_prompt("chat/root_system_prompt.txt")
@@ -963,6 +970,7 @@ class GroupAutoDriveService:
             message_id=ai_msg_id,
             session_id=run.session_id,
             db=db,
+            sanitize_message_tags=bool(friend.enable_voice),
         )
 
         if friend.enable_voice:

@@ -122,6 +122,24 @@ const currentFriendDescription = computed(() => {
 
 const hasMessages = computed(() => messages.value.length > 0)
 
+const stripMessageTags = (content: string) => {
+  if (!content) return ''
+  const matches = [...content.matchAll(/<message>([\s\S]*?)<\/message>/g)]
+  if (matches.length) {
+    return matches.map(item => (item[1] || '').trim()).filter(Boolean).join('\n')
+  }
+  return content.replace(/<\/?message>/g, '').trim()
+}
+
+const getAssistantMessageSegments = (msg: ChatMessage) => {
+  // 语音消息统一按单条消息渲染，保证语音条与完整文本同条展示
+  if (msg.voicePayload?.segments?.length) {
+    const normalized = stripMessageTags(msg.content)
+    return normalized ? [normalized] : []
+  }
+  return parseMessageSegments(msg.content)
+}
+
 // 检测是否需要显示会话分隔线（session_id 变化时）
 const shouldShowSessionDivider = (index: number): boolean => {
   if (index === 0) return false // 第一条消息不显示分隔线
@@ -821,7 +839,7 @@ const handleAvatarClick = (url: string) => {
                   @click.stop="toggleMessageSelection(msg.id)" aria-label="选择消息"></button>
                 <div class="message-stack">
                   <!-- AI 回复：动态拆分渲染 -->
-                  <div v-for="(segment, sIndex) in parseMessageSegments(msg.content)" :key="msg.id + '-' + sIndex"
+                  <div v-for="(segment, sIndex) in getAssistantMessageSegments(msg)" :key="msg.id + '-' + sIndex"
                     class="message-group group-assistant">
                     <div class="message-wrapper message-assistant group relative">
                       <!-- Avatar -->

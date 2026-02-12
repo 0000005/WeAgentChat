@@ -573,7 +573,20 @@ const isAutoDriveMessage = (msg: Message) => {
   return !!msg.sessionType && msg.sessionType !== 'normal'
 }
 
+const stripMessageTags = (content: string) => {
+  if (!content) return ''
+  const matches = [...content.matchAll(/<message>([\s\S]*?)<\/message>/g)]
+  if (matches.length) {
+    return matches.map(item => (item[1] || '').trim()).filter(Boolean).join('\n')
+  }
+  return content.replace(/<\/?message>/g, '').trim()
+}
+
 const getMessageSegments = (msg: Message) => {
+  if (msg.voicePayload?.segments?.length) {
+    const normalized = stripMessageTags(msg.content)
+    return normalized ? [normalized] : ['']
+  }
   if (isAutoDriveMessage(msg)) {
     return msg.content ? [msg.content] : ['']
   }
@@ -1224,9 +1237,6 @@ const handleAvatarClick = (url: string) => {
         <span class="typing-text">
           {{sessionStore.groupTypingUsers.map(u => u.name).join('、')}} 正在输入中...
         </span>
-      </div>
-      <div v-else-if="!isAutoDriveActive && sessionStore.isStreaming" class="group-typing-area">
-        <span class="typing-text">正在思考谁来回复...</span>
       </div>
     </div>
 
