@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch, nextTick, onBeforeUnmount, onMounted } from 'vue'
+import { computed, ref, watch, nextTick, onBeforeUnmount, onMounted, type CSSProperties } from 'vue'
 import { useSessionStore } from '@/stores/session'
 import { parseMessageSegments } from '@/utils/chat'
 import { useFriendStore } from '@/stores/friend'
@@ -595,7 +595,17 @@ const getMessageSegments = (msg: Message) => {
 
 const voicePlaybackKey = ref<string | null>(null)
 const voiceAutoPlayEnabled = ref(false)
+const voicePlaybackState = ref<'playing' | 'paused' | null>(null)
+const voiceProgressSec = ref(0)
+const voiceDurationSec = ref(0)
 let activeVoiceAudio: HTMLAudioElement | null = null
+
+const VOICE_BUBBLE_MIN_WIDTH = 140
+const VOICE_BUBBLE_MAX_WIDTH = 280
+const VOICE_DURATION_MIN = 1
+const VOICE_DURATION_MAX = 45
+
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
 
 const getVoiceSegmentForRender = (msg: Message, segmentIndex: number) => {
   const segments = msg.voicePayload?.segments
@@ -622,11 +632,19 @@ const formatVoiceDuration = (msg: Message, segmentIndex: number) => {
   return `${Math.max(1, Math.round(duration))}″`
 }
 
+const getVoiceDurationValue = (msg: Message, segmentIndex: number) => {
+  const segment = getVoiceSegmentForRender(msg, segmentIndex)
+  return Math.max(1, Number(segment?.duration_sec || 1))
+}
+
+const isVoiceSegmentActive = (msg: Message, segmentIndex: number) => {
+  return voicePlaybackKey.value === `${msg.id}:${segmentIndex}`
+}
+
 const isVoiceSegmentPlaying = (msg: Message, segmentIndex: number) => {
   return (
-    voicePlaybackKey.value === `${msg.id}:${segmentIndex}` &&
-    !!activeVoiceAudio &&
-    !activeVoiceAudio.paused
+    isVoiceSegmentActive(msg, segmentIndex) &&
+    voicePlaybackState.value === 'playing'
   )
 }
 
@@ -638,9 +656,29 @@ const stopVoicePlayback = (resetAutoPlay: boolean = true) => {
     activeVoiceAudio = null
   }
   voicePlaybackKey.value = null
+  voicePlaybackState.value = null
+  voiceProgressSec.value = 0
+  voiceDurationSec.value = 0
   if (resetAutoPlay) {
     voiceAutoPlayEnabled.value = false
   }
+}
+
+const getVoiceProgressPercent = (msg: Message, segmentIndex: number) => {
+  if (!isVoiceSegmentActive(msg, segmentIndex)) return 0
+  const duration = voiceDurationSec.value > 0 ? voiceDurationSec.value : getVoiceDurationValue(msg, segmentIndex)
+  if (duration <= 0) return 0
+  return clamp((voiceProgressSec.value / duration) * 100, 0, 100)
+}
+
+const getVoiceBubbleStyle = (msg: Message, segmentIndex: number): CSSProperties => {
+  const duration = clamp(getVoiceDurationValue(msg, segmentIndex), VOICE_DURATION_MIN, VOICE_DURATION_MAX)
+  const ratio = (duration - VOICE_DURATION_MIN) / (VOICE_DURATION_MAX - VOICE_DURATION_MIN)
+  const width = Math.round(VOICE_BUBBLE_MIN_WIDTH + ratio * (VOICE_BUBBLE_MAX_WIDTH - VOICE_BUBBLE_MIN_WIDTH))
+  return {
+    width: `${width}px`,
+    '--voice-progress': `${getVoiceProgressPercent(msg, segmentIndex)}%`,
+  } as CSSProperties
 }
 
 const resolveNextVoiceTarget = (currentMessageId: number, currentSegmentIndex: number) => {
@@ -668,7 +706,12 @@ const resolveNextVoiceTarget = (currentMessageId: number, currentSegmentIndex: n
   return { message: nextMessage, segmentIndex: nextIndex }
 }
 
-const playVoiceSegment = async (msg: Message, segmentIndex: number, autoTriggered: boolean = false) => {
+const playVoiceSegment = async (
+  msg: Message,
+  segmentIndex: number,
+  autoTriggered: boolean = false,
+  startAtSec: number = 0
+) => {
   const segment = getVoiceSegmentForRender(msg, segmentIndex)
   if (!segment) return
 
@@ -677,9 +720,17 @@ const playVoiceSegment = async (msg: Message, segmentIndex: number, autoTriggere
     if (activeVoiceAudio.paused) {
       try {
         await activeVoiceAudio.play()
+        voicePlaybackState.value = 'playing'
       } catch (e) {
         console.error('Voice resume failed:', e)
       }
+    } else if (startAtSec > 0) {
+      const duration = Number.isFinite(activeVoiceAudio.duration) && activeVoiceAudio.duration > 0
+        ? activeVoiceAudio.duration
+        : getVoiceDurationValue(msg, segmentIndex)
+      const target = clamp(startAtSec, 0, duration)
+      activeVoiceAudio.currentTime = target
+      voiceProgressSec.value = target
     }
     return
   }
@@ -690,9 +741,45 @@ const playVoiceSegment = async (msg: Message, segmentIndex: number, autoTriggere
   const audio = new Audio(sourceUrl)
   activeVoiceAudio = audio
   voicePlaybackKey.value = segmentKey
+  voicePlaybackState.value = 'paused'
+  voiceProgressSec.value = 0
+  voiceDurationSec.value = getVoiceDurationValue(msg, segmentIndex)
+
+  audio.preload = 'auto'
+  audio.onloadedmetadata = () => {
+    const metadataDuration = Number.isFinite(audio.duration) && audio.duration > 0
+      ? audio.duration
+      : getVoiceDurationValue(msg, segmentIndex)
+    voiceDurationSec.value = metadataDuration
+    if (startAtSec > 0) {
+      const target = clamp(startAtSec, 0, metadataDuration)
+      audio.currentTime = target
+      voiceProgressSec.value = target
+    }
+  }
+  audio.ontimeupdate = () => {
+    if (voicePlaybackKey.value !== segmentKey) return
+    voiceProgressSec.value = audio.currentTime || 0
+    if (Number.isFinite(audio.duration) && audio.duration > 0) {
+      voiceDurationSec.value = audio.duration
+    }
+  }
+  audio.onplay = () => {
+    if (voicePlaybackKey.value !== segmentKey) return
+    voicePlaybackState.value = 'playing'
+  }
+  audio.onpause = () => {
+    if (voicePlaybackKey.value !== segmentKey) return
+    if (!audio.ended) {
+      voicePlaybackState.value = 'paused'
+    }
+  }
 
   audio.onended = () => {
     voicePlaybackKey.value = null
+    voicePlaybackState.value = null
+    voiceProgressSec.value = 0
+    voiceDurationSec.value = 0
     activeVoiceAudio = null
     if (!voiceAutoPlayEnabled.value) return
     const next = resolveNextVoiceTarget(msg.id, segmentIndex)
@@ -729,6 +816,7 @@ const handleVoiceBubbleClick = (msg: Message, segmentIndex: number) => {
       })
     } else {
       activeVoiceAudio.pause()
+      voicePlaybackState.value = 'paused'
       voiceAutoPlayEnabled.value = false
     }
     return
@@ -736,6 +824,24 @@ const handleVoiceBubbleClick = (msg: Message, segmentIndex: number) => {
 
   voiceAutoPlayEnabled.value = true
   void playVoiceSegment(msg, segmentIndex)
+}
+
+const handleVoiceProgressInput = (msg: Message, segmentIndex: number, event: Event) => {
+  const target = event.target as HTMLInputElement | null
+  if (!target) return
+  const progress = clamp(Number(target.value) || 0, 0, 100)
+  const duration = getVoiceDurationValue(msg, segmentIndex)
+  const seekTo = (duration * progress) / 100
+  const segmentKey = `${msg.id}:${segmentIndex}`
+
+  if (voicePlaybackKey.value === segmentKey && activeVoiceAudio) {
+    activeVoiceAudio.currentTime = seekTo
+    voiceProgressSec.value = seekTo
+    return
+  }
+
+  voiceAutoPlayEnabled.value = true
+  void playVoiceSegment(msg, segmentIndex, false, seekTo)
 }
 
 // Mention Logic
@@ -1135,15 +1241,21 @@ const handleAvatarClick = (url: string) => {
                           </span>
                         </span>
                         <template v-if="hasVoiceSegment(msg, sIndex)">
-                          <button class="voice-bubble" type="button" @click="handleVoiceBubbleClick(msg, sIndex)">
-                            <span class="voice-icon">
-                              <Pause v-if="isVoiceSegmentPlaying(msg, sIndex)" :size="14" />
-                              <Play v-else :size="14" />
-                            </span>
-                            <span class="voice-wave"></span>
+                          <div class="voice-bubble" :style="getVoiceBubbleStyle(msg, sIndex)"
+                            :class="{ 'is-active': isVoiceSegmentActive(msg, sIndex) }">
+                            <button class="voice-toggle" type="button" @click="handleVoiceBubbleClick(msg, sIndex)"
+                              :aria-label="isVoiceSegmentPlaying(msg, sIndex) ? '暂停语音' : '播放语音'">
+                              <span class="voice-icon">
+                                <Pause v-if="isVoiceSegmentPlaying(msg, sIndex)" :size="14" />
+                                <Play v-else :size="14" />
+                              </span>
+                            </button>
+                            <input class="voice-progress" type="range" min="0" max="100" step="0.1"
+                              :value="getVoiceProgressPercent(msg, sIndex)"
+                              @input="handleVoiceProgressInput(msg, sIndex, $event)" @click.stop @pointerdown.stop />
                             <span class="voice-duration">{{ formatVoiceDuration(msg, sIndex) }}</span>
                             <span v-if="isVoiceSegmentUnread(msg, sIndex)" class="voice-unread-dot"></span>
-                          </button>
+                          </div>
                           <div class="voice-text">
                             <MessageContent>
                               <MessageResponse :content="segment" />
