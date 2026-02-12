@@ -147,6 +147,8 @@ const {
     voiceModel,
     voiceApiKey,
     voiceDefaultVoiceId,
+    voiceEmotionEnhanceEnabled,
+    voiceEmotionLlmConfigId,
     isSaving: isSettingsSaving
 } = storeToRefs(settingsStore)
 
@@ -378,6 +380,19 @@ const isVoiceSupportedByModel = (voice: VoiceAPI.VoiceTimbre, model: string) => 
     return baseModel !== targetModel && supportedModels.includes(baseModel)
 }
 
+const isEmotionEnhanceSupportedByModel = (model: string) => {
+    const targetModel = (model || '').trim().toLowerCase()
+    if (!targetModel) return false
+    if (targetModel.startsWith('qwen3-tts-instruct-flash')) return true
+    // 兼容 provider 前缀写法，例如 openai/qwen3-tts-instruct-flash
+    const slashIdx = targetModel.indexOf('/')
+    if (slashIdx >= 0) {
+        const base = targetModel.slice(slashIdx + 1)
+        return base.startsWith('qwen3-tts-instruct-flash')
+    }
+    return false
+}
+
 const filteredVoiceTimbres = computed(() =>
     voiceTimbres.value.filter(voice => isVoiceSupportedByModel(voice, voiceModel.value))
 )
@@ -554,6 +569,10 @@ const handleSave = async () => {
             voiceProvider.value = 'aliyun_bailian'
             if (!voiceModel.value) {
                 voiceModel.value = 'qwen3-tts-instruct-flash'
+            }
+            if (!isEmotionEnhanceSupportedByModel(voiceModel.value)) {
+                voiceEmotionEnhanceEnabled.value = false
+                voiceEmotionLlmConfigId.value = ''
             }
             await settingsStore.saveVoiceSettings()
         }
@@ -998,7 +1017,13 @@ watch(
 )
 
 watch(
-    () => [voiceApiKey.value, voiceDefaultVoiceId.value, voiceModel.value],
+    () => [
+        voiceApiKey.value,
+        voiceDefaultVoiceId.value,
+        voiceModel.value,
+        voiceEmotionEnhanceEnabled.value,
+        voiceEmotionLlmConfigId.value,
+    ],
     () => {
         voiceTestStatus.value = 'idle'
         voiceTestMessage.value = ''
@@ -1009,7 +1034,12 @@ watch(
     () => voiceModel.value,
     () => {
         ensureVoiceDefaultInModelScope()
-    }
+        if (!isEmotionEnhanceSupportedByModel(voiceModel.value)) {
+            voiceEmotionEnhanceEnabled.value = false
+            voiceEmotionLlmConfigId.value = ''
+        }
+    },
+    { immediate: true }
 )
 
 watch(voiceTimbres, () => {
@@ -1028,6 +1058,15 @@ const voiceProviderLabel = computed(() =>
 const selectedVoiceTimbre = computed(() =>
     filteredVoiceTimbres.value.find(item => item.voice_id === voiceDefaultVoiceId.value) || null
 )
+const canConfigureVoiceEmotionEnhance = computed(() =>
+    isEmotionEnhanceSupportedByModel(voiceModel.value)
+)
+const voiceEmotionLlmConfigIdProxy = computed({
+    get: () => (voiceEmotionLlmConfigId.value ? String(voiceEmotionLlmConfigId.value) : '__default__'),
+    set: (val: string) => {
+        voiceEmotionLlmConfigId.value = val === '__default__' ? '' : val
+    }
+})
 const canEnableThinking = computed(() => !!activeLlmConfig.value?.capability_reasoning)
 const canDeleteLlm = computed(() => !!llmForm.value.id || selectedLlmId.value === DRAFT_LLM_ID)
 const canDeleteEmbedding = computed(() => !!embeddingForm.value.id || selectedEmbeddingId.value === DRAFT_EMBEDDING_ID)
@@ -1462,6 +1501,50 @@ const openTutorial = () => {
                                     <label class="text-sm font-medium leading-none">TTS 模型</label>
                                     <Input v-model="voiceModel" disabled />
                                     <p class="text-xs text-gray-500">当前版本仅支持 `qwen3-tts-instruct-flash`。</p>
+                                </div>
+
+                                <div class="space-y-3 rounded-md border border-gray-200 bg-gray-50/60 p-3">
+                                    <div class="flex items-start justify-between gap-3">
+                                        <div>
+                                            <label class="text-sm font-medium leading-none">情绪增强</label>
+                                            <p class="mt-1 text-xs text-gray-500">
+                                                开启后，系统会先调用 LLM 为当前回复生成 TTS 情绪指令，再执行语音合成。
+                                            </p>
+                                        </div>
+                                        <Switch v-model="voiceEmotionEnhanceEnabled"
+                                            :disabled="!canConfigureVoiceEmotionEnhance" />
+                                    </div>
+
+                                    <div v-if="canConfigureVoiceEmotionEnhance" class="grid gap-2">
+                                        <label class="text-sm font-medium leading-none">情绪增强 LLM 模型</label>
+                                        <Select v-model="voiceEmotionLlmConfigIdProxy"
+                                            :disabled="!voiceEmotionEnhanceEnabled || !llmConfigs.length">
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="选择用于情绪增强的 LLM 模型" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="__default__">跟随聊天模型（推荐）</SelectItem>
+                                                <SelectItem v-for="config in llmConfigs" :key="config.id"
+                                                    :value="String(config.id)">
+                                                    {{ config.config_name || LLM_PROVIDER_PRESETS[config.provider ||
+                                                        'openai']?.label || config.provider }}
+                                                </SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                        <p class="text-xs text-gray-500">
+                                            该模型只用于生成 TTS 情绪指令，建议选择更高效、更低成本的模型。
+                                        </p>
+                                        <div v-if="voiceEmotionEnhanceEnabled && !llmConfigs.length"
+                                            class="text-xs text-gray-400">
+                                            请先在「LLM 设置」中添加配置，
+                                            <button class="text-emerald-600 hover:underline" @click="originalSetTab('llm')">
+                                                立即前往
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <p v-else class="text-xs text-amber-600">
+                                        当前 TTS 模型（{{ voiceModel }}）不支持 instructions，情绪增强不可用。
+                                    </p>
                                 </div>
 
                                 <div class="grid gap-2">

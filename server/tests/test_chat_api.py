@@ -249,12 +249,8 @@ def test_send_message_with_voice_payload(client: TestClient, db: Session):
             yield create_mock_event(c, i)
 
     async def fake_voice_payload(**kwargs):
-        on_segment_ready = kwargs.get("on_segment_ready")
         seg0 = {"segment_index": 0, "text": "你好", "audio_url": "/uploads/audio/a0.mp3", "duration_sec": 1}
         seg1 = {"segment_index": 1, "text": "再见", "audio_url": "/uploads/audio/a1.mp3", "duration_sec": 1}
-        if on_segment_ready:
-            await on_segment_ready(seg0)
-            await on_segment_ready(seg1)
         return {
             "voice_id": "Cherry",
             "segments": [seg0, seg1],
@@ -272,8 +268,7 @@ def test_send_message_with_voice_payload(client: TestClient, db: Session):
 
         events = []
         last_event = None
-        voice_segments = []
-        final_voice_payload = None
+        done_voice_payload = None
 
         for line in response.iter_lines():
             line_str = line if isinstance(line, str) else line.decode("utf-8")
@@ -282,18 +277,15 @@ def test_send_message_with_voice_payload(client: TestClient, db: Session):
                 events.append(last_event)
             if line_str.startswith("data: "):
                 data = json.loads(line_str[6:])
-                if last_event == "voice_segment":
-                    voice_segments.append(data.get("segment"))
-                elif last_event == "voice_payload":
-                    final_voice_payload = data.get("voice_payload")
+                if last_event == "done":
+                    done_voice_payload = data.get("voice_payload")
 
         assert "done" in events
-        assert "voice_segment" in events
-        assert "voice_payload" in events
-        assert len([s for s in voice_segments if s]) == 2
-        assert final_voice_payload is not None
-        assert final_voice_payload["voice_id"] == "Cherry"
-        assert len(final_voice_payload["segments"]) == 2
+        assert "voice_segment" not in events
+        assert "voice_payload" not in events
+        assert done_voice_payload is not None
+        assert done_voice_payload["voice_id"] == "Cherry"
+        assert len(done_voice_payload["segments"]) == 2
 
     hist_resp = client.get(f"/api/chat/sessions/{session_id}/messages")
     assert hist_resp.status_code == 200

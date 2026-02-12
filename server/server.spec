@@ -44,6 +44,8 @@ datas += [(os.path.join(server_dir, 'alembic'), 'alembic')]
 datas += [(os.path.join(server_dir, 'alembic.ini'), '.')]
 # Static assets for preset avatars and other static files
 datas += [(os.path.join(server_dir, 'static'), 'static')]
+# Built-in voice timbre seed for packaged runtime fallback
+datas += [(os.path.join(server_dir, 'app', 'db', 'voice_timbres_seed.json'), 'app/db')]
 # Memobase migrations
 datas += [
     (

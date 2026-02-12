@@ -1,0 +1,679 @@
+[
+  {
+    "voice_id": "Cherry",
+    "name": "芊悦",
+    "description": "阳光积极、亲切自然小姐姐（女性）",
+    "gender": "female",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250211/tixcef/cherry.wav",
+    "supported_models": [
+      "qwen-tts",
+      "qwen-tts-2025-04-10",
+      "qwen-tts-2025-05-22",
+      "qwen-tts-latest",
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-09-18",
+      "qwen3-tts-flash-2025-11-27",
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-instruct-flash-2026-01-26"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Serena",
+    "name": "苏瑶",
+    "description": "温柔小姐姐（女性）",
+    "gender": "female",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250211/bxokea/serena.wav",
+    "supported_models": [
+      "qwen-tts",
+      "qwen-tts-2025-04-10",
+      "qwen-tts-2025-05-22",
+      "qwen-tts-latest",
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-11-27",
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-instruct-flash-2026-01-26"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Ethan",
+    "name": "晨煦",
+    "description": "标准普通话，带部分北方口音。阳光、温暖、活力、朝气（男性）",
+    "gender": "male",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250211/emaqdp/ethan.wav",
+    "supported_models": [
+      "qwen-tts",
+      "qwen-tts-2025-04-10",
+      "qwen-tts-2025-05-22",
+      "qwen-tts-latest",
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-09-18",
+      "qwen3-tts-flash-2025-11-27",
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-instruct-flash-2026-01-26"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Chelsie",
+    "name": "千雪",
+    "description": "二次元虚拟女友（女性）",
+    "gender": "female",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250211/vnpxgw/chelsie.wav",
+    "supported_models": [
+      "qwen-tts",
+      "qwen-tts-2025-04-10",
+      "qwen-tts-2025-05-22",
+      "qwen-tts-latest",
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-11-27",
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-instruct-flash-2026-01-26"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Momo",
+    "name": "茉兔",
+    "description": "撒娇搞怪，逗你开心（女性）",
+    "gender": "female",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/rvzrcx/Momo.wav",
+    "supported_models": [
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-11-27",
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-instruct-flash-2026-01-26"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Vivian",
+    "name": "十三",
+    "description": "拽拽的、可爱的小暴躁（女性）",
+    "gender": "female",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/eetwkj/Vivian.wav",
+    "supported_models": [
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-11-27",
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-instruct-flash-2026-01-26"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Moon",
+    "name": "月白",
+    "description": "率性帅气的月白（男性）",
+    "gender": "male",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/bcaqju/Moon.wav",
+    "supported_models": [
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-11-27",
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-instruct-flash-2026-01-26"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Maia",
+    "name": "四月",
+    "description": "知性与温柔的碰撞（女性）",
+    "gender": "female",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/fewawx/Maia.wav",
+    "supported_models": [
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-11-27",
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-instruct-flash-2026-01-26"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Kai",
+    "name": "凯",
+    "description": "耳朵的一场SPA（男性）",
+    "gender": "male",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/maiqbf/Kai.wav",
+    "supported_models": [
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-11-27",
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-instruct-flash-2026-01-26"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Nofish",
+    "name": "不吃鱼",
+    "description": "不会翘舌音的设计师（男性）",
+    "gender": "male",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/xurcmx/Nofish.wav",
+    "supported_models": [
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-09-18",
+      "qwen3-tts-flash-2025-11-27",
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-instruct-flash-2026-01-26"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Bella",
+    "name": "萌宝",
+    "description": "喝酒不打醉拳的小萝莉（女性）",
+    "gender": "female",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/optibu/Bella.wav",
+    "supported_models": [
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-11-27",
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-instruct-flash-2026-01-26"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Jennifer",
+    "name": "詹妮弗",
+    "description": "品牌级、电影质感般美语女声（女性）",
+    "gender": "female",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/fejjiv/Jennifer.wav",
+    "supported_models": [
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-09-18",
+      "qwen3-tts-flash-2025-11-27"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Ryan",
+    "name": "甜茶",
+    "description": "节奏拉满，戏感炸裂，真实与张力共舞（男性）",
+    "gender": "male",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/wsytum/Ryan.wav",
+    "supported_models": [
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-09-18",
+      "qwen3-tts-flash-2025-11-27"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Katerina",
+    "name": "卡捷琳娜",
+    "description": "御姐音色，韵律回味十足（女性）",
+    "gender": "female",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/fschpb/Katerina.wav",
+    "supported_models": [
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-09-18",
+      "qwen3-tts-flash-2025-11-27"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Aiden",
+    "name": "艾登",
+    "description": "精通厨艺的美语大男孩（男性）",
+    "gender": "male",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/hgxtqi/Aiden.wav",
+    "supported_models": [
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-11-27"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Eldric Sage",
+    "name": "沧明子",
+    "description": "沉稳睿智的老者，沧桑如松却心明如镜（男性）",
+    "gender": "male",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/hbvhwj/Eldric+Sage.wav",
+    "supported_models": [
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-11-27",
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-instruct-flash-2026-01-26"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Mia",
+    "name": "乖小妹",
+    "description": "温顺如春水，乖巧如初雪（女性）",
+    "gender": "female",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/gpvlix/Mia.wav",
+    "supported_models": [
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-11-27",
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-instruct-flash-2026-01-26"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Mochi",
+    "name": "沙小弥",
+    "description": "聪明伶俐的小大人，童真未泯却早慧如禅（男性）",
+    "gender": "male",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/zapcpe/Mochi.wav",
+    "supported_models": [
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-11-27",
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-instruct-flash-2026-01-26"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Bellona",
+    "name": "燕铮莺",
+    "description": "声音洪亮，吐字清晰，人物鲜活，听得人热血沸腾；金戈铁马入梦来，字正腔圆间尽显千面人声的江湖（女性）",
+    "gender": "female",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/wztwli/Bellona.wav",
+    "supported_models": [
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-11-27",
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-instruct-flash-2026-01-26"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Vincent",
+    "name": "田叔",
+    "description": "一口独特的沙哑烟嗓，一开口便道尽了千军万马与江湖豪情（男性）",
+    "gender": "male",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/skfrkq/Vincent.wav",
+    "supported_models": [
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-11-27",
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-instruct-flash-2026-01-26"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Bunny",
+    "name": "萌小姬",
+    "description": "“萌属性”爆棚的小萝莉（女性）",
+    "gender": "female",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/aswewm/Bunny.wav",
+    "supported_models": [
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-11-27",
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-instruct-flash-2026-01-26"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Neil",
+    "name": "阿闻",
+    "description": "平直的基线语调，字正腔圆的咬字发音，这就是最专业的新闻主持人（男性）",
+    "gender": "male",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/ucmfkt/Neil.wav",
+    "supported_models": [
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-11-27",
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-instruct-flash-2026-01-26"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Elias",
+    "name": "墨讲师",
+    "description": "既保持学科严谨性，又通过叙事技巧将复杂知识转化为可消化的认知模块（女性）",
+    "gender": "female",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/rhbvqx/Elias.wav",
+    "supported_models": [
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-09-18",
+      "qwen3-tts-flash-2025-11-27",
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-instruct-flash-2026-01-26"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Arthur",
+    "name": "徐大爷",
+    "description": "被岁月和旱烟浸泡过的质朴嗓音，不疾不徐地摇开了满村的奇闻异事（男性）",
+    "gender": "male",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/ynqwyu/Arthur.wav",
+    "supported_models": [
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-11-27",
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-instruct-flash-2026-01-26"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Nini",
+    "name": "邻家妹妹",
+    "description": "糯米糍一样又软又黏的嗓音，那一声声拉长了的“哥哥”，甜得能把人的骨头都叫酥了（女性）",
+    "gender": "female",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/lppeba/Nini.wav",
+    "supported_models": [
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-11-27",
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-instruct-flash-2026-01-26"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Ebona",
+    "name": "诡婆婆",
+    "description": "她的低语像一把生锈的钥匙，缓慢转动你内心最深处的幽暗角落——那里藏着所有你不敢承认的童年阴影与未知恐惧（女性）",
+    "gender": "female",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/gocxwf/Ebona.wav",
+    "supported_models": [
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-11-27",
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-instruct-flash-2026-01-26"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Seren",
+    "name": "小婉",
+    "description": "温和舒缓的声线，助你更快地进入睡眠，晚安，好梦（女性）",
+    "gender": "female",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/xlksoe/Seren.wav",
+    "supported_models": [
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-11-27",
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-instruct-flash-2026-01-26"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Pip",
+    "name": "顽屁小孩",
+    "description": "调皮捣蛋却充满童真的他来了，这是你记忆中的小新吗（男性）",
+    "gender": "male",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/gqxoub/Pip.wav",
+    "supported_models": [
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-11-27",
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-instruct-flash-2026-01-26"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Stella",
+    "name": "少女阿月",
+    "description": "平时是甜到发腻的迷糊少女音，但在喊出“代表月亮消灭你”时，瞬间充满不容置疑的爱与正义（女性）",
+    "gender": "female",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/azikxr/Stella.wav",
+    "supported_models": [
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-11-27",
+      "qwen3-tts-instruct-flash",
+      "qwen3-tts-instruct-flash-2026-01-26"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Bodega",
+    "name": "博德加",
+    "description": "热情的西班牙大叔（男性）",
+    "gender": "male",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/jxnuap/Bodega.wav",
+    "supported_models": [
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-11-27"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Sonrisa",
+    "name": "索尼莎",
+    "description": "热情开朗的拉美大姐（女性）",
+    "gender": "female",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/uywoxb/Sonrisa.wav",
+    "supported_models": [
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-11-27"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Alek",
+    "name": "阿列克",
+    "description": "一开口，是战斗民族的冷，也是毛呢大衣下的暖（男性）",
+    "gender": "male",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/wtklus/Alek.wav",
+    "supported_models": [
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-11-27"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Dolce",
+    "name": "多尔切",
+    "description": "慵懒的意大利大叔（男性）",
+    "gender": "male",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/pirhim/Dolce.wav",
+    "supported_models": [
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-11-27"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Sohee",
+    "name": "素熙",
+    "description": "温柔开朗，情绪丰富的韩国欧尼（女性）",
+    "gender": "female",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/wwphft/Sohee.wav",
+    "supported_models": [
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-11-27"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Ono Anna",
+    "name": "小野杏",
+    "description": "鬼灵精怪的青梅竹马（女性）",
+    "gender": "female",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/mvfbxy/Ono+Anna.wav",
+    "supported_models": [
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-11-27"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Lenn",
+    "name": "莱恩",
+    "description": "理性是底色，叛逆藏在细节里——穿西装也听后朋克的德国青年（男性）",
+    "gender": "male",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/arnzdt/Lenn.wav",
+    "supported_models": [
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-11-27"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Emilien",
+    "name": "埃米尔安",
+    "description": "浪漫的法国大哥哥（男性）",
+    "gender": "male",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/qltlde/Emilien.wav",
+    "supported_models": [
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-11-27"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Andre",
+    "name": "安德雷",
+    "description": "声音磁性，自然舒服、沉稳男生（男性）",
+    "gender": "male",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/hhfogy/Andre.wav",
+    "supported_models": [
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-11-27"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Radio Gol",
+    "name": "拉迪奥·戈尔",
+    "description": "足球诗人Rádio Gol！今天我要用名字为你们解说足球（男性）",
+    "gender": "male",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20251120/vnezxq/Radio+Gol.wav",
+    "supported_models": [
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-11-27"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Jada",
+    "name": "上海-阿珍",
+    "description": "风风火火的沪上阿姐（女性）",
+    "gender": "female",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250910/qjfmmi/Jada.wav",
+    "supported_models": [
+      "qwen-tts-2025-05-22",
+      "qwen-tts-latest",
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-09-18",
+      "qwen3-tts-flash-2025-11-27"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Dylan",
+    "name": "北京-晓东",
+    "description": "北京胡同里长大的少年（男性）",
+    "gender": "male",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250910/ultaxm/Dylan.wav",
+    "supported_models": [
+      "qwen-tts-2025-05-22",
+      "qwen-tts-latest",
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-09-18",
+      "qwen3-tts-flash-2025-11-27"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Li",
+    "name": "南京-老李",
+    "description": "耐心的瑜伽老师（男性）",
+    "gender": "male",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250916/frgdes/Li.wav",
+    "supported_models": [
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-09-18",
+      "qwen3-tts-flash-2025-11-27"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Marcus",
+    "name": "陕西-秦川",
+    "description": "面宽话短，心实声沉——老陕的味道（男性）",
+    "gender": "male",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250910/dwnnrg/Marcus.wav",
+    "supported_models": [
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-09-18",
+      "qwen3-tts-flash-2025-11-27"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Roy",
+    "name": "闽南-阿杰",
+    "description": "诙谐直爽、市井活泼的台湾哥仔形象（男性）",
+    "gender": "male",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250910/stsfsz/Roy.wav",
+    "supported_models": [
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-09-18",
+      "qwen3-tts-flash-2025-11-27"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Peter",
+    "name": "天津-李彼得",
+    "description": "天津相声，专业捧哏（男性）",
+    "gender": "male",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250910/twvnsp/Peter.wav",
+    "supported_models": [
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-09-18",
+      "qwen3-tts-flash-2025-11-27"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Sunny",
+    "name": "四川-晴儿",
+    "description": "甜到你心里的川妹子（女性）",
+    "gender": "female",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250910/jtrktt/Sunny.wav",
+    "supported_models": [
+      "qwen-tts-2025-05-22",
+      "qwen-tts-latest",
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-09-18",
+      "qwen3-tts-flash-2025-11-27"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Eric",
+    "name": "四川-程川",
+    "description": "一个跳脱市井的四川成都男子（男性）",
+    "gender": "male",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250910/qhbznw/Eric.wav",
+    "supported_models": [
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-09-18",
+      "qwen3-tts-flash-2025-11-27"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Rocky",
+    "name": "粤语-阿强",
+    "description": "幽默风趣的阿强，在线陪聊（男性）",
+    "gender": "male",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250910/kfxxgp/Rocky.wav",
+    "supported_models": [
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-09-18",
+      "qwen3-tts-flash-2025-11-27"
+    ],
+    "category": "Standard"
+  },
+  {
+    "voice_id": "Kiki",
+    "name": "粤语-阿清",
+    "description": "甜美的港妹闺蜜（女性）",
+    "gender": "female",
+    "preview_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250910/qwinef/KiKi.wav",
+    "supported_models": [
+      "qwen3-tts-flash",
+      "qwen3-tts-flash-2025-09-18",
+      "qwen3-tts-flash-2025-11-27"
+    ],
+    "category": "Standard"
+  }
+]

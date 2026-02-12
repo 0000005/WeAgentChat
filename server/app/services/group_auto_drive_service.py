@@ -994,6 +994,7 @@ class GroupAutoDriveService:
                     enable_voice=bool(friend.enable_voice),
                     friend_voice_id=friend.voice_id,
                     message_id=ai_msg_id,
+                    message_scope="group",
                     on_segment_ready=_on_voice_segment_ready,
                 )
                 if voice_payload and final_msg:

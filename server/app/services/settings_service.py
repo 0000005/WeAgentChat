@@ -108,6 +108,8 @@ class SettingsService:
                 ("voice", "tts_model", "qwen3-tts-instruct-flash", "string", "默认 TTS 模型"),
                 ("voice", "api_key", "", "string", "语音服务 API Key"),
                 ("voice", "default_voice_id", "Cherry", "string", "默认音色 ID"),
+                ("voice", "emotion_enhance_enabled", False, "bool", "是否启用 TTS 情绪增强"),
+                ("voice", "emotion_llm_config_id", "", "string", "TTS 情绪增强使用的 LLM 配置ID（留空则回退聊天模型）"),
             ]
             # Clean up deprecated settings
             db.query(SystemSetting).filter_by(group_name="memory", key="profile_topk").delete()

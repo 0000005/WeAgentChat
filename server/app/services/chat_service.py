@@ -1609,17 +1609,10 @@ async def _run_chat_generation_task(
             db.commit()
 
         usage["completion_tokens"] = len(full_ai_content)
-        await queue.put({
-            "event": "done",
-            "data": {
-                "finish_reason": finish_reason,
-                "usage": usage,
-                "message_id": ai_msg_id,
-                "content": final_saved_content,
-            }
-        })
 
-        # 6. Optional voice synthesis (non-blocking for text UX: done is already emitted)
+        # 6. Optional voice synthesis (single chat): generate first, then return together in done event.
+        # This ensures text bubble and voice bar appear at the same time on frontend.
+        done_voice_payload: Optional[Dict[str, Any]] = None
         try:
             final_text = final_saved_content if final_saved_content != "[No response]" else ""
             if friend and friend.enable_voice and final_text:
@@ -1628,41 +1621,25 @@ async def _run_chat_generation_task(
                     ai_msg_id,
                     friend.id,
                 )
-
-                async def _on_voice_segment_ready(segment_data: Dict[str, Any]):
-                    await queue.put({
-                        "event": "voice_segment",
-                        "data": {
-                            "message_id": ai_msg_id,
-                            "segment": segment_data,
-                        },
-                    })
-
-                voice_payload = await generate_voice_payload_for_message(
+                done_voice_payload = await generate_voice_payload_for_message(
                     db=db,
                     content=final_text,
                     enable_voice=bool(friend.enable_voice),
                     friend_voice_id=friend.voice_id,
                     message_id=ai_msg_id,
-                    on_segment_ready=_on_voice_segment_ready,
+                    message_scope="single",
+                    on_segment_ready=None,
                 )
-                if voice_payload:
+                if done_voice_payload:
                     ai_msg = db.query(Message).filter(Message.id == ai_msg_id).first()
                     if ai_msg:
-                        ai_msg.voice_payload = voice_payload
+                        ai_msg.voice_payload = done_voice_payload
                         db.commit()
                     logger.info(
                         "[GenTask] Voice synthesis completed for message=%s segments=%s",
                         ai_msg_id,
-                        len(voice_payload.get("segments", [])),
+                        len(done_voice_payload.get("segments", [])),
                     )
-                    await queue.put({
-                        "event": "voice_payload",
-                        "data": {
-                            "message_id": ai_msg_id,
-                            "voice_payload": voice_payload,
-                        },
-                    })
                 else:
                     logger.info(
                         "[GenTask] Voice synthesis skipped/empty for message=%s",
@@ -1670,6 +1647,20 @@ async def _run_chat_generation_task(
                     )
         except Exception as voice_exc:
             logger.warning("[GenTask] Voice synthesis failed for message=%s: %s", ai_msg_id, voice_exc)
+
+        done_data: Dict[str, Any] = {
+            "finish_reason": finish_reason,
+            "usage": usage,
+            "message_id": ai_msg_id,
+            "content": final_saved_content,
+        }
+        if done_voice_payload:
+            done_data["voice_payload"] = done_voice_payload
+
+        await queue.put({
+            "event": "done",
+            "data": done_data,
+        })
 
     except Exception as e:
         logger.error(f"[GenTask] Error: {e}", exc_info=True)

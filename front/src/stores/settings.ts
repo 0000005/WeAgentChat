@@ -39,6 +39,9 @@ export const useSettingsStore = defineStore('settings', () => {
     const voiceModel = ref<string>('qwen3-tts-instruct-flash')
     const voiceApiKey = ref<string>('')
     const voiceDefaultVoiceId = ref<string>('Cherry')
+    const voiceEmotionEnhanceEnabled = ref<boolean>(false)
+    // 为空字符串表示跟随聊天模型
+    const voiceEmotionLlmConfigId = ref<string>('')
 
     // ===== Loading 状态 =====
     const isLoading = ref(false)
@@ -181,6 +184,8 @@ export const useSettingsStore = defineStore('settings', () => {
             tts_model: voiceModel,
             api_key: voiceApiKey,
             default_voice_id: voiceDefaultVoiceId,
+            emotion_enhance_enabled: voiceEmotionEnhanceEnabled,
+            emotion_llm_config_id: voiceEmotionLlmConfigId,
         })
 
     /**
@@ -192,6 +197,8 @@ export const useSettingsStore = defineStore('settings', () => {
             tts_model: voiceModel,
             api_key: voiceApiKey,
             default_voice_id: voiceDefaultVoiceId,
+            emotion_enhance_enabled: voiceEmotionEnhanceEnabled,
+            emotion_llm_config_id: voiceEmotionLlmConfigId,
         })
 
     /**
@@ -227,6 +234,8 @@ export const useSettingsStore = defineStore('settings', () => {
         voiceModel,
         voiceApiKey,
         voiceDefaultVoiceId,
+        voiceEmotionEnhanceEnabled,
+        voiceEmotionLlmConfigId,
         isLoading,
         isSaving,
         // Actions
