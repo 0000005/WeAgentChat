@@ -583,14 +583,26 @@ const stripMessageTags = (content: string) => {
 }
 
 const getMessageSegments = (msg: Message) => {
-  if (msg.voicePayload?.segments?.length) {
+  const textSegments = parseMessageSegments(msg.content)
+  const voiceSegments = (msg.voicePayload?.segments || [])
+    .slice()
+    .sort((a, b) => a.segment_index - b.segment_index)
+  if (voiceSegments.length) {
+    // 群聊语音消息按多段渲染，避免把多气泡语音合并为单气泡。
+    if (textSegments.length >= voiceSegments.length) return textSegments
+    const merged = voiceSegments.map((segment, index) => {
+      const text = textSegments[index]
+      if (typeof text === 'string' && text.trim()) return text
+      return (segment.text || '').trim()
+    })
+    if (merged.some(item => item)) return merged
     const normalized = stripMessageTags(msg.content)
     return normalized ? [normalized] : ['']
   }
   if (isAutoDriveMessage(msg)) {
     return msg.content ? [msg.content] : ['']
   }
-  return parseMessageSegments(msg.content)
+  return textSegments
 }
 
 const voicePlaybackKey = ref<string | null>(null)

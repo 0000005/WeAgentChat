@@ -477,7 +477,6 @@ const playTestAudio = async (audioUrl: string) => {
 onMounted(() => {
     llmStore.fetchConfigs()
     embeddingStore.fetchConfigs()
-    settingsStore.fetchSessionSettings()
     settingsStore.fetchChatSettings()
     settingsStore.fetchMemorySettings()
     settingsStore.fetchSystemSettings()
@@ -545,13 +544,10 @@ const handleSave = async () => {
 
         if (activeTab.value === 'memory') {
             if (!activeEmbeddingConfigId.value) {
-                // Session settings (passive timeout / smart context) should still be persisted.
-                await settingsStore.saveSessionSettings()
                 showConfirmDialog('请先选择向量模型', '记忆系统必须绑定一个向量模型配置。请先在「向量化设置」中创建并选择配置。', () => { }, { confirmText: '知道了', showCancel: false })
                 return
             }
             await Promise.all([
-                settingsStore.saveSessionSettings(),
                 settingsStore.saveMemorySettings(),
                 memoryStore.saveConfig()
             ])
@@ -1112,16 +1108,23 @@ watch(activeLlmConfig, (config) => {
     }
 })
 
+const openExternalLink = (url: string) => {
+    if ((window as any).WeAgentChat?.shell?.openExternal) {
+        (window as any).WeAgentChat.shell.openExternal(url)
+    } else {
+        window.open(url, '_blank', 'noopener,noreferrer')
+    }
+}
+
+const openAliyunBailian = () => {
+    openExternalLink('https://bailian.console.aliyun.com/')
+}
+
 const openTutorial = () => {
     // Robustly determine base URL ensuring file:// compatibility
     const baseUrl = window.location.href.split('#')[0].substring(0, window.location.href.split('#')[0].lastIndexOf('/') + 1)
     const url = `${baseUrl}configuration_doc.pdf`
-
-    if ((window as any).WeAgentChat?.shell?.openExternal) {
-        (window as any).WeAgentChat.shell.openExternal(url)
-    } else {
-        window.open(url, '_blank')
-    }
+    openExternalLink(url)
 }
 </script>
 
@@ -1494,7 +1497,13 @@ const openTutorial = () => {
                                 <div class="grid gap-2">
                                     <label class="text-sm font-medium leading-none">语音服务商</label>
                                     <Input :model-value="voiceProviderLabel" disabled />
-                                    <p class="text-xs text-gray-500">当前版本仅支持阿里云百炼。</p>
+                                    <p class="text-xs text-gray-500">
+                                        当前版本仅支持阿里云百炼。
+                                        <button type="button" class="ml-1 text-emerald-600 hover:underline"
+                                            @click="openAliyunBailian">
+                                            阿里云百炼
+                                        </button>
+                                    </p>
                                 </div>
 
                                 <div class="grid gap-2">
@@ -1537,7 +1546,8 @@ const openTutorial = () => {
                                         <div v-if="voiceEmotionEnhanceEnabled && !llmConfigs.length"
                                             class="text-xs text-gray-400">
                                             请先在「LLM 设置」中添加配置，
-                                            <button class="text-emerald-600 hover:underline" @click="originalSetTab('llm')">
+                                            <button class="text-emerald-600 hover:underline"
+                                                @click="originalSetTab('llm')">
                                                 立即前往
                                             </button>
                                         </div>

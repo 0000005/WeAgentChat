@@ -132,12 +132,32 @@ const stripMessageTags = (content: string) => {
 }
 
 const getAssistantMessageSegments = (msg: ChatMessage) => {
-  // 语音消息统一按单条消息渲染，保证语音条与完整文本同条展示
-  if (msg.voicePayload?.segments?.length) {
-    const normalized = stripMessageTags(msg.content)
-    return normalized ? [normalized] : []
+  const textSegments = parseMessageSegments(msg.content)
+  const voiceSegments = (msg.voicePayload?.segments || [])
+    .slice()
+    .sort((a, b) => a.segment_index - b.segment_index)
+
+  if (!voiceSegments.length) {
+    return textSegments
   }
-  return parseMessageSegments(msg.content)
+
+  // 语音消息也按多段渲染：优先使用 <message> 分段；若语音段更多，用语音文本补齐，确保每段可绑定独立语音条。
+  if (textSegments.length >= voiceSegments.length) {
+    return textSegments
+  }
+
+  const merged = voiceSegments.map((segment, index) => {
+    const text = textSegments[index]
+    if (typeof text === 'string' && text.trim()) return text
+    return (segment.text || '').trim()
+  })
+
+  return merged.some(item => item)
+    ? merged
+    : (() => {
+      const normalized = stripMessageTags(msg.content)
+      return normalized ? [normalized] : []
+    })()
 }
 
 // 检测是否需要显示会话分隔线（session_id 变化时）

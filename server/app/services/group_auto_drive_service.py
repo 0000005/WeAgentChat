@@ -970,7 +970,7 @@ class GroupAutoDriveService:
             message_id=ai_msg_id,
             session_id=run.session_id,
             db=db,
-            sanitize_message_tags=bool(friend.enable_voice),
+            sanitize_message_tags=False,
         )
 
         if friend.enable_voice:

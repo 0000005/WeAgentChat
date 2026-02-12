@@ -1593,9 +1593,6 @@ async def _run_chat_generation_task(
 
         # 5. Save to DB
         final_saved_content = saved_content if saved_content else "[No response]"
-        if friend and friend.enable_voice and final_saved_content != "[No response]":
-            final_saved_content = _strip_message_tags(final_saved_content) or final_saved_content
-
         ai_msg = db.query(Message).filter(Message.id == ai_msg_id).first()
         if ai_msg:
             ai_msg.content = final_saved_content

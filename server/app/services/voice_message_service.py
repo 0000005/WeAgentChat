@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import math
 import os
@@ -29,7 +30,8 @@ logger = logging.getLogger(__name__)
 DEFAULT_DASHSCOPE_BASE_URL = "https://dashscope.aliyuncs.com/api/v1"
 DEFAULT_TTS_MODEL = "qwen3-tts-instruct-flash"
 VOICE_ENDPOINT = "/services/aigc/multimodal-generation/generation"
-MAX_TTS_PARALLELISM = 4
+MAX_TTS_PARALLELISM = 2
+MAX_TTS_SEGMENT_CHARS = 300
 MAX_EMOTION_CONTEXT_MESSAGES = 12
 MAX_EMOTION_CONTEXT_CHARS = 1200
 MAX_EMOTION_REPLY_CHARS = 800
@@ -69,6 +71,49 @@ def parse_message_segments(content: str) -> List[str]:
         text = content.strip()
         return [text] if text else []
     return segments
+
+
+def _split_segment_by_period(text: str, max_chars: int = MAX_TTS_SEGMENT_CHARS) -> List[str]:
+    compact = (text or "").strip()
+    if not compact:
+        return []
+    if len(compact) <= max_chars:
+        return [compact]
+
+    raw_parts = compact.split("。")
+    parts: List[str] = []
+    for idx, raw_part in enumerate(raw_parts):
+        part = raw_part.strip()
+        if not part:
+            continue
+        # 除最后一段外补回句号，尽量保持原文语气停顿。
+        if idx < len(raw_parts) - 1:
+            part = f"{part}。"
+        parts.append(part)
+
+    merged: List[str] = []
+    current = ""
+    for part in parts:
+        if not current:
+            current = part
+            continue
+        if len(current) + len(part) <= max_chars:
+            current += part
+        else:
+            merged.append(current)
+            current = part
+    if current:
+        merged.append(current)
+
+    # 兜底：若单句本身超过上限，按长度硬切分，确保每片段 <= max_chars。
+    result: List[str] = []
+    for chunk in merged:
+        if len(chunk) <= max_chars:
+            result.append(chunk)
+            continue
+        for i in range(0, len(chunk), max_chars):
+            result.append(chunk[i : i + max_chars])
+    return result
 
 
 def _normalize_base_url(base_url: Optional[str]) -> str:
@@ -132,6 +177,63 @@ def _strip_think_blocks(text: Optional[str]) -> str:
     cleaned = re.sub(r"(?is)</?think>", " ", cleaned)
     cleaned = re.sub(r"(?is)</?thinking>", " ", cleaned)
     return cleaned
+
+
+def _mask_api_key(api_key: Optional[str]) -> str:
+    if not api_key:
+        return ""
+    value = str(api_key)
+    if len(value) <= 8:
+        return "*" * len(value)
+    return f"{value[:4]}...{value[-4:]}"
+
+
+def _http_response_error_summary(exc: httpx.HTTPStatusError) -> Dict[str, Any]:
+    response = exc.response
+    request = exc.request
+    headers = response.headers
+    request_id = (
+        headers.get("x-dashscope-request-id")
+        or headers.get("x-request-id")
+        or headers.get("request-id")
+        or headers.get("x-trace-id")
+        or ""
+    )
+    try:
+        raw_body = json.dumps(response.json(), ensure_ascii=False)
+    except Exception:
+        raw_body = response.text or ""
+
+    return {
+        "status_code": response.status_code,
+        "method": request.method,
+        "url": str(request.url),
+        "request_id": request_id,
+        "response_body": _clip_text(_compact_text(raw_body), 2000),
+    }
+
+
+def _build_tts_request_debug(
+    *,
+    endpoint: str,
+    model: str,
+    voice_id: str,
+    segment_text: str,
+    emotion_instruction: Optional[str],
+    api_key: str,
+) -> Dict[str, Any]:
+    return {
+        "endpoint": endpoint,
+        "model": model,
+        "voice": voice_id,
+        "language_type": "Chinese",
+        "text_len": len(segment_text or ""),
+        "text_preview": _clip_text(_compact_text(segment_text or ""), 120),
+        "has_instructions": bool(emotion_instruction),
+        "instructions_len": len(emotion_instruction or ""),
+        "optimize_instructions": bool(emotion_instruction),
+        "api_key_masked": _mask_api_key(api_key),
+    }
 
 
 def _extract_audio_url(payload: Dict[str, Any]) -> Optional[str]:
@@ -524,6 +626,14 @@ async def _synthesize_single_segment(
     emotion_instruction: Optional[str] = None,
 ) -> Dict[str, Any]:
     endpoint = f"{base_url}{VOICE_ENDPOINT}"
+    request_debug = _build_tts_request_debug(
+        endpoint=endpoint,
+        model=model,
+        voice_id=voice_id,
+        segment_text=segment_text,
+        emotion_instruction=emotion_instruction,
+        api_key=api_key,
+    )
     input_payload: Dict[str, Any] = {
         "text": segment_text,
         "voice": voice_id,
@@ -531,6 +641,7 @@ async def _synthesize_single_segment(
     }
     if emotion_instruction:
         input_payload["instructions"] = emotion_instruction
+        input_payload["optimize_instructions"] = True
 
     request_body = {
         "model": model,
@@ -541,16 +652,64 @@ async def _synthesize_single_segment(
         "Content-Type": "application/json",
     }
 
-    response = await client.post(endpoint, json=request_body, headers=headers)
-    response.raise_for_status()
+    try:
+        response = await client.post(endpoint, json=request_body, headers=headers)
+        response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        err_summary = _http_response_error_summary(exc)
+        logger.warning(
+            "[Voice] TTS request failed for message=%s segment=%s status=%s request_id=%s request=%s response=%s",
+            message_id,
+            segment_index,
+            err_summary["status_code"],
+            err_summary["request_id"],
+            request_debug,
+            err_summary["response_body"],
+        )
+        raise
+    except httpx.RequestError as exc:
+        logger.warning(
+            "[Voice] TTS request network error for message=%s segment=%s type=%s request=%s error=%s",
+            message_id,
+            segment_index,
+            type(exc).__name__,
+            request_debug,
+            exc,
+        )
+        raise
+
     payload = response.json()
 
     remote_audio_url = _extract_audio_url(payload)
     if not remote_audio_url:
-        raise ValueError("TTS 响应中未找到 audio url")
+        payload_preview = _clip_text(_compact_text(json.dumps(payload, ensure_ascii=False)), 2000)
+        raise ValueError(f"TTS 响应中未找到 audio url: payload={payload_preview}")
 
-    audio_resp = await client.get(remote_audio_url)
-    audio_resp.raise_for_status()
+    try:
+        audio_resp = await client.get(remote_audio_url)
+        audio_resp.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        err_summary = _http_response_error_summary(exc)
+        logger.warning(
+            "[Voice] Audio download failed for message=%s segment=%s status=%s request_id=%s remote_url=%s response=%s",
+            message_id,
+            segment_index,
+            err_summary["status_code"],
+            err_summary["request_id"],
+            remote_audio_url,
+            err_summary["response_body"],
+        )
+        raise
+    except httpx.RequestError as exc:
+        logger.warning(
+            "[Voice] Audio download network error for message=%s segment=%s type=%s remote_url=%s error=%s",
+            message_id,
+            segment_index,
+            type(exc).__name__,
+            remote_audio_url,
+            exc,
+        )
+        raise
 
     ext = _infer_extension(remote_audio_url, audio_resp.headers.get("content-type"))
     abs_path, rel_url = _build_audio_output_path(message_id, segment_index, ext)
@@ -603,9 +762,20 @@ async def generate_voice_payload_for_message(
         logger.info("[Voice] Skip voice generation: no voice_id resolved for message=%s", message_id)
         return None
 
-    segments = parse_message_segments(content)
+    raw_segments = parse_message_segments(content)
+    segments = []
+    for seg in raw_segments:
+        segments.extend(_split_segment_by_period(seg, max_chars=MAX_TTS_SEGMENT_CHARS))
     if not segments:
         return None
+    if len(segments) != len(raw_segments):
+        logger.info(
+            "[Voice] Segment split applied for message=%s raw_segments=%s normalized_segments=%s max_chars=%s",
+            message_id,
+            len(raw_segments),
+            len(segments),
+            MAX_TTS_SEGMENT_CHARS,
+        )
 
     model = runtime_config["model"]
     base_url = runtime_config["base_url"]
@@ -647,7 +817,7 @@ async def generate_voice_payload_for_message(
     timeout = httpx.Timeout(60.0, connect=10.0, read=60.0, write=60.0)
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
         tasks = [
-            asyncio.create_task(_worker(segment, idx, client))
+            asyncio.create_task(_worker(segment, idx, client), name=f"voice-seg-{idx}")
             for idx, segment in enumerate(segments)
         ]
 
@@ -655,7 +825,15 @@ async def generate_voice_payload_for_message(
             try:
                 segment_data = await future
             except Exception as exc:
-                logger.warning("[Voice] Segment synthesis failed for message=%s: %s", message_id, exc)
+                task_name = future.get_name() if hasattr(future, "get_name") else "voice-seg-unknown"
+                logger.warning(
+                    "[Voice] Segment synthesis failed for message=%s task=%s type=%s error=%s",
+                    message_id,
+                    task_name,
+                    type(exc).__name__,
+                    exc,
+                    exc_info=True,
+                )
                 continue
 
             seg_index = int(segment_data["segment_index"])

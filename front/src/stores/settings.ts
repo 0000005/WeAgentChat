@@ -38,7 +38,7 @@ export const useSettingsStore = defineStore('settings', () => {
     const voiceProvider = ref<string>('aliyun_bailian')
     const voiceModel = ref<string>('qwen3-tts-instruct-flash')
     const voiceApiKey = ref<string>('')
-    const voiceDefaultVoiceId = ref<string>('Cherry')
+    const voiceDefaultVoiceId = ref<string>('Maia')
     const voiceEmotionEnhanceEnabled = ref<boolean>(false)
     // 为空字符串表示跟随聊天模型
     const voiceEmotionLlmConfigId = ref<string>('')
@@ -89,42 +89,37 @@ export const useSettingsStore = defineStore('settings', () => {
     }
 
     /**
-     * 从后端获取 session 分组的配置
-     */
-    const fetchSessionSettings = () =>
-        fetchSettings('session', {
-            passive_timeout: passiveTimeout,
-            smart_context_enabled: smartContextEnabled,
-            smart_context_model: smartContextModel
-        })
-
-    /**
-     * 保存 session 配置到后端
-     */
-    const saveSessionSettings = () =>
-        saveSettings('session', {
-            passive_timeout: passiveTimeout,
-            smart_context_enabled: smartContextEnabled,
-            smart_context_model: smartContextModel
-        })
-
-    /**
-     * 从后端获取 chat 分组的配置
+     * 从后端获取 chat + session 分组的配置
+     * session 分组包含会话过期时间、智能复活等，UI 上已合并到聊天设置 tab
      */
     const fetchChatSettings = () =>
-        fetchSettings('chat', {
-            enable_thinking: enableThinking,
-            active_llm_config_id: activeLlmConfigId
-        })
+        Promise.all([
+            fetchSettings('chat', {
+                enable_thinking: enableThinking,
+                active_llm_config_id: activeLlmConfigId
+            }),
+            fetchSettings('session', {
+                passive_timeout: passiveTimeout,
+                smart_context_enabled: smartContextEnabled,
+                smart_context_model: smartContextModel
+            })
+        ])
 
     /**
-     * 保存 chat 配置到后端
+     * 保存 chat + session 配置到后端
      */
     const saveChatSettings = () =>
-        saveSettings('chat', {
-            enable_thinking: enableThinking,
-            active_llm_config_id: activeLlmConfigId
-        })
+        Promise.all([
+            saveSettings('chat', {
+                enable_thinking: enableThinking,
+                active_llm_config_id: activeLlmConfigId
+            }),
+            saveSettings('session', {
+                passive_timeout: passiveTimeout,
+                smart_context_enabled: smartContextEnabled,
+                smart_context_model: smartContextModel
+            })
+        ])
 
     /**
      * 从后端获取 memory 分组的配置
@@ -239,8 +234,6 @@ export const useSettingsStore = defineStore('settings', () => {
         isLoading,
         isSaving,
         // Actions
-        fetchSessionSettings,
-        saveSessionSettings,
         getTimeoutInMinutes,
         setTimeoutFromMinutes,
         fetchChatSettings,

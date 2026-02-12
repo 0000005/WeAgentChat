@@ -1375,7 +1375,7 @@ class GroupChatService:
                     message_id=ai_msg_id,
                     session_id=session_id,
                     db=db,
-                    sanitize_message_tags=bool(friend.enable_voice),
+                    sanitize_message_tags=False,
                 )
 
                 # 语音回复（在 done 事件后异步补充 voice 事件）
