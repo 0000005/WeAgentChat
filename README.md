@@ -104,7 +104,10 @@ WeAgentChat 不一样。
       <h3>👥 沉浸式 AI 群聊</h3>
       <p>拉上多个 AI 好友一起群聊<br>观察不同人设的观点碰撞<br>激发更多灵感火花</p>
     </td>
-    <td width="33%"></td>
+    <td align="center" width="33%">
+      <h3>🎙️ 拟真语音对话</h3>
+      <p>支持接收语音消息，像真朋友一样发语音</p>
+    </td>
   </tr>
 </table>
 
@@ -256,6 +259,7 @@ pnpm electron:dev
 - [x] 记忆可视化 & 管理界面
 - [x] 好友库 (Friend Library)
 - [x] AI 群聊功能
+- [x] 语音消息功能 (Voice Message)
 - [ ] AI 朋友圈 (Moments)
 - [ ] 日程管理 (Schedule Management)
 
