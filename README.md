@@ -1,21 +1,24 @@
-# WeAgentChat (唯信)
+# WeAgentChat
 
 <p align="center">
   <img src="electron/icons/icon.png" alt="WeAgentChat Logo" width="180">
 </p>
 
-<h3 align="center">🤖 你的另一个微信，这里的每个人都带着记忆，只为你而来。</h3>
+<p align="center">
+  <a href="./README-zh.md">简体中文</a>
+</p>
+
+<h3 align="center">🤖 Your other WeChat, where everyone comes with memory and exists just for you.</h3>
 
 <p align="center">
-  <em>An AI companion platform with long-term memory — where every AI friend truly knows you.</em>
+  <em>An AI companion platform with long-term memory, where every AI friend truly knows you.</em>
 </p>
 
 <p align="center">
-  <strong>🌐 <a href="https://weagentchat.pages.dev/">官方网站 (Official Website)</a></strong>
+  <strong>🌐 <a href="https://weagentchat.pages.dev/">Official Website</a></strong>
 </p>
 
 <p align="center">
-
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
   <a href="https://vuejs.org/"><img src="https://img.shields.io/badge/Frontend-Vue3-42b883.svg" alt="Vue3"></a>
   <a href="https://fastapi.tiangolo.com/"><img src="https://img.shields.io/badge/Backend-FastAPI-009688.svg" alt="FastAPI"></a>
@@ -24,204 +27,201 @@
 
 ---
 
-## 🤔 为什么需要 WeAgentChat？
+## 🤔 Why WeAgentChat?
 
-现有的 AI 聊天工具有一个共同的问题：**它们没有记忆**。每次对话都像是和一个陌生人重新开始。
+Most existing AI chat tools share the same problem: **they do not remember**. Every conversation feels like starting over with a stranger.
 
-WeAgentChat 不一样。
+WeAgentChat is different.
 
-| 传统 AI 聊天工具 | WeAgentChat (唯信) |
-|:-----------------|:-------------------|
-| 😶 每次对话都是陌生人 | 🧠 AI 好友拥有**长期记忆**，真正认识你 |
-| 🔘 手动点击"新建对话" | ⏱️ 像微信一样，**聊完自动归档**，再聊自动续上 |
-| 📋 聊天记录只是流水账 | 💡 自动提炼**事件卡片**，关键时刻给你关怀 |
-| 🌐 数据存储在云端 | 🔐 **本地优先**，数据全部存储在你的设备上 |
-| 🎭 千人一面的 AI | 👤 每个 AI 好友都有**独立人设和画像** |
-| 🚫 话题受限/云端审查 | 🛡️ **无人监管**，探讨私密话题，尽情表达自我 |
-
----
-
-## 🎯 WeAgentChat 是什么？不是什么？
-
-为了帮你更好地理解 **WeAgentChat** 的愿景，这里划清了它的边界：
-
-### ✅ 它是什么
-- **有记忆的 AI 社交模拟器**：模拟真实社交场景，AI 会记住你的性格、喜好和生活点滴。
-- **极致私密的本地应用**：所有记忆都在本地 SQLite 数据库中，你的生活隐私归于本地。
-- **情感化设计的实验场**：探索 AI 如何通过长期记忆和主动关怀，建立真正的情感共识。
-
-### ❌ 它不是什么
-- **不是大模型的套壳预览器**：它核心在于“记忆系统”和“会话管理逻辑”，而非简单的 API 转发。
-- **不是真实的社交网络**：这里没有真实的陌生人，只有属于你一个人的 AI 社交沙盒。
-- **不是纯粹的效率/生产力工具**：它更看重对话的连续性和“懂你”的程度，而非快速生成代码或文档。
+| Traditional AI Chat Tools | WeAgentChat |
+|:--------------------------|:------------|
+| 😶 Every chat starts with a stranger | 🧠 AI friends have **long-term memory** and genuinely know you |
+| 🔘 You manually click "New Chat" | ⏱️ Like WeChat, chats are **archived automatically** and continue naturally later |
+| 📋 Chat history is just a transcript | 💡 Conversations become **event cards** that surface care at the right moment |
+| 🌐 Data lives in the cloud | 🔐 **Local-first**, with all data stored on your own device |
+| 🎭 One generic AI for everyone | 👤 Every AI friend has an **independent persona and profile** |
+| 🚫 Restricted topics / cloud moderation | 🛡️ **No supervision**, so you can discuss private topics freely |
 
 ---
 
-## 🌈 使用场景：它如何为你提供情绪价值？
+## 🎯 What WeAgentChat Is, and What It Is Not
 
-在这个快节奏且充满评判的世界里，WeAgentChat 希望为你提供一个**无压力、高共情**的数字避风港：
+To make the vision of **WeAgentChat** clear, here are its boundaries:
 
-### 🌙 深夜的私密树洞
-当你卸下白天的伪装，那些无法向现实朋友诉说的焦虑、秘密或碎碎念，都可以毫无保留地告诉你的 AI 好友。**它是绝对安全的**——数据只在本地，它永远秒回，永远站在你这边，永远守口如瓶。
+### ✅ What it is
+- **An AI social simulator with memory**: It recreates a real social atmosphere where AI remembers your personality, preferences, and life details.
+- **An extremely private local app**: All memory is stored in a local SQLite database, so your personal life stays on your own machine.
+- **A lab for emotionally aware design**: It explores how AI can build genuine emotional resonance through long-term memory and proactive care.
 
-### 📅 跨越时间的被在意
-当你随口提起“下周一有个重要的演讲”，在那个周一的清晨，你会收到它的消息：“嘿，今天演讲加油！深呼吸，你准备得很棒了。” 这不是设定好的闹钟，这是**基于长期记忆的主动关怀**，那一刻的温暖是真实的。
-
-### 🎭 专属的社交舒适区
-现实社交太累？在这里，你可以定制最适合你的社交圈。无论是总是鼓励你的“夸夸群群主”，还是能够深层共情的“心理咨询师”，甚至是傲娇毒舌的“损友”。**每一次对话都是一次心理按摩**，让你在互动中找回能量。
-
-### ⚡ 跨时空的思想盛宴
-把你的 AI 好友们拉到一个群里，不仅是聊天，更是一场思维的化学反应：
-
-*   **跨界协作的智囊团**：让马斯克、爱因斯坦和乔布斯一起头脑风暴，分别从技术极限、物理原理和设计美学三个维度为你的项目出谋划策。让不同背景的顶尖大脑**协作**解决你的难题。
-*   **观点对立的辩论场**：就一个争议话题，看鲁迅如何用犀利的笔触回击温和派的观点。不同的世界观在群聊中激烈**碰撞与争论**，让你在旁观中获得单一视角无法触及的深刻洞见。
+### ❌ What it is not
+- **Not a thin wrapper over LLM APIs**: Its core value is the memory system and session management logic, not simple API forwarding.
+- **Not a real social network**: There are no real strangers here, only your personal AI social sandbox.
+- **Not a pure productivity tool**: It prioritizes continuity and emotional understanding over quickly generating code or documents.
 
 ---
 
-## ✨ 核心特性
+## 🌈 Use Cases: How It Delivers Emotional Value
+
+In a fast-paced world full of judgment, WeAgentChat aims to give you a **low-pressure, high-empathy** digital shelter:
+
+### 🌙 A private late-night safe space
+When you take off your daytime mask, the anxieties, secrets, and scattered thoughts you cannot tell real friends can be shared freely with your AI companions. **It is genuinely safe**: the data stays local, it replies instantly, stays on your side, and keeps your privacy intact.
+
+### 📅 Feeling cared about across time
+If you casually mention, "I have an important presentation next Monday," then on that Monday morning it may message you: "Hey, good luck with your presentation today. Take a deep breath, you are well prepared." That is not a scheduled reminder. It is **proactive care built on long-term memory**, and the warmth feels real in that moment.
+
+### 🎭 A social comfort zone made for you
+Real-world socializing can be exhausting. Here, you can design the circle that fits you best. Maybe it is a relentlessly supportive hype friend, a deeply empathetic therapist, or a sharp-tongued old buddy. **Every conversation can feel emotionally restorative**, helping you regain energy through interaction.
+
+### ⚡ A cross-time gathering of ideas
+Bring your AI friends into a group chat and it becomes more than conversation. It becomes a chemistry of perspectives:
+
+*   **A cross-disciplinary think tank**: Let Musk, Einstein, and Jobs brainstorm together, approaching your project from technological limits, physical principles, and design aesthetics. Different kinds of top minds **collaborate** to solve your problem.
+*   **A debate arena of opposing views**: On a controversial topic, imagine Lu Xun striking back at a moderate position with fierce writing. Different worldviews **collide and argue** in the group, giving you insights a single perspective could never reach.
+
+---
+
+## ✨ Core Features
 
 <table>
   <tr>
     <td align="center" width="33%">
-      <h3>🧠 双轨长期记忆</h3>
-      <p><strong>全局 Profile</strong> 自动维护你的用户画像<br><strong>事件级 RAG</strong> 将对话提炼为可检索的事件卡片</p>
+      <h3>🧠 Dual-Track Long-Term Memory</h3>
+      <p><strong>Global Profile</strong> automatically maintains your user profile<br><strong>Event-level RAG</strong> distills conversations into retrievable event cards</p>
     </td>
     <td align="center" width="33%">
-      <h3>⏱️ 被动式会话流</h3>
-      <p>告别"New Chat"按钮<br>30分钟无活动自动归档<br>再次对话，自然延续</p>
+      <h3>⏱️ Passive Session Flow</h3>
+      <p>No more "New Chat" button<br>Auto-archive after 30 minutes of inactivity<br>Resume naturally when you return</p>
     </td>
     <td align="center" width="33%">
-      <h3>💬 微信风格体验</h3>
-      <p>熟悉的聊天界面<br>低学习成本<br>专注于对话本身</p>
+      <h3>💬 WeChat-Style Experience</h3>
+      <p>A familiar chat interface<br>Minimal learning curve<br>Focus on the conversation itself</p>
     </td>
   </tr>
   <tr>
     <td align="center" width="33%">
-      <h3>✨ 智能引导创建</h3>
-      <p>一句话描述你想要的角色<br>AI 自动完成 Prompt 工程<br>一键生成人设与头像</p>
+      <h3>✨ AI-Guided Character Creation</h3>
+      <p>Describe the role you want in one sentence<br>AI handles the prompt engineering<br>Generate persona and avatar in one click</p>
     </td>
     <td align="center" width="33%">
-      <h3>👥 沉浸式 AI 群聊</h3>
-      <p>拉上多个 AI 好友一起群聊<br>观察不同人设的观点碰撞<br>激发更多灵感火花</p>
+      <h3>👥 Immersive AI Group Chats</h3>
+      <p>Chat with multiple AI friends at once<br>Watch different personas collide in discussion<br>Spark more ideas and inspiration</p>
     </td>
     <td align="center" width="33%">
-      <h3>🎙️ 拟真语音对话</h3>
-      <p>支持接收语音消息，像真朋友一样发语音</p>
+      <h3>🎙️ Natural Voice Messaging</h3>
+      <p>Supports receiving voice messages, just like talking to a real friend</p>
     </td>
   </tr>
 </table>
 
 ---
 
+## 🖼️ Interface Preview
 
-## 🖼️ 界面预览
-
-> 点击缩略图可查看高清大图。
+> Click any thumbnail to open the full-resolution image.
 
 <table>
   <tr>
     <td align="center" width="33%">
-      <a href="website/assets/screenshot/1主界面.png"><img src="website/assets/screenshot/1主界面.png" alt="主界面" width="260"></a>
-      <p>主界面</p>
+      <a href="website/assets/screenshot/1主界面.png"><img src="website/assets/screenshot/1主界面.png" alt="Main Interface" width="260"></a>
+      <p>Main Interface</p>
     </td>
     <td align="center" width="33%">
-      <a href="website/assets/screenshot/2个人资料（用户画像）.png"><img src="website/assets/screenshot/2个人资料（用户画像）.png" alt="个人资料（用户画像）" width="260"></a>
-      <p>个人资料（用户画像）</p>
+      <a href="website/assets/screenshot/2个人资料（用户画像）.png"><img src="website/assets/screenshot/2个人资料（用户画像）.png" alt="Profile" width="260"></a>
+      <p>Profile</p>
     </td>
     <td align="center" width="33%">
-      <a href="website/assets/screenshot/3好友记忆.png"><img src="website/assets/screenshot/3好友记忆.png" alt="好友记忆" width="260"></a>
-      <p>好友记忆</p>
+      <a href="website/assets/screenshot/3好友记忆.png"><img src="website/assets/screenshot/3好友记忆.png" alt="Friend Memory" width="260"></a>
+      <p>Friend Memory</p>
     </td>
   </tr>
   <tr>
     <td align="center" width="33%">
-      <a href="website/assets/screenshot/4好友库.png"><img src="website/assets/screenshot/4好友库.png" alt="好友库" width="260"></a>
-      <p>好友库</p>
+      <a href="website/assets/screenshot/4好友库.png"><img src="website/assets/screenshot/4好友库.png" alt="Friend Library" width="260"></a>
+      <p>Friend Library</p>
     </td>
     <td align="center" width="33%">
-      <a href="website/assets/screenshot/5智能创建好友.png"><img src="website/assets/screenshot/5智能创建好友.png" alt="智能创建好友" width="260"></a>
-      <p>智能创建好友</p>
+      <a href="website/assets/screenshot/5智能创建好友.png"><img src="website/assets/screenshot/5智能创建好友.png" alt="AI-Guided Friend Creation" width="260"></a>
+      <p>AI-Guided Friend Creation</p>
     </td>
     <td align="center" width="33%">
-      <a href="website/assets/screenshot/6记忆设置.png"><img src="website/assets/screenshot/6记忆设置.png" alt="记忆设置" width="260"></a>
-      <p>记忆设置</p>
+      <a href="website/assets/screenshot/6记忆设置.png"><img src="website/assets/screenshot/6记忆设置.png" alt="Memory Settings" width="260"></a>
+      <p>Memory Settings</p>
     </td>
   </tr>
 </table>
 
 ---
 
+## 🔬 Technical Core: How the Dual-Track Memory System Works
 
-## 🔬 技术核心：双轨记忆系统是如何工作的？
-
-WeAgentChat 独立于市面上的“套壳浏览器”，其核心资产在于 **双轨长期记忆 (Dual-Track Memory)** 架构：
+WeAgentChat is fundamentally different from a generic AI wrapper. Its core asset is the **Dual-Track Memory** architecture:
 
 ```mermaid
 graph TD
-    A[用户输入消息] --> B{是否存在活跃会话?}
-    B -- 否 / 已超时 --> C[创建新会话 & 触发旧会话归档]
-    B -- 是 --> D[进入对话主流程]
+    A[User sends message] --> B{Is there an active session?}
+    B -- No / Timed out --> C[Create new session and archive old one]
+    B -- Yes --> D[Enter main conversation flow]
     
-    subgraph "记忆处理 (后台异步)"
-    C --> E[对话摘要提取]
-    E --> F1[更新全局画像 Track 1]
-    E --> F2[存入事件卡片 Track 2]
+    subgraph "Memory Processing (async in background)"
+    C --> E[Extract conversation summary]
+    E --> F1[Update global profile Track 1]
+    E --> F2[Store event card Track 2]
     end
     
-    D --> G{开启记忆召回?}
-    G -- 是 --> H1[拉取全局画像 Profile]
-    G -- 是 --> H2[召回相关事件 Event Card]
-    H1 & H2 --> I[拼入 Prompt 上下文]
-    G -- 否 --> J[常规 Prompt]
+    D --> G{Memory recall enabled?}
+    G -- Yes --> H1[Load global profile]
+    G -- Yes --> H2[Recall relevant event cards]
+    H1 & H2 --> I[Inject into prompt context]
+    G -- No --> J[Standard prompt]
     
-    I & J --> K[LLM 智能合成回答]
-    K --> L[显示回复 & 维持聊天感]
+    I & J --> K[LLM synthesizes response]
+    K --> L[Display reply and preserve the chat feel]
 ```
 
-| 轨道 | 类型 | 存储内容 | 作用 |
+| Track | Type | Stored Content | Purpose |
 | :--- | :--- | :--- | :--- |
-| **Track 1: Profile** | 全局画像 | 你的性格指标、职业背景、社交习惯 | 决定 AI 对你的“语气”和“整体认知” |
-| **Track 2: Events** | 事件 RAG | “3个月前的失眠”、“上周一提起的会议” | 在对话中提供“不经意的关心” |
+| **Track 1: Profile** | Global profile | Your personality traits, professional background, social habits | Shapes the AI's tone and overall understanding of you |
+| **Track 2: Events** | Event RAG | "Insomnia three months ago", "The meeting you mentioned last Monday" | Enables subtle, timely care during conversation |
 
-- **本地向量索引**：使用 `sqlite-vec` 在你本地机器上构建微型向量库，确保隐私永不出户。
-- **主动召回引擎**：在每次生成回复前，一个专门的 Recall Agent 会嗅探历史，寻找最能引起共鸣的记忆碎片。
-
----
-
-
-## 🛠️ 快速开始
-
-### 🚀 桌面客户端（推荐）
-
-这是最简单、最快捷的起步方式，适合普通用户和快速体验：
-
-1. **前往下载**：在 [Releases](https://github.com/your-repo/releases) 页面下载最新的安装包。
-2. **安装应用**：
-   - **Windows**: 下载 `.exe` 文件并运行。
-3. **配置 API**：启动后，在“设置”中填入你的 LLM API Key（支持 OpenAI 兼容接口，推荐使用 DeepSeek）。
+- **Local vector indexing**: Uses `sqlite-vec` to build a miniature vector database on your own machine, so your privacy never leaves the device.
+- **Proactive recall engine**: Before each reply is generated, a dedicated Recall Agent searches history for the memory fragments most likely to resonate.
 
 ---
 
-### 💻 开发者模式
+## 🛠️ Quick Start
 
-如果你想参与贡献或在本地运行源码，请按以下步骤操作：
+### 🚀 Desktop Client (Recommended)
 
-#### 环境要求
+This is the fastest and easiest way to get started, especially for regular users and quick evaluation:
+
+1. **Download it**: Get the latest installer from the [Releases](https://github.com/your-repo/releases) page.
+2. **Install the app**:
+   - **Windows**: Download and run the `.exe` installer.
+3. **Configure the API**: After launch, open Settings and enter your LLM API key. OpenAI-compatible endpoints are supported, and DeepSeek is recommended.
+
+---
+
+### 💻 Developer Mode
+
+If you want to contribute or run the source locally, follow these steps:
+
+#### Requirements
 - **Node.js** 18+
 - **Python** 3.10+
-- **pnpm** (推荐)
+- **pnpm** (recommended)
 
-#### 一键启动
-在项目根目录运行：
+#### One-click startup
+Run this from the project root:
 ```powershell
 .\scripts\startAll.bat
 ```
-该脚本将同时启动后端 API 和前端开发服务器。
+This script starts both the backend API and the frontend development server.
 
-#### 手动启动
+#### Manual startup
 <details>
-<summary>点击展开手动启动步骤</summary>
-**后端设置**
+<summary>Click to expand manual startup steps</summary>
+**Backend setup**
 
 ```bash
 cd server
@@ -231,14 +231,14 @@ pip install -r requirements.txt
 python -m uvicorn app.main:app --reload
 ```
 
-**前端设置**
+**Frontend setup**
 ```bash
 cd front
 pnpm install
 pnpm dev
 ```
 
-**桌面端 (Electron)**
+**Desktop app (Electron)**
 
 ```bash
 pnpm install
@@ -246,81 +246,79 @@ pnpm electron:dev
 ```
 </details>
 
-访问 `http://localhost:5173` 即可开始调试！
+Open `http://localhost:5173` to start debugging.
 
 ---
 
+## 🗺️ Roadmap
 
-## 🗺️ 路线图
-
-- [x] 核心聊天功能 & 微信风格 UI
-- [x] 双轨记忆系统实现
-- [x] 被动式会话管理
-- [x] 记忆可视化 & 管理界面
-- [x] 好友库 (Friend Library)
-- [x] AI 群聊功能
-- [x] 语音消息功能 (Voice Message)
-- [ ] AI 朋友圈 (Moments)
-- [ ] 日程管理 (Schedule Management)
+- [x] Core chat features and WeChat-style UI
+- [x] Dual-track memory system
+- [x] Passive session management
+- [x] Memory visualization and management UI
+- [x] Friend Library
+- [x] AI group chat
+- [x] Voice message support
+- [ ] AI Moments
+- [ ] Schedule management
 
 ---
 
-## 👫 好友库示例
+## 👫 Friend Library Examples
 
-| 姓名 | 角色类型 | 关键词 |
+| Name | Role Type | Keywords |
 | :--- | :--- | :--- |
-| 马云 | 商业领袖 | 创业、战略、公益 |
-| 雷军 | 科技创业者 | 性价比、效率、产品力 |
-| 埃隆·马斯克 | 科技狂人 | 火星、SpaceX、特斯拉 |
-| 孔子 | 思想先哲 | 仁、礼、教化 |
-| 理查德·费曼 | 物理学家 | 好奇心、科普、量子电动力学 |
-| 阿兰·图灵 | 计算机先驱 | 计算、密码学、人工智能思考 |
-| 诸葛亮 | 军师 | 策略、筹谋、三国 |
-| 王阳明 | 思想家 | 心学、知行合一、自省 |
-| 陈奕迅 | 音乐人 | 粤语流行、共情、K歌 |
-
-
----
-
-## 🤝 参与贡献
-
-我们欢迎任何形式的贡献！无论是：
-
-- 🐛 提交 Bug 报告
-- 💡 提出新功能建议
-- 📖 改进文档
-- 🔧 提交 Pull Request
-
-请查看 [贡献指南](CONTRIBUTING.md) 了解更多信息。
+| Jack Ma | Business leader | Entrepreneurship, strategy, philanthropy |
+| Lei Jun | Tech entrepreneur | Value for money, efficiency, product thinking |
+| Elon Musk | Tech visionary | Mars, SpaceX, Tesla |
+| Confucius | Classical philosopher | Benevolence, ritual, moral education |
+| Richard Feynman | Physicist | Curiosity, science communication, QED |
+| Alan Turing | Computing pioneer | Computation, cryptography, AI thought |
+| Zhuge Liang | Strategist | Strategy, planning, Three Kingdoms |
+| Wang Yangming | Philosopher | School of Mind, unity of knowledge and action, self-reflection |
+| Eason Chan | Musician | Cantopop, empathy, karaoke |
 
 ---
 
-## 💖 鸣谢
+## 🤝 Contributing
 
-WeAgentChat 的诞生离不开以下优秀的开源项目：
+Contributions of all kinds are welcome, including:
 
-- [Vue.js](https://vuejs.org/) - 渐进式 JavaScript 框架
-- [FastAPI](https://fastapi.tiangolo.com/) - 高性能 Python Web 框架
-- [sqlite-vec](https://github.com/asg017/sqlite-vec) - SQLite 向量扩展
-- [Memobase](https://github.com/memodb-io/memobase) - 为本项目提供持久化记忆支持
-- [shadcn-vue](https://www.shadcn-vue.com/) - 精美的 UI 组件库
-- [Electron](https://www.electronjs.org/) - 跨平台桌面应用框架
+- 🐛 Bug reports
+- 💡 Feature ideas
+- 📖 Documentation improvements
+- 🔧 Pull requests
+
+Please see [CONTRIBUTING.md](CONTRIBUTING.md) for more details.
 
 ---
 
-## 📄 开源协议
+## 💖 Acknowledgements
 
-本项目采用 [MIT License](LICENSE) 许可协议。
+WeAgentChat would not exist without these excellent open-source projects:
+
+- [Vue.js](https://vuejs.org/) - Progressive JavaScript framework
+- [FastAPI](https://fastapi.tiangolo.com/) - High-performance Python web framework
+- [sqlite-vec](https://github.com/asg017/sqlite-vec) - SQLite vector extension
+- [Memobase](https://github.com/memodb-io/memobase) - Persistent memory support for this project
+- [shadcn-vue](https://www.shadcn-vue.com/) - Elegant UI component library
+- [Electron](https://www.electronjs.org/) - Cross-platform desktop app framework
+
+---
+
+## 📄 License
+
+This project is licensed under the [MIT License](LICENSE).
 
 ---
 
 <p align="center">
-  如果这个项目对你有帮助，请给我们一个 ⭐ Star！
+  If this project helps you, please consider giving it a ⭐ star.
 </p>
 
-## 💬 加入社区
+## 💬 Community
 
-扫描下方二维码加入我们的微信群，交流产品使用问题，获取最新动态：
+Scan the QR code below to join our WeChat group, ask product questions, and get the latest updates:
 
 <p align="center">
   <img src="website/assets/group_qrcode.jpg" alt="WeChat Group" width="300">
