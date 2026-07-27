@@ -5,7 +5,7 @@ description: "UI/UX design intelligence. 50 styles, 21 palettes, 50 font pairing
 
 # UI/UX Pro Max - Design Intelligence
 
-Searchable database of UI styles, color palettes, font pairings, chart types, product recommendations, UX guidelines, and stack-specific best practices.
+Searchable database of UI styles, color palettes, font pairings, chart types, product recommendations, UX guidelines, and stack-specific best practices. (Note: Profile settings and configurations are global across the session).
 
 ## Prerequisites
 
@@ -67,6 +67,7 @@ python3 .Codex/skills/ui-ux-pro-max/scripts/search.py "<keyword>" --domain <doma
 
 ### Step 3: Stack Guidelines (Default: html-tailwind)
 
+**Note:** Profile settings and configurations are global.
 If user doesn't specify a stack, **default to `html-tailwind`**.
 
 ```bash
