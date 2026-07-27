@@ -20,6 +20,7 @@ from app.models.chat import Message
 from app.models.friend import Friend
 from app.models.group import GroupMessage
 from app.prompt import get_prompt
+from app.services.book_reading_tools import BOOK_CONTEXT_MESSAGE_ROLE
 from app.services import provider_rules
 from app.services.llm_client import set_agents_default_client
 from app.services.llm_service import llm_service
@@ -355,6 +356,7 @@ def _build_single_chat_context(db: Session, message: Message) -> str:
         .filter(
             Message.session_id == message.session_id,
             Message.deleted == False,
+            Message.role != BOOK_CONTEXT_MESSAGE_ROLE,
             Message.id < message.id,
         )
         .order_by(Message.id.desc())

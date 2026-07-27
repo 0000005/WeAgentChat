@@ -83,7 +83,7 @@ class PageContextPayload(BaseModel):
 
 
 class SelectedQuotePayload(BaseModel):
-    text: str = Field(..., min_length=1, max_length=4000)
+    text: str = Field(..., min_length=0, max_length=4000)
     excerpt: Optional[str] = None
     locator: Optional[str] = None
     toc_path: List[str] = Field(default_factory=list, alias="tocPath")
@@ -92,7 +92,16 @@ class SelectedQuotePayload(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    @field_validator("text", "excerpt", "locator", "source_type", mode="before")
+    @field_validator("text", mode="before")
+    @classmethod
+    def normalize_text_field(cls, value):
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+    @field_validator("excerpt", "locator", "source_type", mode="before")
     @classmethod
     def normalize_text_fields(cls, value):
         if value is None:

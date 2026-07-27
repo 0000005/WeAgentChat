@@ -19,6 +19,12 @@ from app.services.embedding_service import embedding_service
 from app.services.llm_client import set_agents_default_client
 from app.services.memo.bridge import MemoService
 from app.services.memo.constants import DEFAULT_USER_ID, DEFAULT_SPACE_ID
+from app.services.book_reading_tools import (
+    BOOK_CONTEXT_MESSAGE_ROLE,
+    BookReadingRequestContext,
+    build_book_context_mock_history_items,
+    build_book_reading_tools,
+)
 from app.services.reasoning_stream import extract_reasoning_delta
 from app.prompt import get_prompt
 from app.db.session import SessionLocal
@@ -95,6 +101,38 @@ from agents import Agent, ModelSettings, RunConfig, Runner, function_tool
 from agents.items import MessageOutputItem, ReasoningItem, ToolCallItem, ToolCallOutputItem
 from agents.stream_events import RunItemStreamEvent
 
+
+def _is_visible_message_role(role: Optional[str]) -> bool:
+    return role != BOOK_CONTEXT_MESSAGE_ROLE
+
+
+def _visible_message_filter(query):
+    return query.filter(Message.role != BOOK_CONTEXT_MESSAGE_ROLE)
+
+
+def _message_to_agent_input(message: Message) -> Optional[Dict[str, Any]]:
+    if message.role == BOOK_CONTEXT_MESSAGE_ROLE:
+        try:
+            payload = json.loads(message.content)
+        except json.JSONDecodeError:
+            logger.warning("[BookReading] Invalid persisted context payload skipped. message_id=%s", message.id)
+            return None
+        if isinstance(payload, dict):
+            return payload
+        logger.warning("[BookReading] Unexpected persisted context payload skipped. message_id=%s", message.id)
+        return None
+
+    return {"role": message.role, "content": message.content}
+
+
+def _build_agent_history(messages: List[Message]) -> List[Dict[str, Any]]:
+    history: List[Dict[str, Any]] = []
+    for message in messages:
+        payload = _message_to_agent_input(message)
+        if payload is not None:
+            history.append(payload)
+    return history
+
 # Global queue for memory generation tasks (processed by background worker)
 _memory_generation_queue: List[int] = []
 _friend_message_locks: Dict[str, asyncio.Lock] = {}
@@ -120,7 +158,12 @@ def _schedule_memory_generation(db: Session, session_id: int):
         loop = asyncio.get_running_loop()
         # 如果 loop 正在运行，尝试在该 loop 中创建任务
         # 注意：此处准备数据以传递给异步函数
-        messages = db.query(Message).filter(Message.session_id == session_id, Message.deleted == False).order_by(Message.create_time.asc()).all()
+        messages = (
+            _visible_message_filter(db.query(Message))
+            .filter(Message.session_id == session_id, Message.deleted == False)
+            .order_by(Message.create_time.asc(), Message.id.asc())
+            .all()
+        )
         session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
         if not session: return
         friend = db.query(Friend).filter(Friend.id == session.friend_id).first()
@@ -362,9 +405,9 @@ def get_messages(db: Session, session_id: int, skip: int = 0, limit: int = 100) 
     Get messages for a specific session.
     """
     return (
-        db.query(Message)
+        _visible_message_filter(db.query(Message))
         .filter(Message.session_id == session_id, Message.deleted == False)
-        .order_by(Message.create_time.asc())
+        .order_by(Message.create_time.asc(), Message.id.asc())
         .offset(skip)
         .limit(limit)
         .all()
@@ -395,9 +438,9 @@ def get_messages_by_friend(db: Session, friend_id: int, skip: int = 0, limit: in
     
     # Get messages in DESC order (newest first) for pagination, then reverse
     messages = (
-        db.query(Message)
+        _visible_message_filter(db.query(Message))
         .filter(Message.session_id.in_(session_ids), Message.deleted == False)
-        .order_by(Message.create_time.desc())
+        .order_by(Message.create_time.desc(), Message.id.desc())
         .offset(skip)
         .limit(limit)
         .all()
@@ -542,9 +585,9 @@ def get_book_reading_messages(
         return []
 
     messages = (
-        db.query(Message)
+        _visible_message_filter(db.query(Message))
         .filter(Message.session_id.in_(session_ids), Message.deleted == False)
-        .order_by(Message.create_time.desc())
+        .order_by(Message.create_time.desc(), Message.id.desc())
         .offset(skip)
         .limit(limit)
         .all()
@@ -1438,8 +1481,9 @@ async def _run_chat_generation_task(
     message_content: str,
     enable_thinking: bool,
     queue: asyncio.Queue,
-    request_context_messages: Optional[List[Dict[str, str]]] = None,
+    request_context_messages: Optional[List[Dict[str, Any]]] = None,
     allow_recall: bool = True,
+    book_request_context: Optional[BookReadingRequestContext] = None,
 ):
     """
     Background task to handle LLM generation and persistence.
@@ -1452,6 +1496,23 @@ async def _run_chat_generation_task(
         # 1. Fetch Context Data
         chat_session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
         friend = db.query(Friend).filter(Friend.id == friend_id).first()
+        book = None
+        if (
+            chat_session
+            and chat_session.session_type == SESSION_TYPE_BOOK_READING
+            and chat_session.knowledge_id
+        ):
+            book = (
+                db.query(BookModel)
+                .filter(
+                    BookModel.id == chat_session.knowledge_id,
+                    BookModel.deleted == False,
+                )
+                .first()
+            )
+        is_book_reading_session = bool(
+            chat_session and chat_session.session_type == SESSION_TYPE_BOOK_READING
+        )
         friend_name = friend.name if friend else "AI"
         
         llm_config = llm_service.get_active_config(db)
@@ -1489,10 +1550,9 @@ async def _run_chat_generation_task(
                 Message.id != user_msg_id,
                 Message.id != ai_msg_id
             )
-            .order_by(Message.create_time.desc())
+            .order_by(Message.create_time.asc(), Message.id.asc())
             .all()
         )
-        history.reverse()
         
         profile_data = ""
         injected_recall_messages = []
@@ -1513,7 +1573,11 @@ async def _run_chat_generation_task(
                             profile_lines.append(f"- {item.content.strip()}")
                     profile_data = "\n".join(profile_lines)
                 
-                messages_for_recall = [{"role": m.role, "content": m.content} for m in history]
+                messages_for_recall = [
+                    {"role": m.role, "content": m.content}
+                    for m in history
+                    if _is_visible_message_role(m.role)
+                ]
                 messages_for_recall.append({"role": "user", "content": message_content})
                 
                 recall_result = await RecallService.perform_recall(
@@ -1561,7 +1625,9 @@ async def _run_chat_generation_task(
         else:
             persona_prompt = ""
         
-        voice_reply_enabled = bool(friend and friend.enable_voice)
+        voice_reply_enabled = bool(
+            friend and friend.enable_voice and not is_book_reading_session
+        )
         script_prompt = ""
         if friend and friend.script_expression and not voice_reply_enabled:
             try:
@@ -1618,7 +1684,7 @@ async def _run_chat_generation_task(
             )
 
         # 4. Run LLM
-        agent_messages = [{"role": m.role, "content": m.content} for m in history]
+        agent_messages = _build_agent_history(history)
         inject_as_tool = any(
             isinstance(msg, dict) and msg.get("type") in ("function_call", "function_call_output")
             for msg in injected_recall_messages
@@ -1673,7 +1739,11 @@ async def _run_chat_generation_task(
             )
         else:
             agent_model = model_name
-        tools = [tool_recall] if enable_recall else []
+        tools = []
+        if enable_recall:
+            tools.append(tool_recall)
+        if book:
+            tools.extend(build_book_reading_tools(book, book_request_context))
         agent = Agent(
             name=friend_name,
             instructions=final_instructions,
@@ -1825,7 +1895,7 @@ async def _run_chat_generation_task(
         done_voice_payload: Optional[Dict[str, Any]] = None
         try:
             final_text = final_saved_content if final_saved_content != "[No response]" else ""
-            if friend and friend.enable_voice and final_text:
+            if voice_reply_enabled and final_text:
                 logger.info(
                     "[GenTask] Voice synthesis started for message=%s friend=%s",
                     ai_msg_id,
@@ -1834,7 +1904,7 @@ async def _run_chat_generation_task(
                 done_voice_payload = await generate_voice_payload_for_message(
                     db=db,
                     content=final_text,
-                    enable_voice=bool(friend.enable_voice),
+                    enable_voice=voice_reply_enabled,
                     friend_voice_id=friend.voice_id,
                     message_id=ai_msg_id,
                     message_scope="single",
@@ -1879,12 +1949,56 @@ async def _run_chat_generation_task(
         await queue.put(None)
         db.close()
 
+
+def _persist_internal_history_items(
+    db: Session,
+    session_id: int,
+    friend_id: Optional[int],
+    items: Optional[List[Dict[str, Any]]],
+):
+    if not items:
+        return
+
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        db.add(
+            Message(
+                session_id=session_id,
+                friend_id=friend_id,
+                role=BOOK_CONTEXT_MESSAGE_ROLE,
+                content=json.dumps(item, ensure_ascii=False),
+            )
+        )
+    db.commit()
+
+
+def _delete_preceding_book_context_messages(db: Session, message: Message):
+    candidates = (
+        db.query(Message)
+        .filter(
+            Message.session_id == message.session_id,
+            Message.deleted == False,
+            (Message.create_time < message.create_time)
+            | ((Message.create_time == message.create_time) & (Message.id < message.id)),
+        )
+        .order_by(Message.create_time.desc(), Message.id.desc())
+        .all()
+    )
+
+    for candidate in candidates:
+        if candidate.role != BOOK_CONTEXT_MESSAGE_ROLE:
+            break
+        candidate.deleted = True
+
 async def send_message_stream(
     db: Session,
     session_id: int,
     message_in: chat_schemas.MessageCreate,
-    request_context_messages: Optional[List[Dict[str, str]]] = None,
+    request_context_messages: Optional[List[Dict[str, Any]]] = None,
     allow_recall: bool = True,
+    persisted_history_items: Optional[List[Dict[str, Any]]] = None,
+    book_request_context: Optional[BookReadingRequestContext] = None,
 ):
     """
     Send a message and stream the LLM response.
@@ -1903,6 +2017,13 @@ async def send_message_stream(
     force_thinking = provider_rules.is_gemini_model(llm_config, model_name)
     effective_enable_thinking = message_in.enable_thinking and (
         bool(llm_config.capability_reasoning) or force_thinking
+    )
+
+    _persist_internal_history_items(
+        db,
+        session_id=session_id,
+        friend_id=db_session.friend_id,
+        items=persisted_history_items,
     )
 
     # 1. Save User Message
@@ -1929,6 +2050,7 @@ async def send_message_stream(
         queue=queue,
         request_context_messages=request_context_messages,
         allow_recall=allow_recall,
+        book_request_context=book_request_context,
     ))
 
     # 4. Stream events from the queue
@@ -2029,10 +2151,13 @@ async def send_book_reading_message_stream(
             friend_id=message_in.friend_id,
             title=f"伴读：《{book.title}》",
         )
-        context_message = _build_book_reading_context_message(
+        llm_config = llm_service.get_active_config(db)
+        mock_history_items = build_book_context_mock_history_items(
             book,
             message_in.page_context,
             message_in.selected_quote,
+            llm_config=llm_config,
+            model_name=llm_config.model_name if llm_config else None,
         )
         stream = send_message_stream(
             db,
@@ -2041,8 +2166,13 @@ async def send_book_reading_message_stream(
                 content=message_in.user_message,
                 enable_thinking=message_in.enable_thinking,
             ),
-            request_context_messages=[context_message],
             allow_recall=False,
+            persisted_history_items=mock_history_items,
+            book_request_context=BookReadingRequestContext(
+                book_id=book.id,
+                page_context=message_in.page_context,
+                selected_quote=message_in.selected_quote,
+            ),
         )
         try:
             first_event = await stream.__anext__()
@@ -2233,9 +2363,9 @@ async def process_memory_queue(db: Session):
             
             friend = db.query(Friend).filter(Friend.id == session.friend_id).first()
             messages = (
-                db.query(Message)
+                _visible_message_filter(db.query(Message))
                 .filter(Message.session_id == session_id, Message.deleted == False)
-                .order_by(Message.create_time.asc())
+                .order_by(Message.create_time.asc(), Message.id.asc())
                 .all()
             )
             openai_messages = [{"role": m.role, "content": m.content} for m in messages]
@@ -2282,6 +2412,7 @@ def recall_message(db: Session, message_id: int) -> bool:
     # 1. Update target message
     message.content = "你撤回了一条消息"
     message.role = "system"
+    _delete_preceding_book_context_messages(db, message)
     # Note: We do NOT soft delete the user message, we transform it.
     
     # 2. Find and delete subsequent assistant message
@@ -2291,6 +2422,7 @@ def recall_message(db: Session, message_id: int) -> bool:
         .filter(
              Message.session_id == message.session_id,
              Message.deleted == False,
+             Message.role != BOOK_CONTEXT_MESSAGE_ROLE,
              (Message.create_time > message.create_time) | ((Message.create_time == message.create_time) & (Message.id > message.id))
         )
         .order_by(Message.create_time.asc(), Message.id.asc())

@@ -74,6 +74,9 @@ const status = ref<'ready' | 'streaming'>('ready')
 const sessionId = ref<number | null>(null)
 const conversationRef = ref<InstanceType<typeof Conversation> | null>(null)
 const currentScrollEl = ref<HTMLElement | null>(null)
+const lastSentPageContextSignature = ref<string | null>(null)
+const lastSentSelectedQuoteSignature = ref<string | null>(null)
+const pendingSelectedQuoteClearSync = ref(false)
 
 const thinkingDialogOpen = ref(false)
 const toolCallsDialogOpen = ref(false)
@@ -132,6 +135,35 @@ const selectedQuoteText = computed(() => {
   }
   return props.selectedQuote?.excerpt?.trim() || props.selectedQuote?.text?.trim() || ''
 })
+
+const normalizeSnapshotText = (value?: string | null) => (typeof value === 'string' ? value.trim() : '')
+
+const buildPageContextSignature = (context: PageContextPayload) => JSON.stringify({
+  supported: Boolean(context.supported),
+  reason: normalizeSnapshotText(context.reason),
+  text: normalizeSnapshotText(context.text),
+  excerpt: normalizeSnapshotText(context.excerpt),
+  locator: normalizeSnapshotText(context.locator),
+  tocPath: Array.isArray(context.tocPath) ? context.tocPath.map(item => item.trim()).filter(Boolean) : [],
+  truncated: Boolean(context.truncated),
+  sourceType: normalizeSnapshotText(context.sourceType),
+})
+
+const buildSelectedQuoteSignature = (quote?: SelectedQuotePayload | null) => {
+  const text = normalizeSnapshotText(quote?.text)
+  if (!text) {
+    return ''
+  }
+
+  return JSON.stringify({
+    text,
+    excerpt: normalizeSnapshotText(quote?.excerpt),
+    locator: normalizeSnapshotText(quote?.locator),
+    tocPath: Array.isArray(quote?.tocPath) ? quote.tocPath.map(item => item.trim()).filter(Boolean) : [],
+    truncated: Boolean(quote?.truncated),
+    sourceType: normalizeSnapshotText(quote?.sourceType),
+  })
+}
 
 const inputPlaceholder = computed(() => {
   if (!isBoundAuthorReady.value) {
@@ -229,6 +261,9 @@ const loadMessages = async () => {
   stopVoicePlayback()
   historyError.value = null
   sessionId.value = null
+  lastSentPageContextSignature.value = null
+  lastSentSelectedQuoteSignature.value = null
+  pendingSelectedQuoteClearSync.value = false
 
   if (!isBoundAuthorReady.value || !friendId.value) {
     messages.value = []
@@ -241,6 +276,9 @@ const loadMessages = async () => {
     const mapped = response.map(mapApiMessage)
     messages.value = mapped
     sessionId.value = mapped.length ? (mapped[mapped.length - 1].sessionId ?? null) : null
+    if (mapped.length > 0 && !hasSelectedQuote.value) {
+      pendingSelectedQuoteClearSync.value = true
+    }
     await scrollToBottom()
   } catch (error) {
     messages.value = []
@@ -397,22 +435,41 @@ const handleSubmit = async (_payload?: unknown) => {
   const pendingVoiceSegmentsMap = new Map<number, any[]>()
   let currentAssistantMessageId: number | null = null
   let didComplete = false
+  let didApplySnapshotSignatures = false
+
+  const currentSelectedQuote = props.selectedQuote
+  const currentPageContextSignature = buildPageContextSignature(effectivePageContext.value)
+  const currentSelectedQuoteSignature = buildSelectedQuoteSignature(currentSelectedQuote)
+  const shouldSendPageContext = currentPageContextSignature !== lastSentPageContextSignature.value
+  const shouldSyncClearedSelectedQuote =
+    pendingSelectedQuoteClearSync.value &&
+    currentSelectedQuoteSignature === ''
+  const shouldSendSelectedQuote =
+    shouldSyncClearedSelectedQuote ||
+    (
+      currentSelectedQuoteSignature !== (lastSentSelectedQuoteSignature.value ?? '') &&
+      (currentSelectedQuoteSignature !== '' || lastSentSelectedQuoteSignature.value !== null)
+    )
 
   const requestPayload: BookReadingMessageCreate = {
     user_message: content,
     book_id: props.book.id,
     friend_id: friendId.value,
-    page_context: effectivePageContext.value,
-    selected_quote: props.selectedQuote
-      ? {
-        text: props.selectedQuote.text,
-        excerpt: props.selectedQuote.excerpt,
-        locator: props.selectedQuote.locator,
-        tocPath: props.selectedQuote.tocPath,
-        truncated: props.selectedQuote.truncated,
-        sourceType: props.selectedQuote.sourceType,
-      }
-      : null,
+    page_context: shouldSendPageContext ? effectivePageContext.value : undefined,
+    selected_quote: shouldSendSelectedQuote
+      ? (currentSelectedQuoteSignature
+        ? {
+            text: currentSelectedQuote!.text,
+            excerpt: currentSelectedQuote!.excerpt,
+            locator: currentSelectedQuote!.locator,
+            tocPath: currentSelectedQuote!.tocPath,
+            truncated: currentSelectedQuote!.truncated,
+            sourceType: currentSelectedQuote!.sourceType,
+          }
+        : {
+            text: '',
+          })
+      : undefined,
     enable_thinking: thinkingModeStore.isEnabled,
   }
 
@@ -427,6 +484,16 @@ const handleSubmit = async (_payload?: unknown) => {
           userMessage.id = Number(data.user_message_id)
         }
         userMessage.sessionId = sessionId.value ?? undefined
+        if (!didApplySnapshotSignatures) {
+          if (shouldSendPageContext) {
+            lastSentPageContextSignature.value = currentPageContextSignature
+          }
+          if (shouldSendSelectedQuote) {
+            lastSentSelectedQuoteSignature.value = currentSelectedQuoteSignature
+            pendingSelectedQuoteClearSync.value = false
+          }
+          didApplySnapshotSignatures = true
+        }
       } else if (eventName === 'message') {
         contentBuffer += data.delta || ''
       } else if (eventName === 'model_thinking' || eventName === 'thinking') {

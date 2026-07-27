@@ -299,6 +299,14 @@ function waitForBackend(port, timeoutMs = BACKEND_START_TIMEOUT_MS) {
   return new Promise((resolve, reject) => {
     const attempt = () => {
       if (Date.now() > deadline) {
+        if (!app.isPackaged) {
+          reject(
+            new Error(
+              `Backend startup timeout. Dev mode requires the backend health endpoint to be available at http://127.0.0.1:${port}${HEALTH_PATH}. Start the backend first, or use scripts\\start_electron.bat / scripts\\start_all.bat.`,
+            ),
+          )
+          return
+        }
         reject(new Error('Backend startup timeout'))
         return
       }

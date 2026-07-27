@@ -4,7 +4,9 @@ from app.main import app
 from app.api.deps import get_db
 from app.services.settings_service import SettingsService
 from app.models.book import Book as BookModel
-from app.models.chat import ChatSession
+from app.models.chat import ChatSession, Message
+from app.services.book_reading_tools import BOOK_CONTEXT_MESSAGE_ROLE
+from app.services.voice_message_service import _build_single_chat_context
 from tests.conftest import engine
 from unittest.mock import patch, AsyncMock, MagicMock
 from openai.types.responses import ResponseTextDeltaEvent
@@ -312,7 +314,7 @@ def test_send_message_with_voice_payload(client: TestClient, db: Session):
     assert len(msgs[-1]["voice_payload"]["segments"]) == 2
 
 
-def test_book_reading_message_isolated_by_book_and_context_injected(client: TestClient, db: Session):
+def test_book_reading_message_isolated_by_book_and_mock_tool_context_injected(client: TestClient, db: Session):
     from app.models.llm import LLMConfig
 
     llm_config = LLMConfig(
@@ -385,8 +387,11 @@ def test_book_reading_message_isolated_by_book_and_context_injected(client: Test
         assert final_content == "这是伴读回答"
 
         run_messages = mocked_runner.call_args.args[1]
-        assert any(msg.get("role") == "system" and "这是一段当前页正文" in msg.get("content", "") for msg in run_messages)
-        assert any(msg.get("role") == "system" and "单季净利润增长135%" in msg.get("content", "") for msg in run_messages)
+        assert any(msg.get("type") == "function_call" and msg.get("name") == "get_page_content" for msg in run_messages)
+        assert any(msg.get("type") == "function_call" and msg.get("name") == "get_selected_content" for msg in run_messages)
+        assert any(msg.get("type") == "function_call_output" and "这是一段当前页正文" in str(msg.get("output", "")) for msg in run_messages)
+        assert any(msg.get("type") == "function_call_output" and "单季净利润增长135%" in str(msg.get("output", "")) for msg in run_messages)
+        assert not any(msg.get("role") == "system" and "这是一段当前页正文" in msg.get("content", "") for msg in run_messages)
         assert run_messages[-1]["role"] == "user"
         assert run_messages[-1]["content"] == "你看刚刚那句话是什么意思？"
         mocked_recall.assert_not_awaited()
@@ -415,6 +420,297 @@ def test_book_reading_message_isolated_by_book_and_context_injected(client: Test
         .all()
     )
     assert len(book_sessions) == 1
+    hidden_context_count = (
+        db.query(Message)
+        .filter(
+            Message.session_id == book_sessions[0].id,
+            Message.role == BOOK_CONTEXT_MESSAGE_ROLE,
+            Message.deleted == False,
+        )
+        .count()
+    )
+    assert hidden_context_count == 4
+
+
+def test_book_reading_follow_up_reuses_persisted_mock_tool_history_when_payload_omits_context(
+    client: TestClient,
+    db: Session,
+):
+    from app.models.llm import LLMConfig
+
+    llm_config = LLMConfig(
+        base_url="https://mock.url",
+        api_key="mock_key",
+        model_name="mock-model",
+    )
+    activate_llm_config(db, llm_config)
+
+    friend_resp = client.post("/api/friends/", json={"name": "伴读作者", "is_preset": False})
+    assert friend_resp.status_code == 200
+    friend_id = friend_resp.json()["id"]
+    book = create_book(db, "复用上下文测试", friend_id)
+
+    async def mock_stream_events():
+        yield create_mock_event("这是", 0)
+        yield create_mock_event("伴读回答", 1)
+
+    mock_runner_result = MagicMock()
+    mock_runner_result.stream_events = mock_stream_events
+
+    with patch("app.services.chat_service.Runner.run_streamed", return_value=mock_runner_result) as mocked_runner, \
+         patch("app.services.chat_service.RecallService.perform_recall", new_callable=AsyncMock) as mocked_recall, \
+         patch("app.services.chat_service.SessionLocal", MockSessionLocal):
+        first_response = client.post(
+            "/api/chat/book-reading/messages",
+            json={
+                "user_message": "第一页讲了什么？",
+                "book_id": book.id,
+                "friend_id": friend_id,
+                "page_context": {
+                    "supported": True,
+                    "reason": "ok",
+                    "excerpt": "第一页正文快照，用于验证后续追问时是否能复用。",
+                    "locator": "第 8 页",
+                    "tocPath": ["第一章"],
+                    "truncated": False,
+                    "sourceType": "epub",
+                },
+                "selected_quote": {
+                    "text": "这是第一页选中的句子。",
+                    "excerpt": "这是第一页选中的句子。",
+                    "locator": "位置 88",
+                    "tocPath": ["第一章"],
+                    "truncated": False,
+                    "sourceType": "epub",
+                },
+            },
+        )
+        assert first_response.status_code == 200
+        list(first_response.iter_lines())
+
+        second_response = client.post(
+            "/api/chat/book-reading/messages",
+            json={
+                "user_message": "那这句话和上一段是什么关系？",
+                "book_id": book.id,
+                "friend_id": friend_id,
+            },
+        )
+        assert second_response.status_code == 200
+        list(second_response.iter_lines())
+
+        assert mocked_runner.call_count == 2
+        first_run_messages = mocked_runner.call_args_list[0].args[1]
+        second_run_messages = mocked_runner.call_args_list[1].args[1]
+
+        assert any(msg.get("type") == "function_call_output" and "第一页正文快照" in str(msg.get("output", "")) for msg in first_run_messages)
+        assert any(msg.get("type") == "function_call_output" and "第一页正文快照" in str(msg.get("output", "")) for msg in second_run_messages)
+        assert any(msg.get("type") == "function_call_output" and "第一页选中的句子" in str(msg.get("output", "")) for msg in second_run_messages)
+        assert second_run_messages[-1]["role"] == "user"
+        assert second_run_messages[-1]["content"] == "那这句话和上一段是什么关系？"
+        mocked_recall.assert_not_awaited()
+
+    visible_messages = client.get(f"/api/chat/book-reading/messages?book_id={book.id}&friend_id={friend_id}")
+    assert visible_messages.status_code == 200
+    assert len(visible_messages.json()) == 4
+
+
+def test_book_reading_recall_also_deletes_hidden_context(client: TestClient, db: Session):
+    from app.models.llm import LLMConfig
+
+    llm_config = LLMConfig(
+        base_url="https://mock.url",
+        api_key="mock_key",
+        model_name="mock-model",
+    )
+    activate_llm_config(db, llm_config)
+
+    friend_resp = client.post("/api/friends/", json={"name": "伴读作者", "is_preset": False})
+    assert friend_resp.status_code == 200
+    friend_id = friend_resp.json()["id"]
+    book = create_book(db, "撤回上下文测试", friend_id)
+
+    async def mock_stream_events():
+        yield create_mock_event("这是", 0)
+        yield create_mock_event("伴读回答", 1)
+
+    mock_runner_result = MagicMock()
+    mock_runner_result.stream_events = mock_stream_events
+
+    with patch("app.services.chat_service.Runner.run_streamed", return_value=mock_runner_result), \
+         patch("app.services.chat_service.RecallService.perform_recall", new_callable=AsyncMock), \
+         patch("app.services.chat_service.SessionLocal", MockSessionLocal):
+        response = client.post(
+            "/api/chat/book-reading/messages",
+            json={
+                "user_message": "这段话是什么意思？",
+                "book_id": book.id,
+                "friend_id": friend_id,
+                "page_context": {
+                    "supported": True,
+                    "excerpt": "这里是撤回前的页面正文。",
+                    "locator": "第 3 页",
+                    "tocPath": ["第一章"],
+                    "truncated": False,
+                    "sourceType": "epub",
+                },
+                "selected_quote": {
+                    "text": "这里是撤回前的引用。",
+                    "excerpt": "这里是撤回前的引用。",
+                    "locator": "位置 21",
+                    "tocPath": ["第一章"],
+                    "truncated": False,
+                    "sourceType": "epub",
+                },
+            },
+        )
+        assert response.status_code == 200
+
+        last_event = None
+        session_id = None
+        user_message_id = None
+        for line in response.iter_lines():
+            line_str = line if isinstance(line, str) else line.decode("utf-8")
+            if line_str.startswith("event: "):
+                last_event = line_str.split(": ", 1)[1]
+            elif line_str.startswith("data: ") and last_event == "start":
+                data = json.loads(line_str[6:])
+                session_id = data["session_id"]
+                user_message_id = data["user_message_id"]
+
+        assert session_id is not None
+        assert user_message_id is not None
+
+        recall_resp = client.post(f"/api/chat/messages/{user_message_id}/recall")
+        assert recall_resp.status_code == 200
+
+    db.expire_all()
+    remaining_hidden = (
+        db.query(Message)
+        .filter(
+            Message.session_id == session_id,
+            Message.role == BOOK_CONTEXT_MESSAGE_ROLE,
+            Message.deleted == False,
+        )
+        .count()
+    )
+    assert remaining_hidden == 0
+
+    recalled_user = db.query(Message).filter(Message.id == user_message_id).first()
+    assert recalled_user is not None
+    assert recalled_user.role == "system"
+
+    recalled_assistant = (
+        db.query(Message)
+        .filter(Message.session_id == session_id, Message.role == "assistant")
+        .order_by(Message.id.desc())
+        .first()
+    )
+    assert recalled_assistant is not None
+    assert recalled_assistant.deleted is True
+
+
+def test_book_reading_disables_voice_even_if_author_has_voice_enabled(client: TestClient, db: Session):
+    from app.models.llm import LLMConfig
+
+    llm_config = LLMConfig(
+        base_url="https://mock.url",
+        api_key="mock_key",
+        model_name="mock-model",
+    )
+    activate_llm_config(db, llm_config)
+
+    friend_resp = client.post(
+        "/api/friends/",
+        json={
+            "name": "会说话的作者",
+            "is_preset": False,
+            "enable_voice": True,
+            "voice_id": "Cherry",
+        },
+    )
+    assert friend_resp.status_code == 200
+    friend_id = friend_resp.json()["id"]
+    book = create_book(db, "伴读禁语音测试", friend_id)
+
+    async def mock_stream_events():
+        yield create_mock_event("这是", 0)
+        yield create_mock_event("纯文本回答", 1)
+
+    mock_runner_result = MagicMock()
+    mock_runner_result.stream_events = mock_stream_events
+
+    with patch("app.services.chat_service.Runner.run_streamed", return_value=mock_runner_result), \
+         patch("app.services.chat_service.RecallService.perform_recall", new_callable=AsyncMock), \
+         patch("app.services.chat_service.SessionLocal", MockSessionLocal), \
+         patch("app.services.chat_service.generate_voice_payload_for_message", new_callable=AsyncMock) as mocked_voice:
+        response = client.post(
+            "/api/chat/book-reading/messages",
+            json={
+                "user_message": "这一页怎么理解？",
+                "book_id": book.id,
+                "friend_id": friend_id,
+                "page_context": {
+                    "supported": True,
+                    "excerpt": "这是伴读页面正文。",
+                    "locator": "第 16 页",
+                    "tocPath": ["第二章"],
+                    "truncated": False,
+                    "sourceType": "epub",
+                },
+            },
+        )
+        assert response.status_code == 200
+
+        last_event = None
+        done_voice_payload = None
+        for line in response.iter_lines():
+            line_str = line if isinstance(line, str) else line.decode("utf-8")
+            if line_str.startswith("event: "):
+                last_event = line_str.split(": ", 1)[1]
+            elif line_str.startswith("data: ") and last_event == "done":
+                done_voice_payload = json.loads(line_str[6:]).get("voice_payload")
+
+        mocked_voice.assert_not_awaited()
+        assert done_voice_payload is None
+
+    visible_messages = client.get(f"/api/chat/book-reading/messages?book_id={book.id}&friend_id={friend_id}")
+    assert visible_messages.status_code == 200
+    payload = visible_messages.json()
+    assert len(payload) == 2
+    assert payload[-1]["voice_payload"] is None
+
+
+def test_tts_emotion_context_skips_book_context_messages(db: Session):
+    from app.models.friend import Friend
+
+    friend = Friend(name="语音测试好友", is_preset=False)
+    db.add(friend)
+    db.commit()
+    db.refresh(friend)
+
+    session = ChatSession(friend_id=friend.id, title="语音上下文")
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+
+    hidden = Message(
+        session_id=session.id,
+        friend_id=friend.id,
+        role=BOOK_CONTEXT_MESSAGE_ROLE,
+        content='{"type":"function_call_output","output":"隐藏正文"}',
+    )
+    user = Message(session_id=session.id, role="user", content="用户问题")
+    assistant = Message(session_id=session.id, role="assistant", content="助手回答")
+    db.add_all([hidden, user, assistant])
+    db.commit()
+    db.refresh(assistant)
+
+    context = _build_single_chat_context(db, assistant)
+
+    assert "隐藏正文" not in context
+    assert "book_context" not in context
+    assert "用户: 用户问题" in context
 
 
 def test_book_reading_rejects_unbound_book_without_creating_session(client: TestClient, db: Session):
