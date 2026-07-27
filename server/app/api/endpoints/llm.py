@@ -7,6 +7,7 @@ from app.api import deps
 from app.schemas.llm import LLMConfig, LLMConfigRead, LLMConfigUpdate, LLMConfigCreate
 from app.services.llm_service import llm_service
 from app.services.settings_service import SettingsService
+from app.services import provider_rules
 from app.prompt import get_prompt
 
 logger = logging.getLogger(__name__)
@@ -14,6 +15,17 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 MAX_LLM_CONFIGS = 20
+
+
+def _llm_test_tool_choice(base_url: str | None, model_name: str | None):
+    """返回配置测试所用的工具选择策略。
+
+    DeepSeek 的思考模式支持工具调用，但不支持强制指定单个函数。
+    因此让模型自动选择，再由测试逻辑验证是否实际调用 get_weather。
+    """
+    if provider_rules.is_deepseek_endpoint(base_url, model_name):
+        return "auto"
+    return {"type": "function", "function": {"name": "get_weather"}}
 
 @router.get("/configs", response_model=List[LLMConfig])
 def read_llm_configs(
@@ -207,7 +219,7 @@ def _test_llm_config_payload(base_url: str | None, api_key: str | None, model_na
             model=model_name or "gpt-3.5-turbo",
             messages=[{"role": "user", "content": test_message}],
             tools=tools,
-            tool_choice={"type": "function", "function": {"name": "get_weather"}}
+            tool_choice=_llm_test_tool_choice(base_url, model_name),
         )
 
         # 验证是否实际生成了工具调用

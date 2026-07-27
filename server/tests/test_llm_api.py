@@ -1,5 +1,39 @@
 from fastapi.testclient import TestClient
+from types import SimpleNamespace
+
 from app.core.config import settings
+from app.api.endpoints.llm import _llm_test_tool_choice
+from app.services import provider_rules
+
+
+def test_deepseek_llm_test_uses_automatic_tool_choice():
+    assert _llm_test_tool_choice(
+        "https://api.deepseek.com/v1", "deepseek-v4-flash"
+    ) == "auto"
+
+
+def test_other_llm_test_forces_weather_tool():
+    assert _llm_test_tool_choice(
+        "https://api.openai.com/v1", "gpt-4.1"
+    ) == {"type": "function", "function": {"name": "get_weather"}}
+
+
+def test_deepseek_disabled_thinking_omits_reasoning_effort():
+    config = SimpleNamespace(provider="openai_compatible", base_url="https://api.deepseek.com/v1")
+
+    assert provider_rules.get_reasoning_effort(config, "deepseek-v4-flash", False) is None
+    assert provider_rules.get_thinking_extra_body(config, "deepseek-v4-flash", False) == {
+        "thinking": {"type": "disabled"}
+    }
+
+
+def test_deepseek_enabled_thinking_uses_supported_effort():
+    config = SimpleNamespace(provider="openai_compatible", base_url="https://api.deepseek.com/v1")
+
+    assert provider_rules.get_reasoning_effort(config, "deepseek-v4-flash", True) == "low"
+    assert provider_rules.get_thinking_extra_body(config, "deepseek-v4-flash", True) == {
+        "thinking": {"type": "enabled"}
+    }
 
 def test_get_llm_config_not_found(client: TestClient):
     """

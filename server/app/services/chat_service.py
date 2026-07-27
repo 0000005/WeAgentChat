@@ -869,9 +869,12 @@ async def _judge_smart_context_relevance(
         and not use_litellm
         and provider_rules.supports_reasoning_effort(llm_config)
     ):
-        model_settings_kwargs["reasoning"] = Reasoning(
-            effort=provider_rules.get_reasoning_effort(llm_config, raw_model_name, False)
-        )
+        effort = provider_rules.get_reasoning_effort(llm_config, raw_model_name, False)
+        if effort is not None:
+            model_settings_kwargs["reasoning"] = Reasoning(effort=effort)
+    thinking_extra_body = provider_rules.get_thinking_extra_body(llm_config, raw_model_name, False)
+    if thinking_extra_body:
+        model_settings_kwargs["extra_body"] = thinking_extra_body
     model_settings = ModelSettings(**model_settings_kwargs)
 
     if use_litellm:
@@ -1715,17 +1718,22 @@ async def _run_chat_generation_task(
             and not use_litellm
             and provider_rules.supports_reasoning_effort(llm_config)
         ):
-            model_settings_kwargs["reasoning"] = Reasoning(
-                effort=provider_rules.get_reasoning_effort(
-                    llm_config, raw_model_name, enable_thinking
-                )
+            effort = provider_rules.get_reasoning_effort(
+                llm_config, raw_model_name, enable_thinking
             )
+            if effort is not None:
+                model_settings_kwargs["reasoning"] = Reasoning(effort=effort)
         if use_litellm and enable_thinking:
             model_settings_kwargs["reasoning"] = Reasoning(
                 effort=provider_rules.get_reasoning_effort(
                     llm_config, raw_model_name, enable_thinking
                 )
             )
+        thinking_extra_body = provider_rules.get_thinking_extra_body(
+            llm_config, raw_model_name, enable_thinking
+        )
+        if thinking_extra_body:
+            model_settings_kwargs["extra_body"] = thinking_extra_body
         model_settings = ModelSettings(**model_settings_kwargs)
         if use_litellm:
             from agents.extensions.models.litellm_model import LitellmModel

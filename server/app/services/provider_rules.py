@@ -29,6 +29,11 @@ def is_deepseek_model(llm_config, model_name: Optional[str]) -> bool:
     return "deepseek" in (model_name or "").lower()
 
 
+def is_deepseek_endpoint(base_url: Optional[str], model_name: Optional[str]) -> bool:
+    """识别未持久化配置中的 DeepSeek 端点（如配置测试请求）。"""
+    return "deepseek" in (base_url or "").lower() or "deepseek" in (model_name or "").lower()
+
+
 def normalize_gemini_model_name(model_name: Optional[str]) -> str:
     raw = (model_name or "").strip()
     if not raw:
@@ -75,12 +80,28 @@ def get_reasoning_effort(
     llm_config,
     model_name: Optional[str],
     enable_thinking: bool,
-) -> str:
+) -> Optional[str]:
+    # DeepSeek 关闭思考需要使用 thinking.type=disabled；其 API 不接受
+    # reasoning_effort="none"。
+    if is_deepseek_model(llm_config, model_name) and not enable_thinking:
+        return None
     if not enable_thinking:
         return "none"
     if is_gemini_model(llm_config, model_name):
         return "low"
     return "low"
+
+
+def get_thinking_extra_body(
+    llm_config,
+    model_name: Optional[str],
+    enable_thinking: bool,
+) -> Optional[dict]:
+    """返回 DeepSeek 思考模式开关所需的 OpenAI 兼容请求体。"""
+    if is_deepseek_model(llm_config, model_name):
+        thinking_type = "enabled" if enable_thinking else "disabled"
+        return {"thinking": {"type": thinking_type}}
+    return None
 
 
 def needs_gemini_thought_signature(llm_config, model_name: Optional[str]) -> bool:
